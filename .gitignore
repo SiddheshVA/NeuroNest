@@ -1,0 +1,92 @@
+# ============================================================
+# NeuroNest — root .gitignore (backend + frontend)
+# ============================================================
+
+# ---------- Secrets ----------
+.env
+.env.*
+*.env
+!.env.example
+!**/.env.example
+*.local
+application-local.properties
+application-local.yml
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+credentials*.json
+secrets.*
+service-account*.json
+
+# ---------- Claude / AI tool files ----------
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+.cursor/
+AGENTS.md
+
+# ---------- Java / Spring / Maven ----------
+target/
+!**/src/main/**/target/
+!**/src/test/**/target/
+*.class
+.mvn/wrapper/maven-wrapper.jar
+HELP.md
+
+# STS / Eclipse
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# NetBeans
+nbproject/private/
+nbbuild/
+nbdist/
+.nb-gradle/
+
+# ---------- IDEs ----------
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ---------- Node / React / Vite ----------
+node_modules/
+dist/
+dist-ssr/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+coverage/
+
+# ---------- Logs ----------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+
+# ---------- Generated / scratch ----------
+samples/
+scripts/output/
+backend.zip
+frontend.zip
