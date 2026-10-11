@@ -71,8 +71,12 @@ class LlmFallbackTest {
     }
 
     private GeminiProvider gemini() {
-        return new GeminiProvider("test-gemini-key", base() + "/gemini", "gemini-3.6-flash", 8192, 4096, "",
-                mapper, settings);
+        return gemini("0.8");
+    }
+
+    private GeminiProvider gemini(String replyTemperature) {
+        return new GeminiProvider("test-gemini-key", base() + "/gemini", "gemini-3.6-flash", 8192, 4096,
+                replyTemperature, "", mapper, settings);
     }
 
     private LlmRouter router(LlmRouter.Mode mode) {
@@ -98,6 +102,31 @@ class LlmFallbackTest {
         JsonNode request = groqRequests.getFirst();
         assertThat(request.path("stream").asBoolean()).isTrue();
         assertThat(request.path("messages").path(0).path("role").asString()).isEqualTo("system");
+    }
+
+    @Test
+    void replyCallUsesTheReplyTemperatureAndTokenLimitWhileJsonCallsStayAtTheirOwn() {
+        stream(router(LlmRouter.Mode.AUTO), new ArrayList<>());
+        JsonNode groqReply = groqRequests.getLast();
+        assertThat(groqReply.path("temperature").asDouble()).isEqualTo(0.7);
+        assertThat(groqReply.path("max_completion_tokens").asInt()).isEqualTo(1500);
+
+        stream(router(LlmRouter.Mode.GEMINI), new ArrayList<>());
+        JsonNode geminiReply = geminiRequests.getLast().path("generationConfig");
+        assertThat(geminiReply.path("temperature").asDouble()).isEqualTo(0.8);
+        assertThat(geminiReply.path("maxOutputTokens").asInt()).isEqualTo(8192);
+
+        new SafetyCheckService(router(LlmRouter.Mode.GEMINI), mapper).assess(List.of(), "exam stress");
+        JsonNode geminiJson = geminiRequests.getLast().path("generationConfig");
+        assertThat(geminiJson.has("temperature")).isFalse(); // unchanged: model default
+        assertThat(geminiJson.path("maxOutputTokens").asInt()).isEqualTo(4096);
+    }
+
+    @Test
+    void blankGeminiReplyTemperatureLeavesTheModelDefault() {
+        LlmRouter router = new LlmRouter(groq(base() + "/groq"), gemini(""), LlmRouter.Mode.GEMINI);
+        stream(router, new ArrayList<>());
+        assertThat(geminiRequests.getLast().path("generationConfig").has("temperature")).isFalse();
     }
 
     @Test

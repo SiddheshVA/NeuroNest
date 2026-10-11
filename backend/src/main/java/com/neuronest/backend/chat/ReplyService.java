@@ -3,6 +3,7 @@ package com.neuronest.backend.chat;
 import com.neuronest.backend.chat.llm.LlmMessage;
 import com.neuronest.backend.chat.llm.LlmRouter;
 import com.neuronest.backend.chat.llm.StreamSink;
+import com.neuronest.backend.kb.KbChunk;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -32,11 +33,12 @@ public class ReplyService {
      *         sink committed output (no provider switch happens then)
      * @throws com.neuronest.backend.chat.llm.LlmUnavailableException if every provider failed
      *         before the sink committed anything
+     * @param knowledge wellness-library sections for this message; must be empty for a crisis
      * @param knownCrisis the separate safety check already decided this message is a crisis
      */
     public LlmRouter.StreamResult streamReply(List<ChatMessage> history, String userMessage, List<String> memories,
-                                              String summary, boolean earlierCrisis, boolean knownCrisis,
-                                              StreamSink sink) {
+                                              List<KbChunk> knowledge, String summary, boolean earlierCrisis,
+                                              boolean knownCrisis, StreamSink sink) {
         List<LlmMessage> messages = new ArrayList<>();
         for (ChatMessage message : recent(history)) {
             if (messages.isEmpty() && "assistant".equals(message.getRole())) {
@@ -48,8 +50,8 @@ public class ReplyService {
         }
         append(messages, LlmMessage.user(userMessage));
 
-        return router.streamText("reply", ReplyPrompts.systemPrompt(memories, summary, earlierCrisis, knownCrisis),
-                messages, sink);
+        return router.streamText("reply",
+                ReplyPrompts.systemPrompt(memories, knowledge, summary, earlierCrisis, knownCrisis), messages, sink);
     }
 
     List<ChatMessage> recent(List<ChatMessage> history) {

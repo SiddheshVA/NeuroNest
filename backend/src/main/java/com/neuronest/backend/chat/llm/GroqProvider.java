@@ -2,6 +2,8 @@ package com.neuronest.backend.chat.llm;
 
 import com.neuronest.backend.chat.llm.LlmHttp.Chunk;
 import com.neuronest.backend.chat.llm.LlmProviderException.Kind;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -20,6 +22,8 @@ import java.util.function.Consumer;
  */
 @Component
 public class GroqProvider implements LlmProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(GroqProvider.class);
 
     public static final String NAME = "groq";
 
@@ -40,7 +44,7 @@ public class GroqProvider implements LlmProvider {
                         @Value("${groq.safety-model:${groq.model:llama-3.3-70b-versatile}}") String safetyModel,
                         @Value("${groq.reply-max-tokens:1500}") int replyMaxTokens,
                         @Value("${groq.safety-max-tokens:400}") int safetyMaxTokens,
-                        @Value("${groq.reply-temperature:0.7}") double replyTemperature,
+                        @Value("${groq.reply-temperature:0.8}") double replyTemperature,
                         // For reasoning models (e.g. openai/gpt-oss-*): low/medium/high; blank = not sent.
                         @Value("${groq.reasoning-effort:}") String reasoningEffort,
                         JsonMapper jsonMapper,
@@ -105,6 +109,9 @@ public class GroqProvider implements LlmProvider {
                     LlmProviderException.shorten(chunk.path("error").toString()));
         }
         JsonNode content = chunk.path("choices").path(0).path("delta").path("content");
+        if ("length".equals(chunk.path("choices").path(0).path("finish_reason").asString(""))) {
+            log.warn("Groq reply hit max_completion_tokens ({}); the reply was cut short", replyMaxTokens);
+        }
         // Usage arrives in the last chunk, as x_groq.usage (or OpenAI-style "usage").
         JsonNode usage = chunk.path("x_groq").path("usage");
         if (usage.isMissingNode()) {

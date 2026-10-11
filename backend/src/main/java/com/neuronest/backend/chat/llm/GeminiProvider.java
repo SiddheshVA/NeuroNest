@@ -48,6 +48,7 @@ public class GeminiProvider implements LlmProvider {
     private final String model;
     private final int replyMaxTokens;
     private final int safetyMaxTokens;
+    private final Double replyTemperature;
     private final String thinkingLevel;
     private final JsonMapper jsonMapper;
     private final LlmHttp http;
@@ -58,6 +59,8 @@ public class GeminiProvider implements LlmProvider {
                           // Thinking tokens count towards these limits, so they are generous.
                           @Value("${gemini.reply-max-tokens:8192}") int replyMaxTokens,
                           @Value("${gemini.safety-max-tokens:4096}") int safetyMaxTokens,
+                          // Reply call only; blank = model default (Google advises 1.0 for Gemini 3).
+                          @Value("${gemini.reply-temperature:}") String replyTemperature,
                           // Optional generationConfig.thinkingConfig.thinkingLevel; blank = model default.
                           @Value("${gemini.thinking-level:}") String thinkingLevel,
                           JsonMapper jsonMapper,
@@ -67,6 +70,8 @@ public class GeminiProvider implements LlmProvider {
         this.model = model;
         this.replyMaxTokens = replyMaxTokens;
         this.safetyMaxTokens = safetyMaxTokens;
+        this.replyTemperature = replyTemperature == null || replyTemperature.isBlank()
+                ? null : Double.valueOf(replyTemperature.trim());
         this.thinkingLevel = thinkingLevel == null ? "" : thinkingLevel.trim();
         this.jsonMapper = jsonMapper;
         this.http = new LlmHttp(NAME, settings);
@@ -85,7 +90,7 @@ public class GeminiProvider implements LlmProvider {
     @Override
     public String completeJson(String systemPrompt, List<LlmMessage> messages) {
         // The classifier must be able to read anything the user writes, including self-harm.
-        ObjectNode body = baseBody(systemPrompt, messages, safetyMaxTokens, CLASSIFIER_SAFETY_SETTINGS);
+        ObjectNode body = baseBody(systemPrompt, messages, safetyMaxTokens, null, CLASSIFIER_SAFETY_SETTINGS);
         ((ObjectNode) body.get("generationConfig")).put("responseMimeType", "application/json");
         HttpRequest request = request(":generateContent", body);
 
@@ -111,7 +116,7 @@ public class GeminiProvider implements LlmProvider {
     @Override
     public LlmUsage streamText(String systemPrompt, List<LlmMessage> messages, Consumer<String> onToken) {
         HttpRequest request = request(":streamGenerateContent?alt=sse",
-                baseBody(systemPrompt, messages, replyMaxTokens, REPLY_SAFETY_SETTINGS));
+                baseBody(systemPrompt, messages, replyMaxTokens, replyTemperature, REPLY_SAFETY_SETTINGS));
 
         for (int attempt = 1; ; attempt++) {
             try {
@@ -144,7 +149,11 @@ public class GeminiProvider implements LlmProvider {
         if (text.isEmpty()) {
             rejectIfBlocked(chunk, false);
         }
-        boolean end = !chunk.path("candidates").path(0).path("finishReason").isMissingNode();
+        JsonNode finishReason = chunk.path("candidates").path(0).path("finishReason");
+        if ("MAX_TOKENS".equals(finishReason.asString(""))) {
+            log.warn("Gemini reply hit maxOutputTokens ({}); the reply was cut short", replyMaxTokens);
+        }
+        boolean end = !finishReason.isMissingNode();
         return new Chunk(text, end, usageOf(chunk));
     }
 
@@ -195,7 +204,7 @@ public class GeminiProvider implements LlmProvider {
     }
 
     private ObjectNode baseBody(String systemPrompt, List<LlmMessage> messages, int maxOutputTokens,
-                                Map<String, String> safetySettings) {
+                                Double temperature, Map<String, String> safetySettings) {
         ObjectNode root = jsonMapper.createObjectNode();
         ArrayNode settings = root.putArray("safetySettings");
         safetySettings.forEach((category, threshold) ->
@@ -211,6 +220,9 @@ public class GeminiProvider implements LlmProvider {
 
         ObjectNode generationConfig = root.putObject("generationConfig");
         generationConfig.put("maxOutputTokens", maxOutputTokens);
+        if (temperature != null) {
+            generationConfig.put("temperature", temperature);
+        }
         if (!thinkingLevel.isEmpty()) {
             generationConfig.putObject("thinkingConfig").put("thinkingLevel", thinkingLevel);
         }

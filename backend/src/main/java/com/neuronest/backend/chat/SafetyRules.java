@@ -12,12 +12,14 @@ import java.util.Set;
  */
 final class SafetyRules {
 
-    /** Tier definitions, evaluated in order. Each prompt adds its own output format. */
+    /** Tier definitions, checked in the order 1, 4, 2, 3, 5. Each prompt adds its own output format. */
     static final String TIER_DEFINITIONS = """
             Judge ONLY the person's LATEST message. Earlier messages are context that helps you
             understand it, nothing more. The conversation may be in English, Hindi (Devanagari)
             or Hinglish (Hindi in Latin letters mixed with English); read all with equal care.
-            Apply these tiers IN ORDER and stop at the first one that applies:
+            Check the tiers in this order: 1, then 4, then 2, then 3, then 5, and stop at the
+            first one that applies. (The numbers are fixed labels; they are listed below in the
+            order you check them, so tier 4 is checked before tiers 2 and 3.)
 
             TIER 1 - CRISIS. The latest message shows any sign of suicidal thoughts (passive or
             active), self-harm, intent, a plan or access to means, or intent to harm someone else,
@@ -33,6 +35,13 @@ final class SafetyRules {
             should I eat"): judge it on its own merits. If you are unsure whether the latest
             message itself is a crisis signal, choose tier 1.
 
+            TIER 4 - SIGNIFICANT DISTRESS (without a crisis signal), clear functional impairment
+            (can't work, study, sleep, eat or get out of bed), or the person asks for professional
+            help (therapist, counsellor, psychologist, psychiatrist, doctor). Any ONE of these is
+            enough, and it wins over tiers 2 and 3 even when a specific concern also fits: "I've
+            had anxiety for months, can't sleep, I want to see a therapist" is tier 4. Find
+            Professional; optionally also PHQ9, GAD7 or PSS10 if one clearly fits.
+
             TIER 2 - CLEAR, SPECIFIC CONCERN with real signal (lasting over time, or clearly
             affecting the person). It gets the ONE matching assessment:
               persistent low mood, hopelessness, loss of interest -> PHQ9
@@ -42,11 +51,6 @@ final class SafetyRules {
             TIER 3 - MILD / SITUATIONAL, no clinical signal (a bad day, one-off frustration,
             tiredness, a small worry). At most the Relaxation Hub or Wellness Resources; never an
             assessment.
-
-            TIER 4 - SIGNIFICANT DISTRESS (without a crisis signal), clear functional impairment
-            (can't work, study, sleep, eat or get out of bed), or the person asks for professional
-            help (therapist, counsellor, psychologist, psychiatrist, doctor). Find Professional;
-            optionally also PHQ9, GAD7 or PSS10 if one clearly fits.
 
             TIER 5 - UNCLEAR. The person hasn't said enough yet (greetings, small talk, vague
             first messages). No recommendation, or WHO5 only if they seem to want a general check

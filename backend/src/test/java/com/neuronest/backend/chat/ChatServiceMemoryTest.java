@@ -8,6 +8,8 @@ import com.neuronest.backend.chat.llm.LlmUnavailableException;
 import com.neuronest.backend.chat.llm.LlmUsage;
 import com.neuronest.backend.chat.llm.StreamSink;
 import com.neuronest.backend.config.ApiValidationException;
+import com.neuronest.backend.kb.KbChunk;
+import com.neuronest.backend.kb.KnowledgeRetrievalService;
 import com.neuronest.backend.memory.GeminiEmbeddingClient;
 import com.neuronest.backend.memory.GeminiRetryableException;
 import com.neuronest.backend.memory.MemoryExtractionService;
@@ -37,6 +39,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -65,6 +68,7 @@ class ChatServiceMemoryTest {
     @Mock UserRepository userRepository;
     @Mock GeminiEmbeddingClient embeddingClient;
     @Mock MemoryRepository memoryRepository;
+    @Mock KnowledgeRetrievalService knowledgeRetrievalService;
 
     final UUID userId = UUID.randomUUID();
     final UUID sessionId = UUID.randomUUID();
@@ -88,7 +92,10 @@ class ChatServiceMemoryTest {
         MemoryRecallService recallService = new MemoryRecallService(properties, userRepository, embeddingClient,
                 memoryRepository, extractionService);
         chatService = new ChatService(sessionRepository, new SessionAccessService(), conversationRepository,
-                messageRepository, safetyCheckService, replyService, recallService, extractionService, summaryService);
+                messageRepository, safetyCheckService, replyService, recallService, extractionService, summaryService,
+                knowledgeRetrievalService);
+        lenient().when(knowledgeRetrievalService.retrieveAsync(any(), any(), anyBoolean(), anyBoolean()))
+                .thenReturn(CompletableFuture.completedFuture(List.of()));
 
         conversation = new ChatConversation();
         ReflectionTestUtils.setField(conversation, "id", conversationId);
@@ -108,7 +115,7 @@ class ChatServiceMemoryTest {
         when(safetyCheckService.assess(anyList(), anyString())).thenReturn(noConcern);
 
         doAnswer(invocation -> {
-            StreamSink sink = invocation.getArgument(6);
+            StreamSink sink = invocation.getArgument(7);
             Object call = replyCalls.isEmpty() ? List.of(NO_RISK + "I'm ", "here for you.") : replyCalls.poll();
             if (call instanceof RuntimeException e) {
                 throw e;
@@ -122,7 +129,7 @@ class ChatServiceMemoryTest {
                 sink.accept((String) step);
             }
             return new LlmRouter.StreamResult("groq", new LlmUsage(900, 60));
-        }).when(replyService).streamReply(anyList(), anyString(), anyList(), any(), anyBoolean(), anyBoolean(), any());
+        }).when(replyService).streamReply(anyList(), anyString(), anyList(), anyList(), any(), anyBoolean(), anyBoolean(), any());
     }
 
     private void reply(Object... steps) {
@@ -166,7 +173,7 @@ class ChatServiceMemoryTest {
         ChatAiResponse response = chatService.sendMessage(sessionId, "hello", null);
 
         assertThat(response.reply()).isEqualTo("I'm here for you.");
-        verify(replyService).streamReply(anyList(), eq("hello"), eq(List.of()), any(), eq(false), eq(false), any());
+        verify(replyService).streamReply(anyList(), eq("hello"), eq(List.of()), anyList(), any(), eq(false), eq(false), any());
         verifyNoInteractions(memoryRepository, embeddingClient, extractionService);
     }
 
@@ -190,7 +197,7 @@ class ChatServiceMemoryTest {
         chatService.sendMessage(sessionId, "exam tomorrow", userId);
 
         verify(replyService).streamReply(anyList(), eq("exam tomorrow"),
-                eq(List.of("The user is a final-year student")), any(), anyBoolean(), anyBoolean(), any());
+                eq(List.of("The user is a final-year student")), anyList(), any(), anyBoolean(), anyBoolean(), any());
         verifyNoInteractions(safetyCheckService);
         verify(extractionService).onTurnCompleted(userId, conversationId, false);
     }
@@ -311,7 +318,36 @@ class ChatServiceMemoryTest {
         assertThat(listener.events).containsExactly("meta",
                 "token:Thank you for telling me. Are you safe right now?", "done");
         assertThat(listener.meta.riskFlag()).isTrue();
-        verify(replyService).streamReply(anyList(), anyString(), anyList(), any(), anyBoolean(), eq(true), any());
+        verify(replyService).streamReply(anyList(), anyString(), anyList(), anyList(), any(), anyBoolean(), eq(true), any());
+    }
+
+    @Test
+    void retrievedKnowledgeReachesTheReplyButNeverACrisisRewrite() {
+        List<KbChunk> chunks = List.of(new KbChunk("sleep-habits", "Healthy sleep habits", "sleep", "Overview",
+                KbChunk.SectionKind.OVERVIEW, "technique", "low", "NHLBI", "Healthy sleep habits - Overview\nx", 0.8));
+        when(knowledgeRetrievalService.retrieveAsync(any(), any(), anyBoolean(), anyBoolean()))
+                .thenReturn(CompletableFuture.completedFuture(chunks));
+        when(safetyCheckService.assess(anyList(), anyString())).thenReturn(checkedCrisis);
+        reply("Sounds like a rough night!");                     // no header: the separate check finds a crisis
+        reply(CRISIS + "Thank you for telling me. Are you safe right now?");
+
+        run("i cant sleep and i dont want to wake up");
+
+        verify(replyService).streamReply(anyList(), anyString(), anyList(), eq(chunks), any(), anyBoolean(),
+                eq(false), any());
+        verify(replyService).streamReply(anyList(), anyString(), anyList(), eq(List.of()), any(), anyBoolean(),
+                eq(true), any());
+    }
+
+    @Test
+    void crisisPhrasesAndEarlierCrisisTurnsAreFlaggedToRetrieval() {
+        run("mujhe ab jeena hi nahi hai");
+        verify(knowledgeRetrievalService).retrieveAsync(eq("mujhe ab jeena hi nahi hai"), any(), eq(false), eq(true));
+
+        when(messageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId)).thenReturn(List.of(
+                message("user", "earlier", true), message("assistant", "earlier reply", true)));
+        run("I can't sleep before exams");
+        verify(knowledgeRetrievalService).retrieveAsync(eq("I can't sleep before exams"), any(), eq(true), eq(false));
     }
 
     @Test
@@ -341,7 +377,7 @@ class ChatServiceMemoryTest {
         verify(safetyCheckService).assess(anyList(), anyString());
         assertThat(listener.meta.riskFlag()).isFalse();
         assertThat(listener.text()).isEqualTo("That joke made you laugh!");
-        verify(replyService, times(1)).streamReply(anyList(), anyString(), anyList(), any(), anyBoolean(), anyBoolean(), any());
+        verify(replyService, times(1)).streamReply(anyList(), anyString(), anyList(), anyList(), any(), anyBoolean(), anyBoolean(), any());
     }
 
     @Test
@@ -444,7 +480,7 @@ class ChatServiceMemoryTest {
         assertThat(listener.meta.riskFlag()).isFalse();
         assertThat(listener.meta.earlierRiskInConversation()).isTrue();
         assertThat(listener.meta.crisisResources()).isEqualTo(CrisisResources.INDIA_RESOURCES);
-        verify(replyService).streamReply(anyList(), eq("hii"), anyList(), any(), eq(true), eq(false), any());
+        verify(replyService).streamReply(anyList(), eq("hii"), anyList(), anyList(), any(), eq(true), eq(false), any());
         assertThat(savedMessages(2).getFirst().isRiskFlag()).isFalse();
     }
 
@@ -471,7 +507,7 @@ class ChatServiceMemoryTest {
 
         run("hello");
 
-        verify(replyService).streamReply(anyList(), anyString(), anyList(), eq("The user is preparing for exams."),
+        verify(replyService).streamReply(anyList(), anyString(), anyList(), anyList(), eq("The user is preparing for exams."),
                 anyBoolean(), anyBoolean(), any());
         verify(summaryService).maybeUpdate(conversationId, 16, 4);
     }

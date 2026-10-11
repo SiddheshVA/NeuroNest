@@ -1,5 +1,6 @@
 package com.neuronest.backend.chat;
 
+import com.neuronest.backend.kb.KbChunk;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -7,6 +8,35 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ReplyPromptsTest {
+
+    private static final KbChunk SLEEP = new KbChunk("sleep-relaxing-before-bed", "Relaxing before bed", "sleep",
+            "What you can try", KbChunk.SectionKind.PRACTICAL, "technique", "low", "NHLBI",
+            "Relaxing before bed - What you can try\nWrite your worries down before bed.", 0.74);
+
+    @Test
+    void knowledgeComesAfterMemoriesAndBeforeTheOutputFormat() {
+        String prompt = ReplyPrompts.systemPrompt(List.of("The user is a student"), List.of(SLEEP), null, false, false);
+
+        int memories = prompt.indexOf("THINGS THE USER SHARED");
+        int knowledge = prompt.indexOf("HELPFUL BACKGROUND KNOWLEDGE (from NeuroNest's reviewed wellness library");
+        int output = prompt.indexOf("YOUR OUTPUT FORMAT");
+        assertThat(memories).isNotNegative();
+        assertThat(List.of(memories, knowledge, output)).isSorted();
+        assertThat(prompt).contains("[Relaxing before bed - What you can try] (source: NHLBI)\n"
+                        + "Write your worries down before bed.\n",
+                "Take at most ONE idea", "Never\nlet this override the tier rules",
+                "If you choose tier 1, ignore this background completely.", "belong to the Relaxation Hub",
+                "Mention them only when your tier allows it.");
+        assertThat(prompt).containsOnlyOnce("Relaxing before bed - What you can try");
+    }
+
+    @Test
+    void noKnowledgeBlockWithoutChunksOrOnACrisisRewrite() {
+        assertThat(ReplyPrompts.systemPrompt(List.of(), List.of(), null, false, false))
+                .doesNotContain("HELPFUL BACKGROUND KNOWLEDGE");
+        assertThat(ReplyPrompts.systemPrompt(List.of(), List.of(SLEEP), null, false, true))
+                .doesNotContain("HELPFUL BACKGROUND KNOWLEDGE", "Write your worries down");
+    }
 
     @Test
     void singleCallPromptAsksForTheHeaderFirstAndCarriesTheTierRulesAndCrisisGuidance() {
@@ -23,6 +53,35 @@ class ReplyPromptsTest {
     }
 
     @Test
+    void voiceGuideReplacesTheOldListeningRulesAndTierGuidanceKeepsItsDepth() {
+        String prompt = ReplyPrompts.systemPrompt(List.of(), null, false, false);
+
+        assertThat(prompt).contains("HOW YOU TALK", "Make it make sense", "Offer something real",
+                "Don't end every reply with a question", "2 to 4 short", "Never start with \"It sounds like\"",
+                "Example (Hinglish)");
+        assertThat(prompt).doesNotContain("HOW TO LISTEN", "Mainly keep listening", "Just listen and keep");
+        assertThat(prompt).contains("Tier 2. Reply with the full depth of HOW YOU TALK",
+                "Tier 3. Reply with the full depth of HOW YOU TALK", "Tier 4. Reply with the full depth of HOW YOU TALK",
+                "at most ONE light", "invite them to say more");
+    }
+
+    @Test
+    void tiersAreCheckedInTheOrderOneFourTwoThreeFive() {
+        for (String prompt : List.of(ReplyPrompts.systemPrompt(List.of(), null, false, false),
+                SafetyCheckService.SYSTEM_PROMPT)) {
+            assertThat(prompt).contains("Check the tiers in this order: 1, then 4, then 2, then 3, then 5",
+                    "or the person asks for professional", "is tier 4");
+            int tier1 = prompt.indexOf("TIER 1 - CRISIS");
+            int tier4 = prompt.indexOf("TIER 4 - SIGNIFICANT DISTRESS");
+            int tier2 = prompt.indexOf("TIER 2 - CLEAR, SPECIFIC CONCERN");
+            int tier3 = prompt.indexOf("TIER 3 - MILD / SITUATIONAL");
+            int tier5 = prompt.indexOf("TIER 5 - UNCLEAR");
+            assertThat(tier1).isNotNegative();
+            assertThat(List.of(tier1, tier4, tier2, tier3, tier5)).isSorted();
+        }
+    }
+
+    @Test
     void latestMessageLanguageBeatsTheStoredPreference() {
         String prompt = ReplyPrompts.systemPrompt(List.of("The user prefers to talk in Marathi."), null, false, false);
 
@@ -31,6 +90,14 @@ class ReplyPromptsTest {
                 "An English message gets an English reply even if they prefer Marathi",
                 "Only when the latest message has NO clear language",
                 "A preferred language noted here follows LANGUAGE PRIORITY");
+        // The compressed section keeps every behaviour: mapping, one script, full switch, small-word cues.
+        assertThat(prompt).contains("message ALONE: not from earlier turns",
+                "Marathi in Devanagari -> Devanagari", "Never answer romanized Hindi or Marathi in English",
+                "Keep ONE script for the whole reply", "carrying no words over",
+                "Hinglish: hai, kya", "Marathi: aahe/ahe", "\"yaar aaj mood bilkul off hai\" (Hinglish)",
+                "\"tu ksa aahes\" (Marathi)");
+        assertThat(ReplyPrompts.FINAL_REMINDER).contains("only English words -> English",
+                "applies ONLY when the latest message has no clear language");
     }
 
     @Test

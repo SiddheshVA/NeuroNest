@@ -6,6 +6,8 @@ import com.neuronest.backend.chat.llm.LlmUnavailableException;
 import com.neuronest.backend.chat.llm.LlmUsage;
 import com.neuronest.backend.chat.llm.StreamSink;
 import com.neuronest.backend.config.ApiValidationException;
+import com.neuronest.backend.kb.KbChunk;
+import com.neuronest.backend.kb.KnowledgeRetrievalService;
 import com.neuronest.backend.memory.MemoryExtractionService;
 import com.neuronest.backend.memory.MemoryRecallService;
 import com.neuronest.backend.safety.CrisisResource;
@@ -20,6 +22,7 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * One chat turn = ONE LLM call that writes a private verdict header and then the reply.
@@ -66,6 +69,7 @@ public class ChatService {
     private final MemoryRecallService memoryRecallService;
     private final MemoryExtractionService memoryExtractionService;
     private final ConversationSummaryService summaryService;
+    private final KnowledgeRetrievalService knowledgeRetrievalService;
 
     public ChatService(SessionRepository sessionRepository,
                        SessionAccessService sessionAccessService,
@@ -75,7 +79,8 @@ public class ChatService {
                        ReplyService replyService,
                        MemoryRecallService memoryRecallService,
                        MemoryExtractionService memoryExtractionService,
-                       ConversationSummaryService summaryService) {
+                       ConversationSummaryService summaryService,
+                       KnowledgeRetrievalService knowledgeRetrievalService) {
         this.sessionRepository = sessionRepository;
         this.sessionAccessService = sessionAccessService;
         this.conversationRepository = conversationRepository;
@@ -85,6 +90,7 @@ public class ChatService {
         this.memoryRecallService = memoryRecallService;
         this.memoryExtractionService = memoryExtractionService;
         this.summaryService = summaryService;
+        this.knowledgeRetrievalService = knowledgeRetrievalService;
     }
 
     public PreparedTurn prepareTurn(UUID sessionId, String userMessage, UUID currentUserId) {
@@ -134,7 +140,12 @@ public class ChatService {
 
     private void runTurn(PreparedTurn turn, ChatTurnListener listener, TurnLog turnLog) {
         boolean earlierCrisis = hadEarlierCrisisTurn(turn.history());
+        // Runs alongside memory recall; never fails and is bounded by kb.retrieval-budget.
+        CompletableFuture<List<KbChunk>> knowledgeLookup = knowledgeRetrievalService.retrieveAsync(
+                turn.userMessage(), turn.summary(), earlierCrisis, CrisisKeywords.matches(turn.userMessage()));
         List<String> memories = recallMemories(turn, turnLog);
+        List<KbChunk> knowledge = knowledgeLookup.join();
+        turnLog.knowledge = knowledge.size();
 
         SafetyAssessment knownVerdict = null;
         TurnStream stream;
@@ -142,8 +153,10 @@ public class ChatService {
             stream = new TurnStream(turn, earlierCrisis, listener, turnLog, knownVerdict);
             try {
                 turnLog.replyCalls++;
+                // A crisis reply never gets background knowledge.
                 LlmRouter.StreamResult result = replyService.streamReply(turn.history(), turn.userMessage(),
-                        memories, turn.summary(), earlierCrisis, knownVerdict != null, stream);
+                        memories, knownVerdict != null ? List.of() : knowledge, turn.summary(), earlierCrisis,
+                        knownVerdict != null, stream);
                 turnLog.served(result.provider(), result.usage());
                 stream.finish();
                 break;
@@ -494,6 +507,7 @@ public class ChatService {
         int safetyChecks;
         long ragMs = -1;
         int memories;
+        int knowledge;
         Integer promptTokens;
         Integer completionTokens;
 
@@ -518,9 +532,9 @@ public class ChatService {
         void write() {
             long now = System.nanoTime();
             log.info("Chat turn: provider={} header={} restarted={} replyCalls={} safetyChecks={} completed={} "
-                            + "ragMs={} memories={} ttftMs={} totalMs={} promptTokens={} completionTokens={}",
+                            + "ragMs={} memories={} kbChunks={} ttftMs={} totalMs={} promptTokens={} completionTokens={}",
                     provider, header, restarted, replyCalls, safetyChecks, completed,
-                    ragMs < 0 ? "-" : ragMs, memories,
+                    ragMs < 0 ? "-" : ragMs, memories, knowledge,
                     firstVisibleNanos < 0 ? "-" : (firstVisibleNanos - start) / 1_000_000,
                     (now - start) / 1_000_000,
                     promptTokens == null ? "-" : promptTokens,
