@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { NuroApp } from "@/components/nuro/nuro-app";
 import { PlaceholderPage } from "@/components/shared/placeholder-page";
@@ -22,9 +23,21 @@ import {
   FavoritesPage,
 } from "@/routes/RelaxationPages";
 
+// Admin area: its own layout and auth, loaded only when an /admin URL is opened, and not linked
+// from anywhere in the public app.
+const AdminRoutes = lazy(() => import("@/admin/AdminRoutes"));
+
 export default function App() {
   return (
     <Routes>
+      <Route
+        path="/admin/*"
+        element={
+          <Suspense fallback={null}>
+            <AdminRoutes />
+          </Suspense>
+        }
+      />
       <Route element={<RootLayout />}>
         <Route index element={<HomePage />} />
         <Route path="/login/*" element={<LoginPage />} />
