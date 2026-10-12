@@ -413,7 +413,12 @@ export async function deleteConversation(id: string): Promise<void> {
  */
 export async function streamChatMessage(
   params: { conversationId?: string; message: string },
-  handlers: { onMeta: (meta: StreamMeta) => void; onToken: (text: string) => void },
+  handlers: {
+    onMeta: (meta: StreamMeta) => void;
+    onToken: (text: string) => void;
+    /** A new conversation's id, as soon as the backend has created it. */
+    onConversationCreated?: (conversationId: string) => void;
+  },
 ): Promise<StreamTurnResult> {
   let conversationId = params.conversationId;
 
@@ -428,6 +433,7 @@ export async function streamChatMessage(
         ...readGuestConversations(),
       ]);
     }
+    handlers.onConversationCreated?.(conversationId);
   }
 
   let res: Response;

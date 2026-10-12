@@ -8,6 +8,10 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import CloseRounded from "@mui/icons-material/CloseRounded";
+
+import { NuroPanelToggle } from "@/components/nuro/nuro-panel-controls";
+import { cn } from "@/lib/utils";
 
 const wellnessLinks: {
   icon: LucideIcon;
@@ -46,9 +50,9 @@ const wellnessLinks: {
   },
 ];
 
-export function NuroWellnessPanel() {
+export function NuroWellnessPanelContent({ onClose }: { onClose?: () => void }) {
   return (
-    <aside className="hidden w-80 shrink-0 flex-col gap-5 overflow-y-auto border-l border-border bg-background px-5 py-5 xl:flex">
+    <div className="flex h-full flex-col gap-5 overflow-y-auto bg-background px-5 py-5">
       <div className="flex items-start gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
           <Leaf className="size-5" aria-hidden="true" />
@@ -61,6 +65,13 @@ export function NuroWellnessPanel() {
             Small steps make a big difference.
           </p>
         </div>
+        {onClose ? (
+          <div className="-mt-1 -mr-2 ml-auto shrink-0">
+            <NuroPanelToggle label="Close suggestions" onClick={onClose}>
+              <CloseRounded fontSize="small" />
+            </NuroPanelToggle>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-2">
@@ -113,6 +124,30 @@ export function NuroWellnessPanel() {
           <div className="mx-auto my-2 h-px w-8 bg-foreground/20" />
           <p className="text-xs text-muted-foreground">You&apos;re doing enough.</p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Inline (desktop) suggestions panel; collapses to zero width when closed. */
+export function NuroWellnessPanel({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <aside
+      aria-label="Suggestions"
+      inert={!open}
+      className={cn(
+        "shrink-0 overflow-hidden border-border transition-[width] duration-300 ease-in-out motion-reduce:transition-none",
+        open ? "w-72 border-l lg:w-80" : "w-0",
+      )}
+    >
+      <div className="h-full w-72 lg:w-80">
+        <NuroWellnessPanelContent onClose={onClose} />
       </div>
     </aside>
   );

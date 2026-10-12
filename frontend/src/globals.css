@@ -133,3 +133,15 @@
     @apply bg-primary/20 text-foreground;
   }
 }
+/* AI Companion listening overlay (nuro-listening-overlay.tsx). */
+@keyframes neuro-listen-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 0.45;
+  }
+}

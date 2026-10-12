@@ -13,6 +13,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { Show, useClerk } from "@clerk/nextjs";
+import ChevronLeftRounded from "@mui/icons-material/ChevronLeftRounded";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { groupConversationsByDate } from "@/lib/nuro-dates";
 import type { ConversationSummary } from "@/lib/nuro-client";
+import { NuroPanelToggle } from "@/components/nuro/nuro-panel-controls";
 
 interface NuroSidebarContentProps {
   conversations: ConversationSummary[];
@@ -33,6 +35,8 @@ interface NuroSidebarContentProps {
   onNewChat: () => void;
   onDelete: (id: string) => void;
   deletingId: string | null;
+  /** Renders a "Close chat history" button in the panel's top area. */
+  onClose?: () => void;
 }
 
 function ConversationRow({
@@ -124,6 +128,7 @@ export function NuroSidebarContent({
   onNewChat,
   onDelete,
   deletingId,
+  onClose,
 }: NuroSidebarContentProps) {
   const { openUserProfile } = useClerk();
 
@@ -150,13 +155,20 @@ export function NuroSidebarContent({
       />
       <div className="relative z-10 flex h-full flex-col">
       <div className="flex flex-col gap-2.5 px-4 pt-4">
-        <Button
-          onClick={onNewChat}
-          className="w-full justify-center gap-1.5 rounded-full"
-        >
-          <Plus className="size-4" aria-hidden="true" />
-          New Chat
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button
+            onClick={onNewChat}
+            className="min-w-0 flex-1 justify-center gap-1.5 rounded-full"
+          >
+            <Plus className="size-4" aria-hidden="true" />
+            New Chat
+          </Button>
+          {onClose ? (
+            <NuroPanelToggle label="Close chat history" onClick={onClose}>
+              <ChevronLeftRounded fontSize="small" />
+            </NuroPanelToggle>
+          ) : null}
+        </div>
 
         <div className="relative">
           <Search
@@ -277,10 +289,26 @@ export function NuroSidebarContent({
   );
 }
 
-export function NuroSidebar(props: NuroSidebarContentProps) {
+/**
+ * Inline (desktop) history panel. Collapses to zero width so the chat fills the
+ * space; the content keeps its width while animating so it doesn't reflow.
+ */
+export function NuroSidebar({
+  open,
+  ...props
+}: NuroSidebarContentProps & { open: boolean }) {
   return (
-    <aside className="hidden w-72 shrink-0 flex-col border-r border-border md:flex lg:w-80">
-      <NuroSidebarContent {...props} />
+    <aside
+      aria-label="Chat history"
+      inert={!open}
+      className={cn(
+        "shrink-0 overflow-hidden border-border transition-[width] duration-300 ease-in-out motion-reduce:transition-none",
+        open ? "w-72 border-r lg:w-80" : "w-0",
+      )}
+    >
+      <div className="h-full w-72 lg:w-80">
+        <NuroSidebarContent {...props} />
+      </div>
     </aside>
   );
 }

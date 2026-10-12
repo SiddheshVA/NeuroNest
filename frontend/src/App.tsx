@@ -30,8 +30,9 @@ export default function App() {
         <Route path="/login/*" element={<LoginPage />} />
         <Route path="/sign-up/*" element={<SignUpPage />} />
 
-        {/* Guests can chat too; signing in adds saved history. */}
-        <Route path="/ai-companion" element={<NuroApp />} />
+        {/* Guests can chat too; signing in adds saved history. One route with an
+            optional id, so moving between chats never remounts the page. */}
+        <Route path="/ai-companion/:conversationId?" element={<NuroApp />} />
 
         <Route path="/assessment" element={<AssessmentPage />} />
         <Route path="/assessment/gad7" element={<Gad7Page />} />
