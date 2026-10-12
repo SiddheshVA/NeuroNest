@@ -1,11 +1,15 @@
 package com.neuronest.backend.config;
 
+import com.neuronest.backend.admin.AdminAuthFilter;
+import com.neuronest.backend.admin.AdminJwtService;
 import com.neuronest.backend.auth.ClerkAuthFilter;
 import com.neuronest.backend.auth.JwtAuthFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -22,6 +26,34 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    // Admin dashboard API. Matched before the main chain and handled only here: Clerk and cookie
+    // auth are not part of this chain, so the only accepted credential is an admin token.
+    @Bean
+    @Order(1)
+    public SecurityFilterChain adminFilterChain(HttpSecurity http, AdminJwtService adminJwtService) throws Exception {
+        http
+                .securityMatcher("/api/admin/**")
+                .csrf(csrf -> csrf.disable())
+                // Applies WebConfig's CORS mapping here too, so 401s from this chain still carry
+                // CORS headers and the dashboard can read them instead of seeing a network error.
+                .cors(Customizer.withDefaults())
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/admin/login").permitAll()
+                        .anyRequest().hasRole(AdminJwtService.ROLE))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) ->
+                                writeJsonError(response, 401, "Authentication required."))
+                        .accessDeniedHandler((request, response, accessDeniedException) ->
+                                writeJsonError(response, 403, "Access denied.")))
+                .formLogin(form -> form.disable())
+                .httpBasic(basic -> basic.disable())
+                .addFilterBefore(new AdminAuthFilter(adminJwtService), UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
     }
 
     @Bean
