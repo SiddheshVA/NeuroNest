@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { ArrowRight, Leaf, LifeBuoy, Phone, User } from "lucide-react";
+import { ArrowRight, ExternalLink, Leaf, LifeBuoy, Phone, User } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { formatMessageTime } from "@/lib/nuro-dates";
 import type { CrisisContact, MessageRole, NuroRecommendation } from "@/lib/nuro-client";
+import { URGENT_DIRECTORY_HREF } from "@/lib/professionals-client";
 
 function Avatar({ isNuro }: { isNuro: boolean }) {
   return (
@@ -69,6 +70,17 @@ function CrisisContacts({ contacts, tone }: { contacts: CrisisContact[]; tone: "
           </li>
         ))}
       </ul>
+      {/* A new tab, so following the link never takes the person away from this conversation. */}
+      <a
+        href={URGENT_DIRECTORY_HREF}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold underline underline-offset-2"
+      >
+        Talk to a licensed professional
+        <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
+        <span className="sr-only">(opens in a new tab)</span>
+      </a>
     </div>
   );
 }

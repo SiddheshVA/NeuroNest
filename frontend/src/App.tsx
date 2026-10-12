@@ -10,6 +10,7 @@ import AssessmentResultPage from "@/routes/AssessmentResultPage";
 import { AssessmentPage, Gad7Page, Phq9Page, PsqiPage, Pss10Page } from "@/routes/AssessmentPages";
 import { ArticleRoute, GuideRoute, ResourcesPage, VideoRoute } from "@/routes/ResourcesPages";
 import { LoginPage, RequireAuth, SignUpPage } from "@/routes/AuthPages";
+import { FindProfessionalRedirect, ProfessionalProfileRoute, ProfessionalsPage } from "@/routes/ProfessionalsPages";
 import {
   BreathingExerciseRoute,
   BreathingPage,
@@ -88,22 +89,15 @@ export default function App() {
         <Route path="/resources/videos/:slug" element={<VideoRoute />} />
         <Route path="/resources/guides/:slug" element={<GuideRoute />} />
 
-        <Route
-          path="/find-professional"
-          element={
-            <PlaceholderPage
-              eyebrow="Find Professional"
-              title="A directory of mental health professionals is on the way"
-              description="We're working on helping you find qualified support near you. In the meantime, you can talk with Neuro or take a short check-in."
-            />
-          }
-        />
+        <Route path="/professionals" element={<ProfessionalsPage />} />
+        <Route path="/professionals/:id" element={<ProfessionalProfileRoute />} />
 
         {/* Old URLs from the previous frontend. */}
         <Route path="/home" element={<Navigate to="/" replace />} />
         <Route path="/companion" element={<Navigate to="/ai-companion" replace />} />
         <Route path="/assessments" element={<Navigate to="/assessment" replace />} />
         <Route path="/sign-in/*" element={<Navigate to="/login" replace />} />
+        <Route path="/find-professional" element={<FindProfessionalRedirect />} />
 
         <Route
           path="*"

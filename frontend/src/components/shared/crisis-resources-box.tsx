@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
-import { LifeBuoy } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, LifeBuoy } from "lucide-react";
 import { getCrisisResources } from "@/lib/ai/crisis-resources";
+import { URGENT_DIRECTORY_HREF } from "@/lib/professionals-client";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,10 +19,13 @@ function CrisisResourcesBox({
     </>
   ),
   className,
+  showProfessionalsLink = false,
 }: {
   countryCode?: string;
   intro?: ReactNode;
   className?: string;
+  /** Adds a link to the professional directory (opened with the helplines on top). */
+  showProfessionalsLink?: boolean;
 }) {
   const resources = getCrisisResources(countryCode);
 
@@ -44,6 +49,15 @@ function CrisisResourcesBox({
             </li>
           ))}
         </ul>
+        {showProfessionalsLink ? (
+          <Link
+            href={URGENT_DIRECTORY_HREF}
+            className="mt-4 inline-flex items-center gap-1.5 font-semibold underline underline-offset-2"
+          >
+            Talk to a licensed professional
+            <ArrowRight className="size-4" aria-hidden="true" />
+          </Link>
+        ) : null}
       </div>
     </div>
   );

@@ -62,7 +62,7 @@ const tools = [
     title: "Find Professional",
     description:
       "Connect with licensed therapists and counsellors when you need extra support.",
-    href: "/find-professional",
+    href: "/professionals",
     ctaLabel: "Find support",
     image: "/images/professionals.png",
     alt: "A calm, sunlit room with an armchair looking out over a mountain lake",

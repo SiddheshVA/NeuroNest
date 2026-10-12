@@ -53,7 +53,7 @@ export function SafetyResultState({ result }: SafetyResultStateProps) {
       </div>
 
       {/* Crisis resources */}
-      <CrisisResourcesBox countryCode={guidance.crisisResources.countryCode} className="mb-8" />
+      <CrisisResourcesBox countryCode={guidance.crisisResources.countryCode} className="mb-8" showProfessionalsLink />
 
       {/* Actions */}
       <div className="mb-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:flex-wrap">
