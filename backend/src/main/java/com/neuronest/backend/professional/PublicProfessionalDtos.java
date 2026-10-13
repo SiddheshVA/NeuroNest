@@ -20,8 +20,7 @@ public final class PublicProfessionalDtos {
             String city,
             String state,
             String consultationMode,
-            Integer feeMin,
-            Integer feeMax,
+            Integer consultationFee,
             Integer yearsExperience,
             String availabilityNote,
             String photoUrl,
@@ -32,7 +31,7 @@ public final class PublicProfessionalDtos {
         static PublicProfessional from(Professional p) {
             return new PublicProfessional(p.getId(), p.getFullName(), p.getCredentialType().name(),
                     p.getQualifications(), p.getBio(), List.copyOf(p.getSpecialties()), List.copyOf(p.getLanguages()),
-                    p.getCity(), p.getState(), p.getConsultationMode().name(), p.getFeeMin(), p.getFeeMax(),
+                    p.getCity(), p.getState(), p.getConsultationMode().name(), p.getConsultationFee(),
                     p.getYearsExperience(), p.getAvailabilityNote(), p.getPhotoUrl(),
                     p.getRegistrationBody() == null ? null : p.getRegistrationBody().name(), p.isSampleData(),
                     credentialsLabel(p));

@@ -145,3 +145,15 @@
     opacity: 0.45;
   }
 }
+
+/* Number inputs: no increment/decrement spinners anywhere. Forms use digit-only text inputs, so this
+   is a fallback for any type="number" input that remains. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

@@ -194,12 +194,8 @@ public class AdminProfessionalService {
             throw new ApiValidationException("registrationYear must be between " + MIN_REGISTRATION_YEAR + " and "
                     + currentYear + ".");
         }
-        nonNegative("feeMin", r.feeMin());
-        nonNegative("feeMax", r.feeMax());
+        consultationFee(r.consultationFee());
         nonNegative("yearsExperience", r.yearsExperience());
-        if (r.feeMin() != null && r.feeMax() != null && r.feeMin() > r.feeMax()) {
-            throw new ApiValidationException("feeMin must be less than or equal to feeMax.");
-        }
         String photoUrl = trimToNull(r.photoUrl());
         if (photoUrl != null && !photoUrl.toLowerCase(Locale.ROOT).matches("^https?://\\S+$")) {
             throw new ApiValidationException("photoUrl must be an http(s) URL.");
@@ -220,8 +216,7 @@ public class AdminProfessionalService {
         p.setLanguages(cleanList(r.languages()));
         p.setCity(trimToNull(r.city()));
         p.setState(trimToNull(r.state()));
-        p.setFeeMin(r.feeMin());
-        p.setFeeMax(r.feeMax());
+        p.setConsultationFee(r.consultationFee());
         p.setYearsExperience(r.yearsExperience());
         p.setContactPhone(trimToNull(r.contactPhone()));
         p.setAvailabilityNote(trimToNull(r.availabilityNote()));
@@ -261,6 +256,12 @@ public class AdminProfessionalService {
 
     private static String allowed(Class<? extends Enum<?>> type) {
         return Arrays.stream(type.getEnumConstants()).map(Enum::name).collect(Collectors.joining(", "));
+    }
+
+    private static void consultationFee(Integer value) {
+        if (value != null && (value < 0 || value > Professional.MAX_CONSULTATION_FEE)) {
+            throw new ApiValidationException("consultationFee must be between 0 and " + Professional.MAX_CONSULTATION_FEE + ".");
+        }
     }
 
     private static void nonNegative(String field, Integer value) {

@@ -15,6 +15,9 @@ import java.util.UUID;
 @Table(name = "professionals")
 public class Professional {
 
+    /** Highest accepted consultation fee, in rupees per session. */
+    public static final int MAX_CONSULTATION_FEE = 100_000;
+
     @Id
     @GeneratedValue
     @Column(updatable = false, nullable = false)
@@ -70,11 +73,9 @@ public class Professional {
     @Column(name = "consultation_mode", nullable = false)
     private ConsultationMode consultationMode;
 
-    @Column(name = "fee_min")
-    private Integer feeMin;
-
-    @Column(name = "fee_max")
-    private Integer feeMax;
+    // Fee for one session, in rupees (V3 replaced the old fee range with this single value).
+    @Column(name = "consultation_fee")
+    private Integer consultationFee;
 
     @Column(name = "years_experience")
     private Integer yearsExperience;
@@ -185,11 +186,8 @@ public class Professional {
     public ConsultationMode getConsultationMode() { return consultationMode; }
     public void setConsultationMode(ConsultationMode consultationMode) { this.consultationMode = consultationMode; }
 
-    public Integer getFeeMin() { return feeMin; }
-    public void setFeeMin(Integer feeMin) { this.feeMin = feeMin; }
-
-    public Integer getFeeMax() { return feeMax; }
-    public void setFeeMax(Integer feeMax) { this.feeMax = feeMax; }
+    public Integer getConsultationFee() { return consultationFee; }
+    public void setConsultationFee(Integer consultationFee) { this.consultationFee = consultationFee; }
 
     public Integer getYearsExperience() { return yearsExperience; }
     public void setYearsExperience(Integer yearsExperience) { this.yearsExperience = yearsExperience; }

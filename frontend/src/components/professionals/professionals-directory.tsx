@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, RefreshCw, Search, SearchX } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
@@ -177,6 +177,12 @@ function ProfessionalsDirectory() {
         </header>
 
         <DirectoryDisclaimer />
+
+        <p className="-mt-3 text-sm text-muted-foreground">
+          <Link to="/pro/join" className="font-medium text-primary underline-offset-4 hover:underline">
+            Are you a licensed professional? List your practice on NeuroNest.
+          </Link>
+        </p>
 
         <div
           role="search"

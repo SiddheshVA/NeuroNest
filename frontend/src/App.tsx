@@ -11,6 +11,7 @@ import { AssessmentPage, Gad7Page, Phq9Page, PsqiPage, Pss10Page } from "@/route
 import { ArticleRoute, GuideRoute, ResourcesPage, VideoRoute } from "@/routes/ResourcesPages";
 import { LoginPage, RequireAuth, SignUpPage } from "@/routes/AuthPages";
 import { FindProfessionalRedirect, ProfessionalProfileRoute, ProfessionalsPage } from "@/routes/ProfessionalsPages";
+import { ProJoinPage, ProProfileRoute } from "@/routes/ProPages";
 import {
   BreathingExerciseRoute,
   BreathingPage,
@@ -91,6 +92,10 @@ export default function App() {
 
         <Route path="/professionals" element={<ProfessionalsPage />} />
         <Route path="/professionals/:id" element={<ProfessionalProfileRoute />} />
+
+        {/* Professional self-service. Not in the navigation; linked from the directory page. */}
+        <Route path="/pro/join" element={<ProJoinPage />} />
+        <Route path="/pro/profile" element={<ProProfileRoute />} />
 
         {/* Old URLs from the previous frontend. */}
         <Route path="/home" element={<Navigate to="/" replace />} />

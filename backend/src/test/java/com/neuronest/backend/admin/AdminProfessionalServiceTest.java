@@ -44,15 +44,15 @@ class AdminProfessionalServiceTest {
     }
 
     private static ProfessionalRequest request(String fullName, String credentialType, String registrationNumber,
-                                               Integer feeMin, Integer feeMax, Integer registrationYear,
+                                               Integer consultationFee, Integer registrationYear,
                                                String email, Boolean sample) {
         return new ProfessionalRequest(fullName, credentialType, " M.Phil ", "rci", registrationNumber, null,
                 registrationYear, null, null, List.of(" Anxiety ", "", "Anxiety", "Stress"), null, " Pune ", null,
-                "online", feeMin, feeMax, 5, email, null, null, null, sample);
+                "online", consultationFee, 5, email, null, null, null, sample);
     }
 
     private static ProfessionalRequest valid() {
-        return request("  Dr. Asha Rao ", "psychologist", "A123", 500, 1500, 2015, " asha@example.com ", null);
+        return request("  Dr. Asha Rao ", "psychologist", "A123", 1000, 2015, " asha@example.com ", null);
     }
 
     private Professional existing(VerificationStatus status, boolean verified, boolean active, boolean sample) {
@@ -90,18 +90,20 @@ class AdminProfessionalServiceTest {
 
     @Test
     void rejectsInvalidInputWithReadableMessages() {
-        assertThatThrownBy(() -> service.create(request("x", "THERAPIST", null, null, null, null, "a@b.co", null)))
+        assertThatThrownBy(() -> service.create(request("x", "THERAPIST", null, null, null, "a@b.co", null)))
                 .isInstanceOf(ApiValidationException.class)
                 .hasMessage("credentialType must be one of PSYCHOLOGIST, PSYCHIATRIST, COUNSELOR (got 'THERAPIST').");
-        assertThatThrownBy(() -> service.create(request(" ", "COUNSELOR", null, null, null, null, "a@b.co", null)))
+        assertThatThrownBy(() -> service.create(request(" ", "COUNSELOR", null, null, null, "a@b.co", null)))
                 .hasMessage("fullName is required.");
-        assertThatThrownBy(() -> service.create(request("x", "COUNSELOR", null, 900, 500, null, "a@b.co", null)))
-                .hasMessage("feeMin must be less than or equal to feeMax.");
-        assertThatThrownBy(() -> service.create(request("x", "COUNSELOR", null, null, null, 1949, "a@b.co", null)))
+        assertThatThrownBy(() -> service.create(request("x", "COUNSELOR", null, 100_001, null, "a@b.co", null)))
+                .hasMessage("consultationFee must be between 0 and 100000.");
+        assertThatThrownBy(() -> service.create(request("x", "COUNSELOR", null, -1, null, "a@b.co", null)))
+                .hasMessage("consultationFee must be between 0 and 100000.");
+        assertThatThrownBy(() -> service.create(request("x", "COUNSELOR", null, null, 1949, "a@b.co", null)))
                 .hasMessage("registrationYear must be between 1950 and 2026.");
-        assertThatThrownBy(() -> service.create(request("x", "COUNSELOR", null, null, null, 2027, "a@b.co", null)))
+        assertThatThrownBy(() -> service.create(request("x", "COUNSELOR", null, null, 2027, "a@b.co", null)))
                 .hasMessage("registrationYear must be between 1950 and 2026.");
-        assertThatThrownBy(() -> service.create(request("x", "COUNSELOR", null, null, null, null, "not-an-email", null)))
+        assertThatThrownBy(() -> service.create(request("x", "COUNSELOR", null, null, null, "not-an-email", null)))
                 .hasMessage("contactEmail is not a valid email address.");
         verify(repository, never()).save(any());
     }
@@ -111,7 +113,7 @@ class AdminProfessionalServiceTest {
         Professional p = existing(VerificationStatus.VERIFIED, true, true, false);
 
         ProfessionalUpdateResult result = service.update(id,
-                request("Dr. Asha Rao", "PSYCHOLOGIST", "B999", null, null, null, "asha@example.com", null), "Admin");
+                request("Dr. Asha Rao", "PSYCHOLOGIST", "B999", null, null, "asha@example.com", null), "Admin");
 
         assertThat(result.reReviewRequired()).isTrue();
         assertThat(p.getVerificationStatus()).isEqualTo(VerificationStatus.SUBMITTED);
@@ -130,13 +132,13 @@ class AdminProfessionalServiceTest {
     void nonIdentityChangeOrUnverifiedListingNeedsNoReReview() {
         Professional verified = existing(VerificationStatus.VERIFIED, true, true, false);
         ProfessionalUpdateResult r1 = service.update(id,
-                request("Dr. Asha Rao", "PSYCHOLOGIST", "A123", 100, 200, null, "new@example.com", null), "Admin");
+                request("Dr. Asha Rao", "PSYCHOLOGIST", "A123", 200, null, "new@example.com", null), "Admin");
         assertThat(r1.reReviewRequired()).isFalse();
         assertThat(verified.getVerificationStatus()).isEqualTo(VerificationStatus.VERIFIED);
 
         Professional draft = existing(VerificationStatus.DRAFT, false, false, true);
         ProfessionalUpdateResult r2 = service.update(id,
-                request("Someone Else", "COUNSELOR", "Z1", null, null, null, "a@b.co", null), "Admin");
+                request("Someone Else", "COUNSELOR", "Z1", null, null, "a@b.co", null), "Admin");
         assertThat(r2.reReviewRequired()).isFalse();
         assertThat(draft.getVerificationStatus()).isEqualTo(VerificationStatus.DRAFT);
         assertThat(draft.isSampleData()).isTrue(); // kept when omitted

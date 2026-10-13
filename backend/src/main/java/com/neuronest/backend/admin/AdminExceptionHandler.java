@@ -22,7 +22,7 @@ public class AdminExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", ex.getMessage()));
     }
 
-    // Malformed JSON, or a value of the wrong type (e.g. "feeMin": "abc", a bad date).
+    // Malformed JSON, or a value of the wrong type (e.g. "consultationFee": "abc", a bad date).
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<?> handleUnreadable(HttpMessageNotReadableException ex) {
         return ResponseEntity.badRequest().body(Map.of("error",

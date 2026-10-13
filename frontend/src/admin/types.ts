@@ -76,8 +76,8 @@ export interface ProfessionalDetail {
   city: string | null;
   state: string | null;
   consultationMode: ConsultationMode;
-  feeMin: number | null;
-  feeMax: number | null;
+  /** Rupees per session. */
+  consultationFee: number | null;
   yearsExperience: number | null;
   contactEmail: string;
   contactPhone: string | null;
@@ -118,8 +118,8 @@ export interface ProfessionalRequest {
   city: string | null;
   state: string | null;
   consultationMode: ConsultationMode | "";
-  feeMin: number | null;
-  feeMax: number | null;
+  /** Rupees per session. */
+  consultationFee: number | null;
   yearsExperience: number | null;
   contactEmail: string;
   contactPhone: string | null;

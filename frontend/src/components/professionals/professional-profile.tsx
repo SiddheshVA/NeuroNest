@@ -20,7 +20,7 @@ import {
   CONSULTATION_MODE_LABELS,
   CREDENTIAL_TYPE_LABELS,
   formatExperience,
-  formatFeeRange,
+  formatFee,
   formatLocation,
   getPublicProfessional,
   ProfessionalsApiError,
@@ -150,7 +150,7 @@ function ProfessionalProfile({ id }: { id: string }) {
 
 function ProfileBody({ professional: p }: { professional: PublicProfessional }) {
   const location = formatLocation(p.city, p.state);
-  const fees = formatFeeRange(p.feeMin, p.feeMax);
+  const fee = formatFee(p.consultationFee);
   const experience = formatExperience(p.yearsExperience);
 
   return (
@@ -214,7 +214,7 @@ function ProfileBody({ professional: p }: { professional: PublicProfessional }) 
               label="Languages"
               value={p.languages.length > 0 ? p.languages.join(", ") : "Languages not listed"}
             />
-            <Fact icon={IndianRupee} label="Fee range" value={fees ?? "Fees not listed"} />
+            {fee ? <Fact icon={IndianRupee} label="Consultation fee" value={fee} /> : null}
             {experience ? <Fact icon={Briefcase} label="Experience" value={experience} /> : null}
             {p.registrationBody && !p.isSampleData ? (
               <Fact

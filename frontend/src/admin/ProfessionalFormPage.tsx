@@ -33,6 +33,9 @@ import {
 
 const RE_REVIEW_MESSAGE = "Because a verified detail changed, this listing now needs to be reviewed again.";
 const MIN_REGISTRATION_YEAR = 1950;
+const MAX_CONSULTATION_FEE = 100000;
+const MAX_YEARS_EXPERIENCE = 70;
+const CHOOSE_OPTION = "Please choose an option.";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Form values are kept as strings (numbers included) so fields can be empty or mid-edit.
@@ -51,8 +54,7 @@ interface FormValues {
   city: string;
   state: string;
   consultationMode: ConsultationMode | "";
-  feeMin: string;
-  feeMax: string;
+  consultationFee: string;
   yearsExperience: string;
   contactEmail: string;
   contactPhone: string;
@@ -79,8 +81,7 @@ const EMPTY_FORM: FormValues = {
   city: "",
   state: "",
   consultationMode: "",
-  feeMin: "",
-  feeMax: "",
+  consultationFee: "",
   yearsExperience: "",
   contactEmail: "",
   contactPhone: "",
@@ -109,8 +110,7 @@ function toFormValues(p: ProfessionalDetail): FormValues {
     city: text(p.city),
     state: text(p.state),
     consultationMode: p.consultationMode,
-    feeMin: num(p.feeMin),
-    feeMax: num(p.feeMax),
+    consultationFee: num(p.consultationFee),
     yearsExperience: num(p.yearsExperience),
     contactEmail: p.contactEmail,
     contactPhone: text(p.contactPhone),
@@ -138,8 +138,7 @@ function toRequest(v: FormValues): ProfessionalRequest {
     city: text(v.city),
     state: text(v.state),
     consultationMode: v.consultationMode,
-    feeMin: num(v.feeMin),
-    feeMax: num(v.feeMax),
+    consultationFee: num(v.consultationFee),
     yearsExperience: num(v.yearsExperience),
     contactEmail: v.contactEmail.trim(),
     contactPhone: text(v.contactPhone),
@@ -154,39 +153,32 @@ function toRequest(v: FormValues): ProfessionalRequest {
 function validate(v: FormValues): FieldErrors {
   const errors: FieldErrors = {};
   const currentYear = new Date().getFullYear();
-  const wholeNumber = (field: FieldName, label: string, value: string) => {
-    if (value.trim() === "") return;
+  // Numeric fields only accept digits as they are typed; the range is checked here, on save.
+  const inRange = (field: FieldName, label: string, min: number, max: number) => {
+    const value = (v[field] as string).trim();
+    if (value === "") return;
     const n = Number(value);
-    if (!Number.isInteger(n)) errors[field] = `${label} must be a whole number.`;
-    else if (n < 0) errors[field] = `${label} cannot be negative.`;
+    if (!/^[0-9]+$/.test(value) || n < min || n > max) {
+      errors[field] = `${label} must be a whole number from ${min} to ${max}.`;
+    }
   };
 
   if (!v.fullName.trim()) errors.fullName = "Full name is required.";
-  if (!v.credentialType) errors.credentialType = "Credential type is required.";
-  if (!v.consultationMode) errors.consultationMode = "Consultation mode is required.";
+  if (!v.credentialType) errors.credentialType = CHOOSE_OPTION;
+  if (!v.consultationMode) errors.consultationMode = CHOOSE_OPTION;
   if (!v.contactEmail.trim()) errors.contactEmail = "Contact email is required.";
   else if (!EMAIL_PATTERN.test(v.contactEmail.trim())) errors.contactEmail = "Enter a valid email address.";
 
-  wholeNumber("feeMin", "Minimum fee", v.feeMin);
-  wholeNumber("feeMax", "Maximum fee", v.feeMax);
-  wholeNumber("yearsExperience", "Years of experience", v.yearsExperience);
-  if (!errors.feeMin && !errors.feeMax && v.feeMin.trim() && v.feeMax.trim() && Number(v.feeMin) > Number(v.feeMax)) {
-    errors.feeMin = "Minimum fee cannot be more than the maximum fee.";
-  }
-
-  if (v.registrationYear.trim()) {
-    const year = Number(v.registrationYear);
-    if (!Number.isInteger(year) || year < MIN_REGISTRATION_YEAR || year > currentYear) {
-      errors.registrationYear = `Registration year must be between ${MIN_REGISTRATION_YEAR} and ${currentYear}.`;
-    }
-  }
+  inRange("consultationFee", "Consultation fee", 0, MAX_CONSULTATION_FEE);
+  inRange("yearsExperience", "Years of experience", 0, MAX_YEARS_EXPERIENCE);
+  inRange("registrationYear", "Registration year", MIN_REGISTRATION_YEAR, currentYear);
   if (v.photoUrl.trim() && !/^https?:\/\/\S+$/i.test(v.photoUrl.trim())) {
     errors.photoUrl = "Photo URL must start with http:// or https://.";
   }
   return errors;
 }
 
-// Backend messages start with the field name ("feeMin must be ..."), which lets the message also be
+// Backend messages start with the field name ("consultationFee must be ..."), which lets the message also be
 // shown under the matching field.
 function fieldFromServerMessage(message: string): FieldName | null {
   const first = message.split(/[\s:]/, 1)[0];
@@ -250,10 +242,9 @@ export function ProfessionalFormPage() {
   const set = <K extends FieldName>(field: K, value: FormValues[K]) => {
     setValues((current) => ({ ...current, [field]: value }));
     setErrors((current) => {
-      if (!current[field] && !(field === "feeMax" && current.feeMin)) return current;
+      if (!current[field]) return current;
       const next = { ...current };
       delete next[field];
-      if (field === "feeMax") delete next.feeMin;
       return next;
     });
   };
@@ -317,6 +308,8 @@ export function ProfessionalFormPage() {
     );
   }
 
+  // Labels always sit above the field so the grey example placeholder is visible, and browser
+  // autofill is off so nothing is pre-filled on a new record.
   const field = (name: FieldName, label: string, props: TextFieldProps = {}) => (
     <TextField
       fullWidth
@@ -326,7 +319,37 @@ export function ProfessionalFormPage() {
       onChange={(e) => set(name, e.target.value as never)}
       error={Boolean(errors[name])}
       helperText={errors[name] ?? props.helperText}
+      slotProps={{
+        inputLabel: { shrink: true },
+        htmlInput: { autoComplete: "off" },
+        select: { displayEmpty: true },
+      }}
     />
+  );
+
+  // Digits only: no spinner and no mouse-wheel changes. The range is checked on save.
+  const numberField = (name: FieldName, label: string, placeholder: string, maxLength: number) => (
+    <TextField
+      fullWidth
+      label={label}
+      placeholder={placeholder}
+      value={values[name] as string}
+      onChange={(e) => set(name, e.target.value.replace(/[^0-9]/g, "").slice(0, maxLength) as never)}
+      error={Boolean(errors[name])}
+      helperText={errors[name]}
+      slotProps={{
+        inputLabel: { shrink: true },
+        htmlInput: { inputMode: "numeric", pattern: "[0-9]*", maxLength, autoComplete: "off" },
+      }}
+    />
+  );
+
+  const selectOption = (
+    <MenuItem key="empty" value="">
+      <Box component="span" sx={{ color: "text.secondary" }}>
+        Select an option
+      </Box>
+    </MenuItem>
   );
 
   return (
@@ -354,41 +377,45 @@ export function ProfessionalFormPage() {
         <Paper component="form" onSubmit={submit} noValidate sx={{ p: { xs: 2, sm: 3 } }}>
           <Stack spacing={4}>
             <Section title="Basic details">
-              {field("fullName", "Full name", { required: true })}
+              {field("fullName", "Full name", { required: true, placeholder: "Dr. Asha Rao" })}
               {field("credentialType", "Credential type", {
                 select: true,
                 required: true,
-                children: CREDENTIAL_TYPES.map((type) => (
-                  <MenuItem key={type} value={type}>
-                    {CREDENTIAL_TYPE_LABELS[type]}
-                  </MenuItem>
-                )),
+                children: [
+                  selectOption,
+                  ...CREDENTIAL_TYPES.map((type) => (
+                    <MenuItem key={type} value={type}>
+                      {CREDENTIAL_TYPE_LABELS[type]}
+                    </MenuItem>
+                  )),
+                ],
               })}
               {field("consultationMode", "Consultation mode", {
                 select: true,
                 required: true,
-                children: CONSULTATION_MODES.map((mode) => (
-                  <MenuItem key={mode} value={mode}>
-                    {CONSULTATION_MODE_LABELS[mode]}
-                  </MenuItem>
-                )),
+                children: [
+                  selectOption,
+                  ...CONSULTATION_MODES.map((mode) => (
+                    <MenuItem key={mode} value={mode}>
+                      {CONSULTATION_MODE_LABELS[mode]}
+                    </MenuItem>
+                  )),
+                ],
               })}
-              {field("qualifications", "Qualifications", { helperText: "For example: M.Phil in Clinical Psychology." })}
-              {field("yearsExperience", "Years of experience", { type: "number", slotProps: { htmlInput: { min: 0, step: 1 } } })}
+              {field("qualifications", "Qualifications", { placeholder: "M.A. Clinical Psychology" })}
+              {numberField("yearsExperience", "Years of experience", "5", 2)}
             </Section>
 
             <Section title="Contact">
-              {field("contactEmail", "Contact email", { required: true, type: "email", autoComplete: "off" })}
-              {field("contactPhone", "Contact phone", { type: "tel" })}
+              {field("contactEmail", "Contact email", { required: true, type: "email", placeholder: "name@example.com" })}
+              {field("contactPhone", "Contact phone", { type: "tel", placeholder: "+91 98765 43210" })}
             </Section>
 
             <Section title="Registration">
               {field("registrationBody", "Registration body", {
                 select: true,
                 children: [
-                  <MenuItem key="none" value="">
-                    Not specified
-                  </MenuItem>,
+                  selectOption,
                   ...REGISTRATION_BODIES.map((body) => (
                     <MenuItem key={body} value={body}>
                       {REGISTRATION_BODY_LABELS[body]}
@@ -396,43 +423,34 @@ export function ProfessionalFormPage() {
                   )),
                 ],
               })}
-              {field("registrationNumber", "Registration number")}
-              {field("registrationCouncil", "Registration council", {
-                helperText: "For example: Maharashtra Medical Council.",
-              })}
-              {field("registrationYear", "Registration year", {
-                type: "number",
-                slotProps: { htmlInput: { min: MIN_REGISTRATION_YEAR, max: new Date().getFullYear(), step: 1 } },
-              })}
-              {field("registrationExpiry", "Registration expiry", {
-                type: "date",
-                slotProps: { inputLabel: { shrink: true } },
-              })}
+              {field("registrationNumber", "Registration number", { placeholder: "A12345" })}
+              {field("registrationCouncil", "Registration council", { placeholder: "Maharashtra Medical Council" })}
+              {numberField("registrationYear", "Registration year", "2015", 4)}
+              {field("registrationExpiry", "Registration expiry", { type: "date" })}
             </Section>
 
             <Section title="Practice">
               <ChipListField
                 label="Specialties"
+                placeholder="Anxiety"
                 values={values.specialties}
                 onChange={(list) => set("specialties", list)}
               />
               <ChipListField
                 label="Languages"
+                placeholder="Hindi"
                 values={values.languages}
                 onChange={(list) => set("languages", list)}
               />
-              {field("city", "City")}
-              {field("state", "State")}
-              {field("feeMin", "Minimum fee (₹)", { type: "number", slotProps: { htmlInput: { min: 0, step: 1 } } })}
-              {field("feeMax", "Maximum fee (₹)", { type: "number", slotProps: { htmlInput: { min: 0, step: 1 } } })}
-              {field("availabilityNote", "Availability note", {
-                helperText: "For example: Weekday evenings and Saturday mornings.",
-              })}
+              {field("city", "City", { placeholder: "Pune" })}
+              {field("state", "State", { placeholder: "Maharashtra" })}
+              {numberField("consultationFee", "Consultation fee (₹ per session)", "1000", 6)}
+              {field("availabilityNote", "Availability note", { placeholder: "Weekday evenings and Saturday mornings" })}
             </Section>
 
             <Section title="Profile" columns={1}>
-              {field("bio", "Bio", { multiline: true, minRows: 4 })}
-              {field("photoUrl", "Photo URL", { type: "url", helperText: "A link that starts with https://." })}
+              {field("bio", "Bio", { multiline: true, minRows: 4, placeholder: "Describe how this professional works and who they help." })}
+              {field("photoUrl", "Photo URL", { type: "url", placeholder: "https://example.com/photo.jpg" })}
               <FormControlLabel
                 control={
                   <Switch
@@ -496,10 +514,12 @@ function ChipListField({
   label,
   values,
   onChange,
+  placeholder,
 }: {
   label: string;
   values: string[];
   onChange: (values: string[]) => void;
+  placeholder?: string;
 }) {
   return (
     <Autocomplete
@@ -519,7 +539,13 @@ function ChipListField({
         onChange(cleaned);
       }}
       renderInput={(params) => (
-        <TextField {...params} label={label} helperText="Type a value and press Enter to add it." />
+        <TextField
+          {...params}
+          label={label}
+          placeholder={values.length === 0 ? placeholder : undefined}
+          helperText="Type a value and press Enter to add it."
+          slotProps={{ ...params.slotProps, inputLabel: { ...params.slotProps.inputLabel, shrink: true } }}
+        />
       )}
     />
   );

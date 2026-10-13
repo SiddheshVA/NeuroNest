@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App.tsx";
 import { ClerkProviderWithRoutes, ClerkTokenBridge } from "./ClerkProviders.tsx";
 import "./globals.css";
+import "./lib/number-input-guard";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

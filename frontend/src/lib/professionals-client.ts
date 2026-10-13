@@ -37,8 +37,8 @@ export interface PublicProfessional {
   city: string | null;
   state: string | null;
   consultationMode: ConsultationMode;
-  feeMin: number | null;
-  feeMax: number | null;
+  /** Rupees per session. */
+  consultationFee: number | null;
   yearsExperience: number | null;
   availabilityNote: string | null;
   photoUrl: string | null;
@@ -122,13 +122,9 @@ export function getProfessionalMeta(signal?: AbortSignal) {
   return getJson<ProfessionalMeta>("/professionals/meta", signal);
 }
 
-/** "₹500 to ₹1,500", "From ₹500", "Up to ₹1,500", or null when no fee is listed. */
-export function formatFeeRange(min: number | null, max: number | null): string | null {
-  const rupees = (value: number) => `₹${value.toLocaleString("en-IN")}`;
-  if (min !== null && max !== null) return min === max ? rupees(min) : `${rupees(min)} to ${rupees(max)}`;
-  if (min !== null) return `From ${rupees(min)}`;
-  if (max !== null) return `Up to ${rupees(max)}`;
-  return null;
+/** "₹1,000 per session", or null when no fee is listed (and then nothing is shown). */
+export function formatFee(fee: number | null): string | null {
+  return fee === null || fee === undefined ? null : `₹${fee.toLocaleString("en-IN")} per session`;
 }
 
 export function formatExperience(years: number | null): string | null {

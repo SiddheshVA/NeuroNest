@@ -3,7 +3,11 @@ package com.neuronest.backend.config;
 import com.neuronest.backend.admin.AdminAuthFilter;
 import com.neuronest.backend.admin.AdminJwtService;
 import com.neuronest.backend.auth.ClerkAuthFilter;
+import com.neuronest.backend.auth.ClerkTokenVerifier;
 import com.neuronest.backend.auth.JwtAuthFilter;
+import com.neuronest.backend.pro.ProAuthFilter;
+import com.neuronest.backend.professional.ProfessionalAccountRepository;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -54,6 +58,50 @@ public class SecurityConfig {
                 .addFilterBefore(new AdminAuthFilter(adminJwtService), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    // Professional self-service API. Only a valid Clerk token is accepted here: admin tokens and the
+    // user cookie are not part of this chain, and Clerk users are not mapped onto the users table.
+    @Bean
+    @Order(2)
+    public SecurityFilterChain proFilterChain(HttpSecurity http, ClerkTokenVerifier clerkTokenVerifier,
+                                              ProfessionalAccountRepository accounts) throws Exception {
+        http
+                .securityMatcher("/api/pro/**")
+                .csrf(csrf -> csrf.disable())
+                .cors(Customizer.withDefaults())
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .anyRequest().hasRole(ProAuthFilter.ROLE))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) ->
+                                writeJsonError(response, 401, "Authentication required."))
+                        .accessDeniedHandler((request, response, accessDeniedException) ->
+                                writeJsonError(response, 403, "Access denied.")))
+                .formLogin(form -> form.disable())
+                .httpBasic(basic -> basic.disable())
+                .addFilterBefore(new ProAuthFilter(clerkTokenVerifier, accounts), UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+
+    // ClerkAuthFilter and JwtAuthFilter are @Components, so Spring Boot would also register them as
+    // global servlet filters that run after every security chain. They already run inside the main
+    // chain below; the duplicate registration only reached /api/admin/** and /api/pro/**, where it
+    // could map a professional's Clerk token onto the end-user table. Turn it off.
+    @Bean
+    public FilterRegistrationBean<ClerkAuthFilter> clerkAuthFilterServletRegistration(ClerkAuthFilter filter) {
+        FilterRegistrationBean<ClerkAuthFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    public FilterRegistrationBean<JwtAuthFilter> jwtAuthFilterServletRegistration(JwtAuthFilter filter) {
+        FilterRegistrationBean<JwtAuthFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     @Bean

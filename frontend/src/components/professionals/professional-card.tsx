@@ -5,7 +5,7 @@ import {
   CONSULTATION_MODE_LABELS,
   CREDENTIAL_TYPE_LABELS,
   formatExperience,
-  formatFeeRange,
+  formatFee,
   formatLocation,
   type PublicProfessional,
 } from "@/lib/professionals-client";
@@ -26,7 +26,7 @@ function Detail({ icon: Icon, label, children }: { icon: LucideIcon; label?: str
 
 function ProfessionalCard({ professional }: { professional: PublicProfessional }) {
   const location = formatLocation(professional.city, null);
-  const fees = formatFeeRange(professional.feeMin, professional.feeMax);
+  const fee = formatFee(professional.consultationFee);
   const experience = formatExperience(professional.yearsExperience);
 
   return (
@@ -50,7 +50,7 @@ function ProfessionalCard({ professional }: { professional: PublicProfessional }
         <Detail icon={Languages} label="Languages">
           {professional.languages.length > 0 ? professional.languages.join(", ") : "Languages not listed"}
         </Detail>
-        <Detail icon={IndianRupee}>{fees ? `Fees: ${fees}` : "Fees not listed"}</Detail>
+        {fee ? <Detail icon={IndianRupee} label="Consultation fee">{fee}</Detail> : null}
         {experience ? <Detail icon={Briefcase} label="Experience">{experience}</Detail> : null}
       </ul>
 
