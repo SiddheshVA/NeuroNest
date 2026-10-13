@@ -24,10 +24,10 @@ import {
   PRO_CONSULTATION_MODES,
   PRO_CREDENTIAL_TYPE_LABELS,
   PRO_CREDENTIAL_TYPES,
-  PRO_REGISTRATION_BODIES,
   PRO_REGISTRATION_BODY_LABELS,
   ProApiError,
-  expectedRegistrationBody,
+  allowedRegistrationBodies,
+  normalizeIndianMobile,
   useProApi,
   type ProConsultationMode,
   type ProCredentialType,
@@ -41,6 +41,10 @@ import {
 const LOCKED_HELPER = "These details can only be changed by the admin after submission.";
 const UNSAVED_MESSAGE = "You have changes that are not saved. If you leave now, you will lose them.";
 const CHOOSE_OPTION = "Please choose an option.";
+const FILL_IN = "Please fill in this field.";
+const CHOOSE_CREDENTIAL_FIRST = "Choose your credential type first.";
+const AVAILABILITY_HELPER =
+  "This is shown on your public profile so people know when to ask for an appointment. It does not set your calendar.";
 const SUBMIT_CONFIRMATION =
   "After you submit, you can't change your name or registration details until the admin has reviewed your profile. Do you want to continue?";
 
@@ -51,8 +55,8 @@ const MAX_LIST_ITEMS = 20;
 const MAX_LIST_ITEM = 60;
 const MIN_REGISTRATION_YEAR = 1950;
 const MAX_CONSULTATION_FEE = 100000;
-const MAX_YEARS_EXPERIENCE = 70;
-const PHONE_PATTERN = /^[0-9+()\- ]{6,30}$/;
+const MAX_YEARS_EXPERIENCE = 60;
+const MIN_AVAILABILITY_NOTE = 10;
 
 interface FormValues {
   fullName: string;
@@ -102,6 +106,14 @@ const ALL_FIELDS: FieldName[] = [
   "photoUrl",
   "contactPhone",
 ];
+
+// The issuing council field is labelled for the chosen registration body.
+function councilField(body: ProRegistrationBody | ""): { label: string; placeholder?: string } {
+  if (body === "NMC") return { label: "State Medical Council that issued your registration", placeholder: "Maharashtra Medical Council" };
+  if (body === "RCI") return { label: "Council", placeholder: "Rehabilitation Council of India" };
+  if (body === "OTHER") return { label: "Name of the registration body", placeholder: "Name of the council or association" };
+  return { label: "Registration council" };
+}
 
 function toForm(p: ProProfile): FormValues {
   const text = (v: string | null) => v ?? "";
@@ -191,9 +203,12 @@ function validate(v: FormValues, includeLocked: boolean): FieldErrors {
     maxLength("qualifications", "Qualifications", MAX_TEXT);
     maxLength("registrationNumber", "Registration number", MAX_TEXT);
     maxLength("registrationCouncil", "Registration council", MAX_TEXT);
-    const expected = expectedRegistrationBody(v.credentialType);
-    if (expected && v.registrationBody && v.registrationBody !== expected) {
-      errors.registrationBody = `The registration body must be ${expected} for a ${PRO_CREDENTIAL_TYPE_LABELS[v.credentialType as ProCredentialType].toLowerCase()}.`;
+    if (v.registrationBody && !allowedRegistrationBodies(v.credentialType).includes(v.registrationBody)) {
+      errors.registrationBody = "Please choose one of the registration bodies listed for your credential type.";
+    }
+    if (!v.registrationCouncil.trim()) {
+      if (v.registrationBody === "OTHER") errors.registrationCouncil = "Please enter the name of the registration body.";
+      else if (v.registrationBody && v.credentialType === "COUNSELOR") errors.registrationCouncil = FILL_IN;
     }
     inRange("registrationYear", "Registration year", MIN_REGISTRATION_YEAR, currentYear);
   }
@@ -201,16 +216,19 @@ function validate(v: FormValues, includeLocked: boolean): FieldErrors {
   maxLength("bio", "Bio", MAX_LONG_TEXT);
   maxLength("city", "City", MAX_TEXT);
   maxLength("state", "State", MAX_TEXT);
-  maxLength("availabilityNote", "Availability note", MAX_TEXT);
+  const note = v.availabilityNote.trim();
+  if (note && (note.length < MIN_AVAILABILITY_NOTE || note.length > MAX_TEXT)) {
+    errors.availabilityNote = `Availability note must be between ${MIN_AVAILABILITY_NOTE} and ${MAX_TEXT} characters.`;
+  }
   list("specialties", "specialties");
   list("languages", "languages");
   inRange("consultationFee", "Consultation fee", 0, MAX_CONSULTATION_FEE);
   inRange("yearsExperience", "Years of experience", 0, MAX_YEARS_EXPERIENCE);
-  if (v.photoUrl.trim() && !/^https?:\/\/\S+$/i.test(v.photoUrl.trim())) {
-    errors.photoUrl = "Photo URL must start with http:// or https://.";
+  if (v.photoUrl.trim() && !/^https:\/\/\S+$/i.test(v.photoUrl.trim())) {
+    errors.photoUrl = "Photo URL must start with https://.";
   }
-  if (v.contactPhone.trim() && !PHONE_PATTERN.test(v.contactPhone.trim())) {
-    errors.contactPhone = "Contact phone must be 6 to 30 characters of digits, spaces, +, -, ( or ).";
+  if (v.contactPhone.trim() && !normalizeIndianMobile(v.contactPhone.trim())) {
+    errors.contactPhone = "Please enter a 10-digit Indian mobile number starting with 6, 7, 8 or 9. You may add +91 or a leading 0.";
   }
   return errors;
 }
@@ -375,7 +393,8 @@ function ProProfilePage() {
   const status = me.profile.verificationStatus;
   const canAttemptSubmit = status === "DRAFT" || status === "NEEDS_INFO";
   const isCounselor = values.credentialType === "COUNSELOR";
-  const expectedBody = expectedRegistrationBody(values.credentialType);
+  const allowedBodies = allowedRegistrationBodies(values.credentialType);
+  const council = councilField(values.registrationBody);
 
   const set = <K extends FieldName>(field: K, value: FormValues[K]) => {
     setSaveSuccess(null);
@@ -449,9 +468,16 @@ function ProProfilePage() {
     if (!values.credentialType) selectErrors.credentialType = CHOOSE_OPTION;
     if (!values.consultationMode) selectErrors.consultationMode = CHOOSE_OPTION;
     if (needsRegistration && !values.registrationBody) selectErrors.registrationBody = CHOOSE_OPTION;
-    if (Object.keys(selectErrors).length > 0) {
-      setErrors((current) => ({ ...current, ...selectErrors }));
-      setSubmitError({ message: "Please choose an option in each highlighted field before you submit.", missing: [] });
+    const fillErrors: FieldErrors = {};
+    for (const field of ["yearsExperience", "consultationFee", "availabilityNote", "contactPhone"] as const) {
+      if (!values[field].trim()) fillErrors[field] = FILL_IN;
+    }
+    if (Object.keys(selectErrors).length > 0 || Object.keys(fillErrors).length > 0) {
+      setErrors((current) => ({ ...current, ...selectErrors, ...fillErrors }));
+      setSubmitError({
+        message: "Please fill in or choose an option in each highlighted field, save your changes and then submit.",
+        missing: [],
+      });
       return;
     }
     setConfirmOpen(true);
@@ -469,9 +495,13 @@ function ProProfilePage() {
         <Group
           title="Identity and registration"
           description={
-            isCounselor
-              ? "Registration details are optional for counselors. Add them if you have them."
-              : `${values.credentialType === "PSYCHIATRIST" ? "Psychiatrists" : "Psychologists"} must register with the ${expectedBody}.`
+            !values.credentialType
+              ? "Choose your credential type first. The registration details you need depend on it."
+              : isCounselor
+                ? "Registration details are optional for counselors. If you choose a registration body, add its council too."
+                : values.credentialType === "PSYCHIATRIST"
+                  ? "Psychiatrists must add their NMC registration, or the name of another registration body."
+                  : "Psychologists must add their RCI registration, or the name of another registration body."
           }
         >
           <TextField label="Full name" required placeholder="Dr. Asha Rao" value={values.fullName} onChange={(v) => set("fullName", v)} {...lockedProps("fullName")} />
@@ -479,7 +509,14 @@ function ProProfilePage() {
             label="Credential type"
             required
             value={values.credentialType}
-            onChange={(v) => set("credentialType", v as ProCredentialType)}
+            onChange={(v) => {
+              const next = v as ProCredentialType | "";
+              set("credentialType", next);
+              // A body that is not allowed for the new credential type is cleared.
+              if (values.registrationBody && !allowedRegistrationBodies(next).includes(values.registrationBody)) {
+                set("registrationBody", "");
+              }
+            }}
             options={PRO_CREDENTIAL_TYPES.map((t) => ({ value: t, label: PRO_CREDENTIAL_TYPE_LABELS[t] }))}
             {...lockedProps("credentialType")}
           />
@@ -497,11 +534,9 @@ function ProProfilePage() {
             required={needsRegistration}
             value={values.registrationBody}
             onChange={(v) => set("registrationBody", v as ProRegistrationBody | "")}
-            options={(expectedBody ? [expectedBody] : [...PRO_REGISTRATION_BODIES]).map((b) => ({
-              value: b,
-              label: PRO_REGISTRATION_BODY_LABELS[b],
-            }))}
+            options={allowedBodies.map((b) => ({ value: b, label: PRO_REGISTRATION_BODY_LABELS[b] }))}
             {...lockedProps("registrationBody")}
+            {...(canEditLocked && !values.credentialType ? { disabled: true, helper: CHOOSE_CREDENTIAL_FIRST } : {})}
           />
           <TextField
             label="Registration number"
@@ -512,11 +547,11 @@ function ProProfilePage() {
             {...lockedProps("registrationNumber")}
           />
           <TextField
-            label="Registration council"
-            required={needsRegistration}
+            label={council.label}
+            required={needsRegistration || Boolean(values.registrationBody)}
             value={values.registrationCouncil}
             onChange={(v) => set("registrationCouncil", v)}
-            placeholder="Maharashtra Medical Council"
+            placeholder={council.placeholder}
             {...lockedProps("registrationCouncil")}
           />
           <TextField
@@ -563,18 +598,22 @@ function ProProfilePage() {
             error={errors.consultationMode}
             disabled={saving}
           />
-          <TextField label="Years of experience" digits={2} placeholder="5" value={values.yearsExperience} onChange={(v) => set("yearsExperience", v)} error={errors.yearsExperience} disabled={saving} />
-          <TextField label="Consultation fee (₹ per session)" digits={6} placeholder="1000" value={values.consultationFee} onChange={(v) => set("consultationFee", v)} error={errors.consultationFee} disabled={saving} />
+          <TextField label="Years of experience" required digits={2} placeholder="5" value={values.yearsExperience} onChange={(v) => set("yearsExperience", v)} error={errors.yearsExperience} disabled={saving}
+            helper={`A whole number from 0 to ${MAX_YEARS_EXPERIENCE}.`} />
+          <TextField label="Consultation fee (₹ per session)" required digits={6} placeholder="1000" value={values.consultationFee} onChange={(v) => set("consultationFee", v)} error={errors.consultationFee} disabled={saving}
+            helper="Enter 0 if you do not charge a fee." />
           <TextField
             label="Availability note"
+            required
             value={values.availabilityNote}
             onChange={(v) => set("availabilityNote", v)}
-            placeholder="Weekday evenings and Saturday mornings"
+            placeholder="Weekdays 6 pm to 9 pm, Saturdays 10 am to 1 pm"
             error={errors.availabilityNote}
+            helper={AVAILABILITY_HELPER}
             disabled={saving}
           />
-          <TextField label="Contact phone" type="tel" inputMode="tel" placeholder="+91 98765 43210" value={values.contactPhone} onChange={(v) => set("contactPhone", v)} error={errors.contactPhone} disabled={saving}
-            helper="This number is not shown in the public directory." />
+          <TextField label="Contact phone" required type="tel" inputMode="tel" placeholder="98765 43210" value={values.contactPhone} onChange={(v) => set("contactPhone", v)} error={errors.contactPhone} disabled={saving}
+            helper="A 10-digit Indian mobile number. It is not shown in the public directory." />
           <TextField
             label="Photo URL"
             type="url"

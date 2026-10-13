@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 // Admin-only error mapping, in the app's usual {"error": "..."} shape. Scoped to the admin package so
@@ -20,6 +21,20 @@ public class AdminExceptionHandler {
     @ExceptionHandler(ProfessionalNotFoundException.class)
     public ResponseEntity<?> handleNotFound(ProfessionalNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(AdminVerificationExceptions.DocumentNotFoundException.class)
+    public ResponseEntity<?> handleDocumentNotFound(AdminVerificationExceptions.DocumentNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", ex.getMessage()));
+    }
+
+    // The usual {"error": "..."} plus the list of checklist items that still need confirming.
+    @ExceptionHandler(AdminVerificationExceptions.ChecklistIncompleteException.class)
+    public ResponseEntity<?> handleChecklist(AdminVerificationExceptions.ChecklistIncompleteException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", ex.getMessage());
+        body.put("missing", ex.missing());
+        return ResponseEntity.badRequest().body(body);
     }
 
     // Malformed JSON, or a value of the wrong type (e.g. "consultationFee": "abc", a bad date).

@@ -46,7 +46,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 // The professional's own profile: registration, viewing, editing and submitting for verification.
@@ -63,9 +62,11 @@ public class ProProfileService {
     // Registration expiry is a calendar date for Indian registrations, so "today" is taken in IST.
     static final ZoneId ZONE = ZoneId.of("Asia/Kolkata");
 
-    private static final Pattern PHONE = Pattern.compile("^[0-9+()\\- ]{6,30}$");
-
     // Fields that only an admin may change once the profile has left DRAFT or NEEDS_INFO.
+    // Statuses in which the admin's note explains the current state to the professional.
+    static final Set<VerificationStatus> NOTE_STATUSES = EnumSet.of(VerificationStatus.NEEDS_INFO,
+            VerificationStatus.REJECTED, VerificationStatus.EXPIRED, VerificationStatus.SUSPENDED);
+
     static final List<String> LOCKED_FIELDS = List.of("fullName", "credentialType", "qualifications",
             "registrationBody", "registrationNumber", "registrationCouncil", "registrationYear", "registrationExpiry");
 
@@ -189,7 +190,8 @@ public class ProProfileService {
                 p.getRegistrationBody(), p::setRegistrationBody, changes, changedLocked);
         lockedField(b, "registrationNumber", () -> limit("registrationNumber", b.text("registrationNumber"), MAX_TEXT),
                 p.getRegistrationNumber(), p::setRegistrationNumber, changes, changedLocked);
-        lockedField(b, "registrationCouncil", () -> limit("registrationCouncil", b.text("registrationCouncil"), MAX_TEXT),
+        String registrationCouncil = lockedField(b, "registrationCouncil",
+                () -> limit("registrationCouncil", b.text("registrationCouncil"), MAX_TEXT),
                 p.getRegistrationCouncil(), p::setRegistrationCouncil, changes, changedLocked);
         Integer registrationYear = lockedField(b, "registrationYear", () -> b.integer("registrationYear"),
                 p.getRegistrationYear(), p::setRegistrationYear, changes, changedLocked);
@@ -216,11 +218,11 @@ public class ProProfileService {
             changes.add(() -> p.setConsultationFee(v));
         }
         if (b.has("yearsExperience")) {
-            Integer v = nonNegative("yearsExperience", b.integer("yearsExperience"));
+            Integer v = yearsExperience(b.integer("yearsExperience"));
             changes.add(() -> p.setYearsExperience(v));
         }
         if (b.has("availabilityNote")) {
-            String v = limit("availabilityNote", b.text("availabilityNote"), MAX_TEXT);
+            String v = availabilityNote(b.text("availabilityNote"));
             changes.add(() -> p.setAvailabilityNote(v));
         }
         if (b.has("photoUrl")) { String v = photoUrl(b.text("photoUrl")); changes.add(() -> p.setPhotoUrl(v)); }
@@ -235,11 +237,22 @@ public class ProProfileService {
             throw new ApiValidationException("registrationYear must be between " + MIN_REGISTRATION_YEAR + " and "
                     + currentYear + ".");
         }
-        if (changedLocked.contains("credentialType") || changedLocked.contains("registrationBody")) {
-            RegistrationBody expected = SubmissionChecklist.expectedRegistrationBody(credentialType);
-            if (expected != null && registrationBody != null && registrationBody != expected) {
-                throw new ApiValidationException("registrationBody must be " + expected + " for a "
-                        + credentialType.name().toLowerCase(Locale.ROOT) + ".");
+        boolean registrationChanged = changedLocked.contains("credentialType") || changedLocked.contains("registrationBody")
+                || changedLocked.contains("registrationCouncil");
+        if (registrationChanged && registrationBody != null
+                && !SubmissionChecklist.allowedRegistrationBodies(credentialType).contains(registrationBody)) {
+            throw new ApiValidationException("registrationBody must be " + SubmissionChecklist.describeAllowed(credentialType)
+                    + " for a " + credentialType.name().toLowerCase(Locale.ROOT) + ".");
+        }
+        // The council names the body when it is OTHER; counselors are optional, but a chosen body needs its
+        // council. For psychiatrists and psychologists the council is checked when submitting.
+        if (registrationChanged && registrationCouncil == null) {
+            if (registrationBody == RegistrationBody.OTHER) {
+                throw new ApiValidationException("registrationCouncil must contain the name of the registration body "
+                        + "when registrationBody is OTHER.");
+            }
+            if (registrationBody != null && credentialType == CredentialType.COUNSELOR) {
+                throw new ApiValidationException("registrationCouncil is required when a registration body is chosen.");
             }
         }
 
@@ -308,18 +321,19 @@ public class ProProfileService {
                 editable && missing.isEmpty());
     }
 
-    // The newest admin note from the verification log; otherwise the note on the profile itself.
+    // The note is professionals.verification_notes, the field the admin's needs-info and reject decisions
+    // write. It is only sent while it explains the current status, so notes an admin wrote when verifying
+    // stay internal. The matching log entry, when there is one, adds what the decision was and when.
     private VerificationNoteView latestNote(Professional p) {
+        String note = trimToNull(p.getVerificationNotes());
+        if (note == null || !NOTE_STATUSES.contains(p.getVerificationStatus())) {
+            return null;
+        }
         Optional<VerificationLogEntry> logged = verificationLog
-                .findFirstByProfessionalIdAndNoteIsNotNullAndActorNotOrderByCreatedAtDesc(p.getId(), ACTOR);
-        if (logged.isPresent()) {
-            VerificationLogEntry entry = logged.get();
-            return new VerificationNoteView(entry.getNote(), entry.getAction(), entry.getCreatedAt());
-        }
-        if (p.getVerificationNotes() != null && !p.getVerificationNotes().isBlank()) {
-            return new VerificationNoteView(p.getVerificationNotes(), null, null);
-        }
-        return null;
+                .findFirstByProfessionalIdAndNoteIsNotNullAndActorNotOrderByCreatedAtDesc(p.getId(), ACTOR)
+                .filter(entry -> note.equals(trimToNull(entry.getNote())));
+        return logged.map(entry -> new VerificationNoteView(note, entry.getAction(), entry.getCreatedAt()))
+                .orElseGet(() -> new VerificationNoteView(note, null, null));
     }
 
     // Parses a locked field if present and records it when it differs; returns the resulting value.
@@ -422,25 +436,41 @@ public class ProProfileService {
         return value;
     }
 
-    private static Integer nonNegative(String field, Integer value) {
-        if (value != null && value < 0) throw new ApiValidationException(field + " must not be negative.");
+    private static Integer yearsExperience(Integer value) {
+        if (value != null && (value < 0 || value > SubmissionChecklist.MAX_YEARS_EXPERIENCE)) {
+            throw new ApiValidationException("yearsExperience must be between 0 and "
+                    + SubmissionChecklist.MAX_YEARS_EXPERIENCE + ".");
+        }
         return value;
+    }
+
+    private static String availabilityNote(String value) {
+        String trimmed = limit("availabilityNote", value, MAX_TEXT);
+        if (trimmed != null && trimmed.length() < SubmissionChecklist.MIN_AVAILABILITY_NOTE) {
+            throw new ApiValidationException("availabilityNote must be between " + SubmissionChecklist.MIN_AVAILABILITY_NOTE
+                    + " and " + MAX_TEXT + " characters.");
+        }
+        return trimmed;
     }
 
     private static String photoUrl(String value) {
         String trimmed = limit("photoUrl", value, 1000);
-        if (trimmed != null && !trimmed.toLowerCase(Locale.ROOT).matches("^https?://\\S+$")) {
-            throw new ApiValidationException("photoUrl must be an http(s) URL.");
+        if (trimmed != null && !trimmed.toLowerCase(Locale.ROOT).matches("^https://\\S+$")) {
+            throw new ApiValidationException("photoUrl must start with https://.");
         }
         return trimmed;
     }
 
+    // Stored as +91XXXXXXXXXX.
     private static String phone(String value) {
         String trimmed = trimToNull(value);
-        if (trimmed != null && !PHONE.matcher(trimmed).matches()) {
-            throw new ApiValidationException("contactPhone must be 6 to 30 characters of digits, spaces, +, -, ( or ).");
+        if (trimmed == null) return null;
+        String normalized = SubmissionChecklist.normalizeIndianMobile(trimmed);
+        if (normalized == null) {
+            throw new ApiValidationException("contactPhone must be a 10-digit Indian mobile number starting with 6, 7, 8 "
+                    + "or 9. You may write it with +91 or a leading 0.");
         }
-        return trimmed;
+        return normalized;
     }
 
     private static <E extends Enum<E>> E requiredEnum(Class<E> type, String field, String value) {

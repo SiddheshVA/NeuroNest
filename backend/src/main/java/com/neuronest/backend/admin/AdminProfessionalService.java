@@ -10,6 +10,7 @@ import com.neuronest.backend.config.ConflictException;
 import com.neuronest.backend.professional.ConsultationMode;
 import com.neuronest.backend.professional.CredentialType;
 import com.neuronest.backend.professional.Professional;
+import com.neuronest.backend.professional.ProfessionalAccountRepository;
 import com.neuronest.backend.professional.ProfessionalRepository;
 import com.neuronest.backend.professional.RegistrationBody;
 import com.neuronest.backend.professional.VerificationLogEntry;
@@ -48,16 +49,20 @@ public class AdminProfessionalService {
 
     private final ProfessionalRepository repository;
     private final VerificationLogRepository verificationLog;
+    private final ProfessionalAccountRepository accounts;
     private final Clock clock;
 
     @Autowired
-    public AdminProfessionalService(ProfessionalRepository repository, VerificationLogRepository verificationLog) {
-        this(repository, verificationLog, Clock.systemUTC());
+    public AdminProfessionalService(ProfessionalRepository repository, VerificationLogRepository verificationLog,
+                                    ProfessionalAccountRepository accounts) {
+        this(repository, verificationLog, accounts, Clock.systemUTC());
     }
 
-    AdminProfessionalService(ProfessionalRepository repository, VerificationLogRepository verificationLog, Clock clock) {
+    AdminProfessionalService(ProfessionalRepository repository, VerificationLogRepository verificationLog,
+                             ProfessionalAccountRepository accounts, Clock clock) {
         this.repository = repository;
         this.verificationLog = verificationLog;
+        this.accounts = accounts;
         this.clock = clock;
     }
 
@@ -105,7 +110,8 @@ public class AdminProfessionalService {
         return ProfessionalDetail.from(find(id));
     }
 
-    // Admin-created listings always start hidden and unverified, whatever the request contains.
+    // Admin-created listings always start hidden and unverified, whatever the request contains. A new
+    // listing has no professional account yet, so it may be sample data.
     @Transactional
     public ProfessionalDetail create(ProfessionalRequest request) {
         Professional professional = new Professional();
@@ -130,6 +136,10 @@ public class AdminProfessionalService {
         String oldRegistrationNumber = professional.getRegistrationNumber();
 
         applyEditableFields(professional, request);
+        if (Boolean.TRUE.equals(request.isSampleData()) && accounts.existsByProfessionalId(id)) {
+            throw new ApiValidationException("isSampleData cannot be true for a professional who has a professional "
+                    + "account. This listing belongs to a real person.");
+        }
         if (request.isSampleData() != null) {
             professional.setSampleData(request.isSampleData());
         }
@@ -163,7 +173,8 @@ public class AdminProfessionalService {
             throw new ApiValidationException("active is required (true or false).");
         }
         Professional professional = find(id);
-        if (active && professional.getVerificationStatus() != VerificationStatus.VERIFIED && !professional.isSampleData()) {
+        boolean sample = professional.isSampleData() && !accounts.existsByProfessionalId(id);
+        if (active && professional.getVerificationStatus() != VerificationStatus.VERIFIED && !sample) {
             throw new ConflictException("Only a VERIFIED listing (or sample data) can be enabled. This listing's "
                     + "verification status is " + professional.getVerificationStatus() + ".");
         }

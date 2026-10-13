@@ -10,4 +10,7 @@ public interface ProfessionalAccountRepository extends JpaRepository<Professiona
     Optional<ProfessionalAccount> findByClerkUserId(String clerkUserId);
 
     boolean existsByEmailIgnoreCase(String email);
+
+    // A professional with an account is a real person and never sample data.
+    boolean existsByProfessionalId(UUID professionalId);
 }

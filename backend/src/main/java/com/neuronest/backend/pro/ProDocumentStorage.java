@@ -11,10 +11,11 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Optional;
 import java.util.UUID;
 
-// Private file storage for professional documents under APP_STORAGE_DIR. Files are never served by
-// the app: there is no static mapping or public route for this directory. Each professional gets a
+// Private file storage for professional documents under APP_STORAGE_DIR. There is no static mapping or
+// public route for this directory; the only way to read a file is the admin document route. Each professional gets a
 // subfolder named by their (server-side) id, and each file a random UUID name; no part of any path
 // comes from the user.
 @Component
@@ -72,6 +73,30 @@ public class ProDocumentStorage {
         } catch (IOException | IllegalStateException e) {
             log.warn("Could not delete a stored professional document: {}", e.getMessage());
         }
+    }
+
+    /**
+     * The stored file for reading (only the admin document route uses this), or empty when it is missing.
+     * Refuses any path that resolves outside the root, including through a symbolic link.
+     */
+    public Optional<Path> existingFile(String relativePath) {
+        Path resolved;
+        try {
+            resolved = resolve(relativePath);
+        } catch (InvalidPathException e) {
+            throw new IllegalStateException("Refusing a storage path that is not valid.");
+        }
+        if (!Files.isRegularFile(resolved)) {
+            return Optional.empty();
+        }
+        try {
+            if (!resolved.toRealPath().startsWith(root.toRealPath())) {
+                throw new IllegalStateException("Refusing a storage path outside APP_STORAGE_DIR.");
+            }
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+        return Optional.of(resolved);
     }
 
     // Defence in depth: every path must stay inside the root.

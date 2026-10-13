@@ -42,7 +42,7 @@ export const PRO_CONSULTATION_MODE_LABELS: Record<ProConsultationMode, string> =
 export const PRO_REGISTRATION_BODY_LABELS: Record<ProRegistrationBody, string> = {
   RCI: "RCI (Rehabilitation Council of India)",
   NMC: "NMC (National Medical Commission)",
-  OTHER: "Another registration body",
+  OTHER: "Other (please specify)",
 };
 
 export const PRO_DOCUMENT_TYPE_LABELS: Record<ProDocumentType, string> = {
@@ -52,11 +52,18 @@ export const PRO_DOCUMENT_TYPE_LABELS: Record<ProDocumentType, string> = {
   OTHER: "Additional document",
 };
 
-/** The registration body each regulated profession must use (mirrors SubmissionChecklist). */
-export function expectedRegistrationBody(type: ProCredentialType | ""): ProRegistrationBody | null {
-  if (type === "PSYCHIATRIST") return "NMC";
-  if (type === "PSYCHOLOGIST") return "RCI";
-  return null;
+/** The registration bodies each credential type may use (mirrors SubmissionChecklist), in display order. */
+export function allowedRegistrationBodies(type: ProCredentialType | ""): ProRegistrationBody[] {
+  if (type === "PSYCHIATRIST") return ["NMC", "OTHER"];
+  if (type === "PSYCHOLOGIST") return ["RCI", "OTHER"];
+  if (type === "COUNSELOR") return ["NMC", "RCI", "OTHER"];
+  return [];
+}
+
+/** A 10-digit Indian mobile number starting 6 to 9, optionally with +91 or a leading 0 (mirrors the backend). */
+export function normalizeIndianMobile(value: string): string | null {
+  const match = /^(?:\+91|0)?([6-9][0-9]{9})$/.exec(value.replace(/[\s()-]/g, ""));
+  return match ? `+91${match[1]}` : null;
 }
 
 export interface ProMissingItem {

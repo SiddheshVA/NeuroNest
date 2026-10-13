@@ -33,8 +33,10 @@ class AdminProfessionalServiceTest {
 
     private final ProfessionalRepository repository = mock(ProfessionalRepository.class);
     private final VerificationLogRepository log = mock(VerificationLogRepository.class);
+    private final com.neuronest.backend.professional.ProfessionalAccountRepository accounts =
+            mock(com.neuronest.backend.professional.ProfessionalAccountRepository.class);
     private final AdminProfessionalService service =
-            new AdminProfessionalService(repository, log, Clock.fixed(NOW, ZoneOffset.UTC));
+            new AdminProfessionalService(repository, log, accounts, Clock.fixed(NOW, ZoneOffset.UTC));
     private final UUID id = UUID.randomUUID();
 
     @BeforeEach
@@ -158,6 +160,23 @@ class AdminProfessionalServiceTest {
 
         existing(VerificationStatus.VERIFIED, true, false, false);
         assertThat(service.setActive(id, true).active()).isTrue();
+    }
+
+    @Test
+    void aProfessionalWithAnAccountIsNeverSampleData() {
+        when(accounts.existsByProfessionalId(id)).thenReturn(true);
+        Professional p = existing(VerificationStatus.DRAFT, false, false, false);
+        assertThatThrownBy(() -> service.update(id,
+                request("Dr. Asha Rao", "PSYCHOLOGIST", "A123", 200, null, "asha@example.com", true), "Admin"))
+                .isInstanceOf(ApiValidationException.class)
+                .hasMessageStartingWith("isSampleData cannot be true for a professional who has a professional account.");
+        assertThat(p.isSampleData()).isFalse();
+        assertThat(service.update(id, request("Dr. Asha Rao", "PSYCHOLOGIST", "A123", 200, null, "asha@example.com", false),
+                "Admin").professional().isSampleData()).isFalse();
+
+        // An old sample flag on an account's row does not let it be enabled without verification.
+        existing(VerificationStatus.DRAFT, false, false, true);
+        assertThatThrownBy(() -> service.setActive(id, true)).isInstanceOf(ConflictException.class);
     }
 
     @Test

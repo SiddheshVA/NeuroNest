@@ -15,12 +15,14 @@ import java.util.UUID;
 // every query here includes VISIBLE, so a hidden listing cannot be fetched through this interface.
 public interface PublicProfessionalRepository extends Repository<Professional, UUID> {
 
-    // The one definition of "publicly visible". :today is passed in by the service.
+    // The one definition of "publicly visible". :today is passed in by the service. A row that has a
+    // professional account is a real person, so it never counts as sample data.
     String VISIBLE = """
             p.active = true
             AND ((p.verification_status = 'VERIFIED'
                   AND (p.registration_expiry IS NULL OR p.registration_expiry >= :today))
-                 OR p.is_sample_data = true)
+                 OR (p.is_sample_data = true
+                     AND NOT EXISTS (SELECT 1 FROM professional_accounts pa WHERE pa.professional_id = p.id)))
             """;
 
     // Null parameters mean "no filter". Casts give Postgres a type for null binds.

@@ -214,14 +214,19 @@ public class Professional {
     public void setVerificationStatus(VerificationStatus verificationStatus) { this.verificationStatus = verificationStatus; }
 
     public String getVerificationSource() { return verificationSource; }
+    public void setVerificationSource(String verificationSource) { this.verificationSource = verificationSource; }
 
     public String getVerifiedBy() { return verifiedBy; }
+    public void setVerifiedBy(String verifiedBy) { this.verifiedBy = verifiedBy; }
 
     public Instant getVerifiedAt() { return verifiedAt; }
+    public void setVerifiedAt(Instant verifiedAt) { this.verifiedAt = verifiedAt; }
 
     public String getVerificationNotes() { return verificationNotes; }
+    public void setVerificationNotes(String verificationNotes) { this.verificationNotes = verificationNotes; }
 
     public LocalDate getNextRecheckDate() { return nextRecheckDate; }
+    public void setNextRecheckDate(LocalDate nextRecheckDate) { this.nextRecheckDate = nextRecheckDate; }
 
     public Instant getSubmittedAt() { return submittedAt; }
     public void setSubmittedAt(Instant submittedAt) { this.submittedAt = submittedAt; }
