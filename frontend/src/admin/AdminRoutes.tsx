@@ -8,7 +8,7 @@ import { AdminLoginPage } from "./AdminLoginPage";
 import { ProfessionalsListPage } from "./ProfessionalsListPage";
 import { ProfessionalFormPage } from "./ProfessionalFormPage";
 import { ReviewQueuePage } from "./ReviewQueuePage";
-import { ReviewPlaceholderPage } from "./ReviewPlaceholderPage";
+import { ReviewPage } from "./ReviewPage";
 
 // Everything under /admin. Loaded lazily from App.tsx, so none of this code ships in the public
 // bundle, and rendered outside RootLayout, so the public navbar and footer never appear here.
@@ -31,7 +31,7 @@ export default function AdminRoutes() {
           <Route path="professionals/new" element={<ProfessionalFormPage key="new" />} />
           <Route path="professionals/:id/edit" element={<EditProfessionalRoute />} />
           <Route path="review" element={<ReviewQueuePage />} />
-          <Route path="review/:id" element={<ReviewPlaceholderPage />} />
+          <Route path="review/:id" element={<ReviewRoute />} />
           <Route path="*" element={<Navigate to="professionals" replace />} />
         </Route>
       </Routes>
@@ -43,6 +43,12 @@ export default function AdminRoutes() {
 function EditProfessionalRoute() {
   const { id } = useParams<{ id: string }>();
   return <ProfessionalFormPage key={id} />;
+}
+
+// A fresh review page per record, so nothing carries over from the previous professional.
+function ReviewRoute() {
+  const { id } = useParams<{ id: string }>();
+  return <ReviewPage key={id} />;
 }
 
 // Sets the tab title and asks search engines not to index admin pages; restores both on the way out.

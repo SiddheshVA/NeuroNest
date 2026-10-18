@@ -182,9 +182,9 @@ export function requiredDocuments(type: CredentialType): DocumentType[] {
 export const VERIFICATION_SOURCES = ["NMC", "STATE_COUNCIL", "RCI", "DEGREE_CERTIFICATE", "OTHER"] as const;
 export type VerificationSource = (typeof VERIFICATION_SOURCES)[number];
 export const VERIFICATION_SOURCE_LABELS: Record<VerificationSource, string> = {
-  NMC: "NMC (National Medical Commission)",
-  STATE_COUNCIL: "State Medical Council",
-  RCI: "RCI (Rehabilitation Council of India)",
+  NMC: "NMC Indian Medical Register",
+  STATE_COUNCIL: "State Medical Council register",
+  RCI: "RCI register",
   DEGREE_CERTIFICATE: "Degree certificate",
   OTHER: "Other",
 };
