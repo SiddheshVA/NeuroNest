@@ -7,10 +7,12 @@ import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
-// Maps the professionals table (hand-made baseline + V2 verification columns). Flyway owns the schema.
+// Maps the professionals table (hand-made baseline + V2 verification columns + V4 profile fields). Flyway owns the schema.
 @Entity
 @Table(name = "professionals")
 public class Professional {
@@ -119,6 +121,19 @@ public class Professional {
 
     @Column(name = "submitted_at")
     private Instant submittedAt;
+
+    // V4: identity and verification details. Never part of any public view.
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    // Platform key (LINKEDIN, INSTAGRAM, ...) to profile link.
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "social_links", nullable = false)
+    private Map<String, String> socialLinks = new LinkedHashMap<>();
+
+    // When the professional last accepted the submission declaration.
+    @Column(name = "declaration_accepted_at")
+    private Instant declarationAcceptedAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -230,6 +245,15 @@ public class Professional {
 
     public Instant getSubmittedAt() { return submittedAt; }
     public void setSubmittedAt(Instant submittedAt) { this.submittedAt = submittedAt; }
+
+    public LocalDate getDateOfBirth() { return dateOfBirth; }
+    public void setDateOfBirth(LocalDate dateOfBirth) { this.dateOfBirth = dateOfBirth; }
+
+    public Map<String, String> getSocialLinks() { return socialLinks; }
+    public void setSocialLinks(Map<String, String> socialLinks) { this.socialLinks = socialLinks; }
+
+    public Instant getDeclarationAcceptedAt() { return declarationAcceptedAt; }
+    public void setDeclarationAcceptedAt(Instant declarationAcceptedAt) { this.declarationAcceptedAt = declarationAcceptedAt; }
 
     public Instant getCreatedAt() { return createdAt; }
 

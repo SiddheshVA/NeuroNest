@@ -17,9 +17,11 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -71,6 +73,12 @@ class ProProfileServiceTest {
     private ProMeResponse put(String body) {
         return service.update(principal, json.readTree(body));
     }
+
+    private ProMeResponse submit(String body) {
+        return service.submit(principal, body == null ? null : json.readTree(body));
+    }
+
+    private static final String ACCEPTED = "{\"declarationAccepted\":true}";
 
     // ---- register ----
 
@@ -214,13 +222,14 @@ class ProProfileServiceTest {
         professional.setRegistrationExpiry(TODAY);
         when(documents.findByProfessionalIdOrderByUploadedAtAsc(any())).thenReturn(List.of());
 
-        assertThatThrownBy(() -> service.submit(principal))
+        assertThatThrownBy(() -> submit(null))
                 .isInstanceOfSatisfying(ProExceptions.SubmissionIncompleteException.class, e ->
                         assertThat(e.missing()).extracting(MissingItem::item).containsExactly(
-                                "qualifications", "city", "languages", "specialties", "bio", "yearsExperience",
-                                "consultationFee", "availabilityNote", "contactPhone", "registrationBody",
-                                "registrationCouncil", "registrationYear", "registrationExpiry",
-                                "document:REGISTRATION_CERTIFICATE", "document:ID_PROOF"));
+                                "dateOfBirth", "qualifications", "state", "city", "languages", "specialties", "bio",
+                                "yearsExperience", "consultationFee", "availabilityNote", "contactPhone",
+                                "registrationBody", "registrationCouncil", "registrationYear", "registrationExpiry",
+                                "document:REGISTRATION_CERTIFICATE", "document:DEGREE_CERTIFICATE",
+                                "document:ID_PROOF", "declaration"));
         verify(log, never()).save(any());
     }
 
@@ -228,6 +237,7 @@ class ProProfileServiceTest {
     void completeSubmitMovesToSubmittedAndLogsIt() {
         existing(VerificationStatus.NEEDS_INFO, CredentialType.COUNSELOR);
         professional.setQualifications("MA Counselling");
+        professional.setState("Maharashtra");
         professional.setCity("Pune");
         professional.setLanguages(List.of("English"));
         professional.setSpecialties(List.of("Stress"));
@@ -236,14 +246,26 @@ class ProProfileServiceTest {
         professional.setConsultationFee(0);
         professional.setAvailabilityNote("Weekdays 6 pm to 9 pm");
         professional.setContactPhone("+919876543210");
+        professional.setDateOfBirth(LocalDate.of(1990, 5, 1));
         ProfessionalDocument degree = new ProfessionalDocument(UUID.randomUUID(), DocumentType.DEGREE_CERTIFICATE,
                 "x/y.pdf", "degree.pdf", "application/pdf", 10);
-        when(documents.findByProfessionalIdOrderByUploadedAtAsc(any())).thenReturn(List.of(degree));
+        ProfessionalDocument id = new ProfessionalDocument(UUID.randomUUID(), DocumentType.ID_PROOF,
+                "x/z.pdf", "pan.pdf", "application/pdf", 10);
+        when(documents.findByProfessionalIdOrderByUploadedAtAsc(any())).thenReturn(List.of(degree, id));
 
-        ProMeResponse me = service.submit(principal);
+        // Without the declaration (no body, false, or not a boolean) only the declaration is missing.
+        for (String body : new String[]{null, "{}", "{\"declarationAccepted\":false}", "{\"declarationAccepted\":\"true\"}"}) {
+            assertThatThrownBy(() -> submit(body))
+                    .isInstanceOfSatisfying(ProExceptions.SubmissionIncompleteException.class, e ->
+                            assertThat(e.missing()).extracting(MissingItem::item).containsExactly("declaration"));
+        }
+        assertThat(professional.getDeclarationAcceptedAt()).isNull();
+
+        ProMeResponse me = submit(ACCEPTED);
 
         assertThat(me.profile().verificationStatus()).isEqualTo("SUBMITTED");
         assertThat(me.profile().submittedAt()).isEqualTo(NOW);
+        assertThat(professional.getDeclarationAcceptedAt()).isEqualTo(NOW);
         assertThat(me.canEditCredentials()).isFalse();
         ArgumentCaptor<VerificationLogEntry> entry = ArgumentCaptor.forClass(VerificationLogEntry.class);
         verify(log).save(entry.capture());
@@ -252,7 +274,7 @@ class ProProfileServiceTest {
         assertThat(entry.getValue().getToStatus()).isEqualTo("SUBMITTED");
         assertThat(entry.getValue().getActor()).isEqualTo("PROFESSIONAL");
 
-        assertThatThrownBy(() -> service.submit(principal)).isInstanceOf(ConflictException.class);
+        assertThatThrownBy(() -> submit(ACCEPTED)).isInstanceOf(ConflictException.class);
     }
 
     @Test
@@ -282,5 +304,116 @@ class ProProfileServiceTest {
         counselor.setRegistrationBody(RegistrationBody.NMC);
         assertThat(SubmissionChecklist.missing(counselor, Set.of(), TODAY)).extracting(MissingItem::item)
                 .contains("registrationCouncil").doesNotContain("registrationBody");
+    }
+
+    // ---- date of birth, specializations, social links, documents ----
+
+    @Test
+    void dateOfBirthAgeIsCheckedInIndiaAndLockedAfterSubmit() {
+        existing(VerificationStatus.DRAFT, CredentialType.COUNSELOR);
+        // TODAY is 13 Oct 2026 in India (still 12 Oct in UTC): turning 21 on 13 Oct counts.
+        assertThat(put("{\"dateOfBirth\":\"2005-10-13\"}").profile().dateOfBirth()).isEqualTo(LocalDate.of(2005, 10, 13));
+        assertThatThrownBy(() -> put("{\"dateOfBirth\":\"2005-10-14\"}"))
+                .hasMessage("dateOfBirth must give an age between 21 and 90 years.");
+        assertThat(put("{\"dateOfBirth\":\"1935-10-14\"}").profile().dateOfBirth()).isEqualTo(LocalDate.of(1935, 10, 14));
+        assertThatThrownBy(() -> put("{\"dateOfBirth\":\"1935-10-13\"}"))
+                .hasMessage("dateOfBirth must give an age between 21 and 90 years.");
+        assertThatThrownBy(() -> put("{\"dateOfBirth\":\"13/10/1990\"}"))
+                .hasMessage("dateOfBirth must be a date in YYYY-MM-DD format.");
+
+        for (VerificationStatus locked : List.of(VerificationStatus.SUBMITTED, VerificationStatus.VERIFIED,
+                VerificationStatus.EXPIRED, VerificationStatus.SUSPENDED, VerificationStatus.REJECTED)) {
+            existing(locked, CredentialType.COUNSELOR);
+            assertThatThrownBy(() -> put("{\"dateOfBirth\":\"1990-01-01\"}")).isInstanceOf(ConflictException.class)
+                    .hasMessageEndingWith("dateOfBirth.");
+        }
+        existing(VerificationStatus.NEEDS_INFO, CredentialType.COUNSELOR);
+        assertThat(put("{\"dateOfBirth\":\"1990-01-01\"}").profile().dateOfBirth()).isEqualTo(LocalDate.of(1990, 1, 1));
+    }
+
+    @Test
+    void specializationsAreTrimmedDedupedAndLimited() {
+        existing(VerificationStatus.DRAFT, CredentialType.PSYCHOLOGIST);
+        assertThat(put("{\"specialties\":[\" Clinical Psychologist \",\"clinical psychologist\",\"Play therapist\"]}")
+                .profile().specialties()).containsExactly("Clinical Psychologist", "Play therapist");
+        assertThatThrownBy(() -> put("{\"specialties\":[\"A\"]}"))
+                .hasMessage("Each entry in specialties must be between 2 and 60 characters.");
+        assertThatThrownBy(() -> put("{\"specialties\":[\"" + "x".repeat(61) + "\"]}"))
+                .hasMessage("Each entry in specialties must be at most 60 characters.");
+        String sixteen = String.join(",", IntStream.range(0, 16).mapToObj(i -> "\"Role " + i + "\"").toList());
+        assertThatThrownBy(() -> put("{\"specialties\":[" + sixteen + "]}"))
+                .hasMessage("specialties can have at most 15 entries.");
+    }
+
+    @Test
+    void socialLinksAreValidatedPerPlatformAndStayEditableAfterSubmit() {
+        existing(VerificationStatus.VERIFIED, CredentialType.COUNSELOR);
+        ProMeResponse me = put("{\"socialLinks\":{\"website\":\"https://asha.example.in/about\","
+                + "\"LINKEDIN\":\" https://www.linkedin.com/in/asha \",\"X\":\"https://twitter.com/asha\","
+                + "\"YOUTUBE\":\"https://youtu.be/abc\",\"INSTAGRAM\":\"\",\"FACEBOOK\":null}}");
+        assertThat(me.profile().socialLinks()).containsExactly(
+                Map.entry("LINKEDIN", "https://www.linkedin.com/in/asha"),
+                Map.entry("X", "https://twitter.com/asha"),
+                Map.entry("YOUTUBE", "https://youtu.be/abc"),
+                Map.entry("WEBSITE", "https://asha.example.in/about"));
+
+        assertThat(put("{\"socialLinks\":{\"LINKEDIN\":\"https://linkedin.com/in/asha\"}}").profile().socialLinks())
+                .containsOnlyKeys("LINKEDIN");
+        assertThatThrownBy(() -> put("{\"socialLinks\":{\"LINKEDIN\":\"http://linkedin.com/in/asha\"}}"))
+                .hasMessage("socialLinks.LINKEDIN must start with https://.");
+        assertThatThrownBy(() -> put("{\"socialLinks\":{\"LINKEDIN\":\"https://notlinkedin.com/in/asha\"}}"))
+                .hasMessage("socialLinks.LINKEDIN must be a link on linkedin.com.");
+        assertThatThrownBy(() -> put("{\"socialLinks\":{\"INSTAGRAM\":\"https://instagram.com.evil.io/a\"}}"))
+                .hasMessage("socialLinks.INSTAGRAM must be a link on instagram.com.");
+        assertThatThrownBy(() -> put("{\"socialLinks\":{\"WEBSITE\":\"https://exa mple.com\"}}"))
+                .hasMessage("socialLinks.WEBSITE must be a valid link.");
+        assertThatThrownBy(() -> put("{\"socialLinks\":{\"WEBSITE\":\"https://" + "a".repeat(200) + ".com\"}}"))
+                .hasMessage("socialLinks.WEBSITE must be at most 200 characters.");
+        assertThatThrownBy(() -> put("{\"socialLinks\":{\"TIKTOK\":\"https://tiktok.com/@a\"}}"))
+                .hasMessageStartingWith("socialLinks can only contain");
+        assertThat(put("{\"socialLinks\":{}}").profile().socialLinks()).isEmpty();
+    }
+
+    @Test
+    void stateMustBeListedAndIsStoredWithTheListedSpelling() {
+        existing(VerificationStatus.DRAFT, CredentialType.COUNSELOR);
+        assertThat(put("{\"state\":\"  tamil nadu \"}").profile().state()).isEqualTo("Tamil Nadu");
+        assertThat(put("{\"state\":\"Delhi\"}").profile().state()).isEqualTo("Delhi");
+        assertThatThrownBy(() -> put("{\"state\":\"Bombay\"}"))
+                .hasMessage("state must be one of the Indian states or union territories in the list.");
+        assertThat(put("{\"state\":null}").profile().state()).isNull();
+        assertThat(service.me(principal).stateOptions()).hasSize(36).contains("Maharashtra", "Puducherry");
+
+        // A value saved earlier that is not on the list must be chosen again before submitting.
+        professional.setState("Maharastra");
+        assertThat(service.me(principal).missingForSubmit()).extracting(MissingItem::message)
+                .contains("Choose your state or union territory from the list.");
+        professional.setState(null);
+        assertThat(service.me(principal).missingForSubmit()).extracting(MissingItem::message)
+                .contains("Choose the state or union territory you practise in.");
+    }
+
+    @Test
+    void requiredAndOptionalDocumentsDependOnCredentialType() {
+        when(documents.findByProfessionalIdOrderByUploadedAtAsc(any())).thenReturn(List.of());
+        existing(VerificationStatus.DRAFT, CredentialType.COUNSELOR);
+        ProMeResponse me = service.me(principal);
+        assertThat(me.requiredDocuments()).containsExactly("DEGREE_CERTIFICATE", "ID_PROOF");
+        assertThat(me.optionalDocuments()).containsExactly("REGISTRATION_CERTIFICATE");
+        assertThat(me.documentRules()).containsOnlyKeys("PSYCHOLOGIST", "PSYCHIATRIST", "COUNSELOR");
+        assertThat(me.documentRules().get("COUNSELOR").optional()).containsExactly("REGISTRATION_CERTIFICATE");
+        assertThat(me.documentRules().get("PSYCHIATRIST").required())
+                .containsExactly("REGISTRATION_CERTIFICATE", "DEGREE_CERTIFICATE", "ID_PROOF");
+        assertThat(me.missingForSubmit()).extracting(MissingItem::message)
+                .contains("Upload your degree certificate.", "Upload your government ID proof.", "Add your date of birth.",
+                        "Choose at least one specialization.")
+                .doesNotContain("Upload your registration certificate.");
+
+        for (CredentialType type : List.of(CredentialType.PSYCHIATRIST, CredentialType.PSYCHOLOGIST)) {
+            existing(VerificationStatus.DRAFT, type);
+            me = service.me(principal);
+            assertThat(me.requiredDocuments()).containsExactly("REGISTRATION_CERTIFICATE", "DEGREE_CERTIFICATE", "ID_PROOF");
+            assertThat(me.optionalDocuments()).isEmpty();
+        }
     }
 }

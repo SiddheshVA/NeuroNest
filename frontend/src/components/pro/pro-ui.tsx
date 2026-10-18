@@ -74,19 +74,24 @@ type CommonProps = {
 /**
  * A text input. With `digits` set it accepts only digits (up to that many): it is a plain text field
  * with a numeric keyboard, so there is no spinner and the mouse wheel cannot change it. Placeholders
- * are only examples and are never sent as values. Browser autofill is off.
+ * are only examples and are never sent as values. Browser autofill is off. Date inputs never show
+ * spinner arrows; `min` and `max` limit the date picker.
  */
 export function TextField({
   type = "text",
   placeholder,
   inputMode,
   digits,
+  min,
+  max,
   ...props
 }: CommonProps & {
   type?: string;
   placeholder?: string;
   inputMode?: "numeric" | "tel" | "url" | "email";
   digits?: number;
+  min?: string;
+  max?: string;
 }) {
   const id = useId();
   return (
@@ -97,6 +102,8 @@ export function TextField({
         inputMode={digits ? "numeric" : inputMode}
         pattern={digits ? "[0-9]*" : undefined}
         maxLength={digits}
+        min={min}
+        max={max}
         autoComplete="off"
         value={props.value}
         placeholder={placeholder}
@@ -104,9 +111,44 @@ export function TextField({
         onChange={(e) => props.onChange(digits ? e.target.value.replace(/[^0-9]/g, "").slice(0, digits) : e.target.value)}
         aria-invalid={Boolean(props.error)}
         aria-describedby={props.error ? `${id}-error` : props.helper ? `${id}-helper` : undefined}
-        className={controlClass}
+        className={cn(
+          controlClass,
+          type === "date" && "[&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden",
+        )}
       />
     </FieldShell>
+  );
+}
+
+/** A single checkbox with its label. Unticked unless `checked` says otherwise. */
+export function CheckboxField({
+  label,
+  checked,
+  onChange,
+  disabled,
+  className,
+}: {
+  label: ReactNode;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const id = useId();
+  return (
+    <div className={cn("flex items-start gap-2.5", className)}>
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 size-4 shrink-0 cursor-pointer accent-primary disabled:cursor-not-allowed"
+      />
+      <label htmlFor={id} className={cn("text-sm text-foreground", disabled ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer")}>
+        {label}
+      </label>
+    </div>
   );
 }
 

@@ -5,7 +5,9 @@ import com.neuronest.backend.professional.Professional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 // Request/response shapes for /api/admin/professionals. The JPA entity is never serialized directly.
@@ -14,8 +16,9 @@ public final class AdminProfessionalDtos {
     private AdminProfessionalDtos() {}
 
     // Body of POST and PUT. Enums arrive as strings so unknown values get a readable 400 from the
-    // service instead of a Jackson parse error. Verification fields and "active" are deliberately
-    // absent: if a client sends them they are ignored.
+    // service instead of a Jackson parse error. Verification fields, "active" and the professional's own
+    // dateOfBirth, socialLinks and declarationAcceptedAt are deliberately absent: if a client sends them
+    // they are ignored.
     public record ProfessionalRequest(
             String fullName,
             String credentialType,
@@ -92,6 +95,10 @@ public final class AdminProfessionalDtos {
             String verificationNotes,
             LocalDate nextRecheckDate,
             Instant submittedAt,
+            // Read-only here: set by the professional on their own profile.
+            LocalDate dateOfBirth,
+            Map<String, String> socialLinks,
+            Instant declarationAcceptedAt,
             Instant createdAt,
             Instant updatedAt) {
 
@@ -105,6 +112,7 @@ public final class AdminProfessionalDtos {
                     p.getAvailabilityNote(), p.getPhotoUrl(), p.isSampleData(), p.isActive(),
                     p.getVerificationStatus().name(), p.isVerified(), p.getVerificationSource(), p.getVerifiedBy(),
                     p.getVerifiedAt(), p.getVerificationNotes(), p.getNextRecheckDate(), p.getSubmittedAt(),
+                    p.getDateOfBirth(), new LinkedHashMap<>(p.getSocialLinks()), p.getDeclarationAcceptedAt(),
                     p.getCreatedAt(), p.getUpdatedAt());
         }
     }

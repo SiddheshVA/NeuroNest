@@ -7,6 +7,7 @@ import { Container } from "@/components/layout/container";
 import { ProDocuments } from "@/components/pro/pro-documents";
 import { ProStatusBanner } from "@/components/pro/pro-status-banner";
 import {
+  CheckboxField,
   ChipInputField,
   ConfirmDialog,
   DisabledAccountNotice,
@@ -25,6 +26,10 @@ import {
   PRO_CREDENTIAL_TYPE_LABELS,
   PRO_CREDENTIAL_TYPES,
   PRO_REGISTRATION_BODY_LABELS,
+  PRO_SOCIAL_PLATFORM_INFO,
+  PRO_SOCIAL_PLATFORMS,
+  PRO_SPECIALIZATION_OTHER,
+  PRO_SPECIALIZATIONS,
   ProApiError,
   allowedRegistrationBodies,
   normalizeIndianMobile,
@@ -35,6 +40,7 @@ import {
   type ProMissingItem,
   type ProProfile,
   type ProRegistrationBody,
+  type ProSocialPlatform,
   type ProUpdate,
 } from "@/lib/pro-client";
 
@@ -45,6 +51,11 @@ const FILL_IN = "Please fill in this field.";
 const CHOOSE_CREDENTIAL_FIRST = "Choose your credential type first.";
 const AVAILABILITY_HELPER =
   "This is shown on your public profile so people know when to ask for an appointment. It does not set your calendar.";
+const SPECIALIZATIONS_HELPER = "Choose all professional roles that apply to you.";
+const SOCIAL_HELPER = "Only the NeuroNest team will see these links. They help us verify who you are.";
+const DECLARATION_START =
+  "I certify that all information provided is true. I consent to background verification. I agree to NeuroNest";
+const DECLARATION_END = "I understand submitting this application does not guarantee approval.";
 const SUBMIT_CONFIRMATION =
   "After you submit, you can't change your name or registration details until the admin has reviewed your profile. Do you want to continue?";
 
@@ -57,9 +68,16 @@ const MIN_REGISTRATION_YEAR = 1950;
 const MAX_CONSULTATION_FEE = 100000;
 const MAX_YEARS_EXPERIENCE = 60;
 const MIN_AVAILABILITY_NOTE = 10;
+const MAX_SPECIALTIES = 15;
+const MIN_SPECIALTY = 2;
+const MIN_AGE = 21;
+const MAX_AGE = 90;
+const MAX_SOCIAL_LINK = 200;
 
 interface FormValues {
   fullName: string;
+  /** YYYY-MM-DD, or empty. */
+  dateOfBirth: string;
   credentialType: ProCredentialType | "";
   qualifications: string;
   registrationBody: ProRegistrationBody | "";
@@ -68,7 +86,10 @@ interface FormValues {
   registrationYear: string;
   registrationExpiry: string;
   bio: string;
-  specialties: string[];
+  /** Ticked fixed specializations, always in the order of PRO_SPECIALIZATIONS. */
+  specializations: string[];
+  otherSpecializationTicked: boolean;
+  otherSpecialization: string;
   languages: string[];
   city: string;
   state: string;
@@ -78,12 +99,17 @@ interface FormValues {
   availabilityNote: string;
   photoUrl: string;
   contactPhone: string;
+  /** A key is present while its platform is ticked; keys are kept in PRO_SOCIAL_PLATFORMS order. */
+  socialLinks: Partial<Record<ProSocialPlatform, string>>;
 }
 type FieldName = keyof FormValues;
-type FieldErrors = Partial<Record<FieldName, string>>;
+// "specialties" is the backend's name for the whole specializations group.
+type ErrorKey = FieldName | "specialties" | `socialLinks.${ProSocialPlatform}`;
+type FieldErrors = Partial<Record<ErrorKey, string>>;
 
 const LOCKED_FIELDS: FieldName[] = [
   "fullName",
+  "dateOfBirth",
   "credentialType",
   "qualifications",
   "registrationBody",
@@ -95,7 +121,6 @@ const LOCKED_FIELDS: FieldName[] = [
 const ALL_FIELDS: FieldName[] = [
   ...LOCKED_FIELDS,
   "bio",
-  "specialties",
   "languages",
   "city",
   "state",
@@ -106,6 +131,82 @@ const ALL_FIELDS: FieldName[] = [
   "photoUrl",
   "contactPhone",
 ];
+const ERROR_KEYS: string[] = [
+  ...ALL_FIELDS,
+  "specialties",
+  ...PRO_SOCIAL_PLATFORMS.map((platform) => `socialLinks.${platform}`),
+];
+
+const FIXED_SPECIALIZATIONS: readonly string[] = PRO_SPECIALIZATIONS;
+
+// Today's date in India as YYYY-MM-DD, since the backend checks ages in Asia/Kolkata.
+function todayInIndia(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+}
+
+// The same day of the year, a number of years earlier (29 February becomes 28 February).
+function yearsBefore(isoDate: string, years: number): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const year = y - years;
+  const lastDay = new Date(Date.UTC(year, m, 0)).getUTCDate();
+  return `${String(year).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(Math.min(d, lastDay)).padStart(2, "0")}`;
+}
+
+function ageOn(dateOfBirth: string, today: string): number {
+  const [by, bm, bd] = dateOfBirth.split("-").map(Number);
+  const [ty, tm, td] = today.split("-").map(Number);
+  return ty - by - (tm < bm || (tm === bm && td < bd) ? 1 : 0);
+}
+
+// Saved specialties: entries matching a fixed label tick it; anything else becomes the "Other" text.
+function splitSpecialties(saved: string[]) {
+  const ticked = new Set<string>();
+  const others: string[] = [];
+  for (const entry of saved) {
+    const match = FIXED_SPECIALIZATIONS.find((label) => label.toLowerCase() === entry.trim().toLowerCase());
+    if (match) ticked.add(match);
+    else others.push(entry.trim());
+  }
+  return {
+    specializations: FIXED_SPECIALIZATIONS.filter((label) => ticked.has(label)),
+    otherSpecializationTicked: others.length > 0,
+    otherSpecialization: others.join(", "),
+  };
+}
+
+function specialtiesOf(v: FormValues): string[] {
+  const other = v.otherSpecializationTicked ? v.otherSpecialization.trim() : "";
+  return other ? [...v.specializations, other] : [...v.specializations];
+}
+
+function orderedLinks(links: Partial<Record<ProSocialPlatform, string>>): Partial<Record<ProSocialPlatform, string>> {
+  const ordered: Partial<Record<ProSocialPlatform, string>> = {};
+  for (const platform of PRO_SOCIAL_PLATFORMS) {
+    if (links[platform] !== undefined) ordered[platform] = links[platform];
+  }
+  return ordered;
+}
+
+// Mirrors SocialLinks.java. Returns an error sentence, or null when the link is acceptable.
+function socialLinkProblem(platform: ProSocialPlatform, raw: string): string | null {
+  const link = raw.trim();
+  const { label, hosts } = PRO_SOCIAL_PLATFORM_INFO[platform];
+  if (!link) return `Please enter your ${label} link, or untick ${label}.`;
+  if (link.length > MAX_SOCIAL_LINK) return `The link must be at most ${MAX_SOCIAL_LINK} characters.`;
+  if (!/^https:\/\//i.test(link)) return "The link must start with https://.";
+  let host: string;
+  try {
+    const url = new URL(link);
+    host = url.hostname.toLowerCase();
+    if (url.username || url.password || !host.includes(".") || /\s/.test(link)) throw new Error("invalid");
+  } catch {
+    return "Please enter a valid link.";
+  }
+  if (hosts.length > 0 && !hosts.some((domain) => host === domain || host.endsWith(`.${domain}`))) {
+    return `The link must be on ${hosts.join(" or ")}.`;
+  }
+  return null;
+}
 
 // The issuing council field is labelled for the chosen registration body.
 function councilField(body: ProRegistrationBody | ""): { label: string; placeholder?: string } {
@@ -115,11 +216,18 @@ function councilField(body: ProRegistrationBody | ""): { label: string; placehol
   return { label: "Registration council" };
 }
 
-function toForm(p: ProProfile): FormValues {
+// A small heading for one group of fields inside a section; it spans the full row.
+function SubHeading({ children }: { children: ReactNode }) {
+  return <h3 className="mt-2 border-t border-border pt-4 text-sm font-semibold text-foreground first:mt-0 first:border-t-0 first:pt-0 sm:col-span-2">{children}</h3>;
+}
+
+// stateOptions comes from the backend, so the dropdown and the backend check use the same spellings.
+function toForm(p: ProProfile, stateOptions: string[]): FormValues {
   const text = (v: string | null) => v ?? "";
   const num = (v: number | null) => (v === null || v === undefined ? "" : String(v));
   return {
     fullName: p.fullName,
+    dateOfBirth: text(p.dateOfBirth),
     credentialType: p.credentialType,
     qualifications: text(p.qualifications),
     registrationBody: p.registrationBody ?? "",
@@ -128,16 +236,18 @@ function toForm(p: ProProfile): FormValues {
     registrationYear: num(p.registrationYear),
     registrationExpiry: text(p.registrationExpiry),
     bio: text(p.bio),
-    specialties: [...p.specialties],
+    ...splitSpecialties(p.specialties),
     languages: [...p.languages],
     city: text(p.city),
-    state: text(p.state),
+    // A saved value that is not in the list shows as unselected, so the person chooses one.
+    state: p.state && stateOptions.includes(p.state) ? p.state : "",
     consultationMode: p.consultationMode,
     consultationFee: num(p.consultationFee),
     yearsExperience: num(p.yearsExperience),
     availabilityNote: text(p.availabilityNote),
     photoUrl: text(p.photoUrl),
     contactPhone: text(p.contactPhone),
+    socialLinks: orderedLinks(p.socialLinks ?? {}),
   };
 }
 
@@ -147,7 +257,7 @@ function toUpdate(v: FormValues, includeLocked: boolean): ProUpdate {
   const num = (s: string) => (s.trim() === "" ? null : Number(s));
   const update: ProUpdate = {
     bio: text(v.bio),
-    specialties: v.specialties,
+    specialties: specialtiesOf(v),
     languages: v.languages,
     city: text(v.city),
     state: text(v.state),
@@ -157,10 +267,13 @@ function toUpdate(v: FormValues, includeLocked: boolean): ProUpdate {
     availabilityNote: text(v.availabilityNote),
     photoUrl: text(v.photoUrl),
     contactPhone: text(v.contactPhone),
+    // Only ticked platforms are sent, so unticked ones are removed from the saved links.
+    socialLinks: Object.fromEntries(Object.entries(v.socialLinks).map(([platform, link]) => [platform, (link ?? "").trim()])),
   };
   if (includeLocked) {
     Object.assign(update, {
       fullName: v.fullName.trim(),
+      dateOfBirth: text(v.dateOfBirth),
       credentialType: v.credentialType as ProCredentialType,
       qualifications: text(v.qualifications),
       registrationBody: v.registrationBody === "" ? null : v.registrationBody,
@@ -189,7 +302,7 @@ function validate(v: FormValues, includeLocked: boolean): FieldErrors {
       errors[field] = `${label} must be a whole number from ${min} to ${max}.`;
     }
   };
-  const list = (field: "specialties" | "languages", label: string) => {
+  const list = (field: "languages", label: string) => {
     if (v[field].length > MAX_LIST_ITEMS) errors[field] = `You can add at most ${MAX_LIST_ITEMS} ${label}.`;
     else if (v[field].some((item) => item.length > MAX_LIST_ITEM)) {
       errors[field] = `Each entry must be at most ${MAX_LIST_ITEM} characters.`;
@@ -199,6 +312,13 @@ function validate(v: FormValues, includeLocked: boolean): FieldErrors {
   if (includeLocked) {
     if (!v.fullName.trim()) errors.fullName = "Full name is required.";
     maxLength("fullName", "Full name", MAX_TEXT);
+    if (v.dateOfBirth) {
+      const today = todayInIndia();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v.dateOfBirth)) errors.dateOfBirth = "Please enter a valid date.";
+      else if (v.dateOfBirth > today || ageOn(v.dateOfBirth, today) < MIN_AGE || ageOn(v.dateOfBirth, today) > MAX_AGE) {
+        errors.dateOfBirth = `Your age must be between ${MIN_AGE} and ${MAX_AGE} years.`;
+      }
+    }
     if (!v.credentialType) errors.credentialType = CHOOSE_OPTION;
     maxLength("qualifications", "Qualifications", MAX_TEXT);
     maxLength("registrationNumber", "Registration number", MAX_TEXT);
@@ -220,7 +340,16 @@ function validate(v: FormValues, includeLocked: boolean): FieldErrors {
   if (note && (note.length < MIN_AVAILABILITY_NOTE || note.length > MAX_TEXT)) {
     errors.availabilityNote = `Availability note must be between ${MIN_AVAILABILITY_NOTE} and ${MAX_TEXT} characters.`;
   }
-  list("specialties", "specialties");
+  if (v.otherSpecializationTicked) {
+    const other = v.otherSpecialization.trim();
+    if (!other) errors.otherSpecialization = "Please describe your role, or untick Other.";
+    else if (other.length < MIN_SPECIALTY || other.length > MAX_LIST_ITEM) {
+      errors.otherSpecialization = `Your role must be between ${MIN_SPECIALTY} and ${MAX_LIST_ITEM} characters.`;
+    }
+  }
+  if (specialtiesOf(v).length > MAX_SPECIALTIES) {
+    errors.specialties = `You can choose at most ${MAX_SPECIALTIES} specializations.`;
+  }
   list("languages", "languages");
   inRange("consultationFee", "Consultation fee", 0, MAX_CONSULTATION_FEE);
   inRange("yearsExperience", "Years of experience", 0, MAX_YEARS_EXPERIENCE);
@@ -230,14 +359,23 @@ function validate(v: FormValues, includeLocked: boolean): FieldErrors {
   if (v.contactPhone.trim() && !normalizeIndianMobile(v.contactPhone.trim())) {
     errors.contactPhone = "Please enter a 10-digit Indian mobile number starting with 6, 7, 8 or 9. You may add +91 or a leading 0.";
   }
+  for (const platform of PRO_SOCIAL_PLATFORMS) {
+    const link = v.socialLinks[platform];
+    if (link === undefined) continue;
+    const problem = socialLinkProblem(platform, link);
+    if (problem) errors[`socialLinks.${platform}`] = problem;
+  }
   return errors;
 }
 
 // Backend validation messages start with the field name ("consultationFee must be ..."), so they can be shown
 // next to the matching field.
-function fieldOf(message: string): FieldName | null {
+function fieldOf(message: string): ErrorKey | null {
   const first = message.split(/[\s:]/, 1)[0];
-  return (ALL_FIELDS as string[]).includes(first) ? (first as FieldName) : null;
+  if (ERROR_KEYS.includes(first)) return first as ErrorKey;
+  // "Each entry in specialties must be ..." names the field later in the sentence.
+  if (/\bspecialties\b/.test(message)) return "specialties";
+  return null;
 }
 
 function Group({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
@@ -286,10 +424,12 @@ function ProProfilePage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<{ message: string; missing: ProMissingItem[] } | null>(null);
+  // The declaration is accepted again on every submission, so it always starts unticked.
+  const [declarationAccepted, setDeclarationAccepted] = useState(false);
 
   // Replaces both the server state and the form (after loading, saving or submitting).
   const adopt = useCallback((next: ProMe) => {
-    const form = toForm(next.profile);
+    const form = toForm(next.profile, next.stateOptions);
     setMe(next);
     setValues(form);
     setSaved(form);
@@ -395,17 +535,46 @@ function ProProfilePage() {
   const isCounselor = values.credentialType === "COUNSELOR";
   const allowedBodies = allowedRegistrationBodies(values.credentialType);
   const council = councilField(values.registrationBody);
+  const unlistedSavedState =
+    !values.state && me.profile.state && !me.stateOptions.includes(me.profile.state) ? me.profile.state : null;
+
+  const clearErrors = (...keys: ErrorKey[]) =>
+    setErrors((current) => {
+      if (!keys.some((key) => current[key])) return current;
+      const next = { ...current };
+      for (const key of keys) delete next[key];
+      return next;
+    });
 
   const set = <K extends FieldName>(field: K, value: FormValues[K]) => {
     setSaveSuccess(null);
     setValues((current) => (current ? { ...current, [field]: value } : current));
-    setErrors((current) => {
-      if (!current[field]) return current;
-      const next = { ...current };
-      delete next[field];
-      return next;
-    });
+    clearErrors(field);
   };
+
+  const toggleSpecialization = (label: string, ticked: boolean) => {
+    const chosen = new Set(values.specializations);
+    if (ticked) chosen.add(label);
+    else chosen.delete(label);
+    set("specializations", FIXED_SPECIALIZATIONS.filter((l) => chosen.has(l)));
+    clearErrors("specialties");
+  };
+
+  const setSocialLink = (platform: ProSocialPlatform, link: string | undefined) => {
+    const next = { ...values.socialLinks };
+    if (link === undefined) delete next[platform];
+    else next[platform] = link;
+    set("socialLinks", orderedLinks(next));
+    clearErrors(`socialLinks.${platform}`);
+  };
+
+  // The latest date of birth the picker offers (today in India minus 21 years), and the earliest (age 90).
+  const todayIndia = todayInIndia();
+  const maxDateOfBirth = yearsBefore(todayIndia, MIN_AGE);
+  const minDateOfBirth = (() => {
+    const [y, m, d] = yearsBefore(todayIndia, MAX_AGE + 1).split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  })();
 
   const lockedProps = (field: FieldName) => ({
     disabled: !canEditLocked || saving,
@@ -443,6 +612,7 @@ function ProProfilePage() {
     setSubmitError(null);
     try {
       adopt(await api.submit());
+      setDeclarationAccepted(false);
       setConfirmOpen(false);
       setSaveSuccess("Your profile has been submitted for review.");
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -467,11 +637,13 @@ function ProProfilePage() {
     const selectErrors: FieldErrors = {};
     if (!values.credentialType) selectErrors.credentialType = CHOOSE_OPTION;
     if (!values.consultationMode) selectErrors.consultationMode = CHOOSE_OPTION;
+    if (!values.state) selectErrors.state = CHOOSE_OPTION;
     if (needsRegistration && !values.registrationBody) selectErrors.registrationBody = CHOOSE_OPTION;
     const fillErrors: FieldErrors = {};
-    for (const field of ["yearsExperience", "consultationFee", "availabilityNote", "contactPhone"] as const) {
+    for (const field of ["dateOfBirth", "yearsExperience", "consultationFee", "availabilityNote", "contactPhone"] as const) {
       if (!values[field].trim()) fillErrors[field] = FILL_IN;
     }
+    if (specialtiesOf(values).length === 0) fillErrors.specialties = "Please choose at least one specialization.";
     if (Object.keys(selectErrors).length > 0 || Object.keys(fillErrors).length > 0) {
       setErrors((current) => ({ ...current, ...selectErrors, ...fillErrors }));
       setSubmitError({
@@ -573,7 +745,11 @@ function ProProfilePage() {
           />
         </Group>
 
-        <Group title="Practice details" description="You can update these details at any time.">
+        <Group
+          title="Practice details"
+          description="You can update these details at any time, except your date of birth, which only the admin can change after you submit."
+        >
+          <SubHeading>About you</SubHeading>
           <TextAreaField
             label="Bio"
             required
@@ -585,10 +761,97 @@ function ProProfilePage() {
             disabled={saving}
             className="sm:col-span-2"
           />
-          <ChipInputField label="Specialties" required values={values.specialties} onChange={(v) => set("specialties", v)} error={errors.specialties} disabled={saving} placeholder="Anxiety" />
-          <ChipInputField label="Languages" required values={values.languages} onChange={(v) => set("languages", v)} error={errors.languages} disabled={saving} placeholder="Hindi" />
+          <TextField
+            label="Date of birth"
+            required
+            type="date"
+            min={minDateOfBirth}
+            max={maxDateOfBirth}
+            value={values.dateOfBirth}
+            onChange={(v) => set("dateOfBirth", v)}
+            {...lockedProps("dateOfBirth")}
+            helper={
+              canEditLocked
+                ? `You must be between ${MIN_AGE} and ${MAX_AGE} years old. Your date of birth is never shown in the public directory.`
+                : LOCKED_HELPER
+            }
+          />
+          <div className="flex flex-col gap-2 sm:col-span-2" role="group" aria-labelledby="specializations-label">
+            <span id="specializations-label" className="text-sm font-medium text-foreground">
+              Specializations
+              <span aria-hidden="true" className="text-destructive">
+                {" "}*
+              </span>
+              <span className="sr-only"> (required)</span>
+            </span>
+            <p className="text-xs text-muted-foreground">{SPECIALIZATIONS_HELPER}</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {FIXED_SPECIALIZATIONS.map((label) => (
+                <CheckboxField
+                  key={label}
+                  label={label}
+                  checked={values.specializations.includes(label)}
+                  onChange={(ticked) => toggleSpecialization(label, ticked)}
+                  disabled={saving}
+                />
+              ))}
+              <CheckboxField
+                label={PRO_SPECIALIZATION_OTHER}
+                checked={values.otherSpecializationTicked}
+                onChange={(ticked) => {
+                  set("otherSpecializationTicked", ticked);
+                  if (!ticked) clearErrors("otherSpecialization");
+                  clearErrors("specialties");
+                }}
+                disabled={saving}
+              />
+            </div>
+            {values.otherSpecializationTicked ? (
+              <TextField
+                label="Your role"
+                required
+                placeholder="Please describe your role"
+                value={values.otherSpecialization}
+                onChange={(v) => set("otherSpecialization", v)}
+                error={errors.otherSpecialization}
+                helper={`Between ${MIN_SPECIALTY} and ${MAX_LIST_ITEM} characters.`}
+                disabled={saving}
+                className="sm:max-w-md"
+              />
+            ) : null}
+            {errors.specialties ? <p className="text-xs text-destructive">{errors.specialties}</p> : null}
+          </div>
+          <SubHeading>Contact</SubHeading>
+          <TextField
+            label="Contact email"
+            type="email"
+            value={me.profile.contactEmail}
+            onChange={() => {}}
+            disabled
+            helper="This is the email on your account. Booking requests are sent here."
+          />
+          <TextField label="Contact phone" required type="tel" inputMode="tel" placeholder="98765 43210" value={values.contactPhone} onChange={(v) => set("contactPhone", v)} error={errors.contactPhone} disabled={saving}
+            helper="A 10-digit Indian mobile number. It is not shown in the public directory." />
+
+          <SubHeading>Location</SubHeading>
+          <SelectField
+            label="State"
+            required
+            emptyLabel="Select state"
+            value={values.state}
+            onChange={(v) => set("state", v)}
+            options={me.stateOptions.map((name) => ({ value: name, label: name }))}
+            error={errors.state}
+            helper={
+              unlistedSavedState
+                ? `Your saved state, "${unlistedSavedState}", is not in the list. Please choose your state or union territory.`
+                : undefined
+            }
+            disabled={saving}
+          />
           <TextField label="City" required placeholder="Pune" value={values.city} onChange={(v) => set("city", v)} error={errors.city} disabled={saving} />
-          <TextField label="State" placeholder="Maharashtra" value={values.state} onChange={(v) => set("state", v)} error={errors.state} disabled={saving} />
+
+          <SubHeading>Consultation</SubHeading>
           <SelectField
             label="Consultation mode"
             required
@@ -598,8 +861,6 @@ function ProProfilePage() {
             error={errors.consultationMode}
             disabled={saving}
           />
-          <TextField label="Years of experience" required digits={2} placeholder="5" value={values.yearsExperience} onChange={(v) => set("yearsExperience", v)} error={errors.yearsExperience} disabled={saving}
-            helper={`A whole number from 0 to ${MAX_YEARS_EXPERIENCE}.`} />
           <TextField label="Consultation fee (₹ per session)" required digits={6} placeholder="1000" value={values.consultationFee} onChange={(v) => set("consultationFee", v)} error={errors.consultationFee} disabled={saving}
             helper="Enter 0 if you do not charge a fee." />
           <TextField
@@ -611,11 +872,19 @@ function ProProfilePage() {
             error={errors.availabilityNote}
             helper={AVAILABILITY_HELPER}
             disabled={saving}
+            className="sm:col-span-2"
           />
-          <TextField label="Contact phone" required type="tel" inputMode="tel" placeholder="98765 43210" value={values.contactPhone} onChange={(v) => set("contactPhone", v)} error={errors.contactPhone} disabled={saving}
-            helper="A 10-digit Indian mobile number. It is not shown in the public directory." />
+
+          <SubHeading>Experience</SubHeading>
+          <TextField label="Years of experience" required digits={2} placeholder="5" value={values.yearsExperience} onChange={(v) => set("yearsExperience", v)} error={errors.yearsExperience} disabled={saving}
+            helper={`A whole number from 0 to ${MAX_YEARS_EXPERIENCE}.`} />
+
+          <SubHeading>Languages</SubHeading>
+          <ChipInputField label="Languages" required values={values.languages} onChange={(v) => set("languages", v)} error={errors.languages} disabled={saving} placeholder="Hindi" />
+
+          <SubHeading>Photo</SubHeading>
           <TextField
-            label="Photo URL"
+            label="Photo URL (optional)"
             type="url"
             inputMode="url"
             placeholder="https://example.com/photo.jpg"
@@ -626,11 +895,38 @@ function ProProfilePage() {
             disabled={saving}
             className="sm:col-span-2"
           />
-          <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <span className="text-sm font-medium text-foreground">Contact email</span>
-            <p className="text-sm text-muted-foreground">
-              {me.profile.contactEmail}. This comes from your sign-in account and is used for notifications.
-            </p>
+        </Group>
+
+        <Group title="Social media profiles (optional)" description={SOCIAL_HELPER}>
+          <div className="flex flex-col gap-3 sm:col-span-2">
+            {PRO_SOCIAL_PLATFORMS.map((platform) => {
+              const info = PRO_SOCIAL_PLATFORM_INFO[platform];
+              const ticked = values.socialLinks[platform] !== undefined;
+              return (
+                <div key={platform} className="flex flex-col gap-2">
+                  <CheckboxField
+                    label={info.label}
+                    checked={ticked}
+                    onChange={(next) => setSocialLink(platform, next ? "" : undefined)}
+                    disabled={saving}
+                  />
+                  {ticked ? (
+                    <TextField
+                      label={`${info.label} link`}
+                      type="url"
+                      inputMode="url"
+                      placeholder={info.placeholder}
+                      value={values.socialLinks[platform] ?? ""}
+                      onChange={(v) => setSocialLink(platform, v)}
+                      error={errors[`socialLinks.${platform}`]}
+                      helper="The link must start with https://."
+                      disabled={saving}
+                      className="pl-6.5 sm:max-w-lg"
+                    />
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </Group>
 
@@ -661,7 +957,7 @@ function ProProfilePage() {
         </div>
       </form>
 
-      <ProDocuments me={me} api={api} onChanged={refreshAfterDocuments} />
+      <ProDocuments me={me} api={api} onChanged={refreshAfterDocuments} credentialType={values.credentialType} />
 
       {canAttemptSubmit ? (
         <section className="flex flex-col gap-4 rounded-2xl bg-card p-6 ring-1 ring-foreground/10 sm:p-8" aria-labelledby="submit-heading">
@@ -690,10 +986,22 @@ function ProProfilePage() {
           )}
           {dirty ? <p className="text-sm text-muted-foreground">Save your changes before you submit.</p> : null}
 
+          {/* No Privacy Policy or Terms page exists yet, so those names are plain text. */}
+          <CheckboxField
+            checked={declarationAccepted}
+            onChange={setDeclarationAccepted}
+            disabled={submitting}
+            label={
+              <>
+                {DECLARATION_START} Privacy Policy and Terms. {DECLARATION_END}
+              </>
+            }
+          />
+
           <button
             type="button"
             className={cn(primaryButtonClass, "self-start")}
-            disabled={dirty || saving || submitting}
+            disabled={dirty || saving || submitting || !declarationAccepted}
             onClick={startSubmit}
           >
             <Send className="size-4" aria-hidden="true" />

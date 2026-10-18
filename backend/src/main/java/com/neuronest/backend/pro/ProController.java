@@ -69,8 +69,11 @@ public class ProController {
         return ResponseEntity.noContent().build();
     }
 
+    // Body: {"declarationAccepted": true}. A missing body is treated as not accepted (400 with the
+    // declaration in the missing list), not as a parse error.
     @PostMapping("/me/submit")
-    public ProMeResponse submit(@AuthenticationPrincipal ProPrincipal principal) {
-        return profiles.submit(principal);
+    public ProMeResponse submit(@AuthenticationPrincipal ProPrincipal principal,
+                                @RequestBody(required = false) JsonNode body) {
+        return profiles.submit(principal, body);
     }
 }

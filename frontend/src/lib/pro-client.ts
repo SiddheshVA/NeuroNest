@@ -47,9 +47,41 @@ export const PRO_REGISTRATION_BODY_LABELS: Record<ProRegistrationBody, string> =
 
 export const PRO_DOCUMENT_TYPE_LABELS: Record<ProDocumentType, string> = {
   REGISTRATION_CERTIFICATE: "Registration certificate",
-  ID_PROOF: "Proof of identity",
+  ID_PROOF: "Government ID proof",
   DEGREE_CERTIFICATE: "Degree certificate",
   OTHER: "Additional document",
+};
+
+/** The fixed "Specializations" choices. Anything else saved is shown as the "Other" text. */
+export const PRO_SPECIALIZATIONS = [
+  "Clinical Psychologist",
+  "Counselling Psychologist",
+  "Rehabilitation Psychologist",
+  "Psychiatrist",
+  "Counsellor / Therapist",
+  "Child & Adolescent Specialist",
+  "Marriage & Family Therapist",
+  "Addiction Specialist",
+  "Neuropsychologist",
+  "Health Psychologist",
+  "School Psychologist",
+  "Career Counsellor",
+  "Mental Health Social Worker",
+  "Wellness / Life Coach",
+] as const;
+export const PRO_SPECIALIZATION_OTHER = "Other";
+
+export const PRO_SOCIAL_PLATFORMS = ["LINKEDIN", "INSTAGRAM", "FACEBOOK", "X", "YOUTUBE", "WEBSITE"] as const;
+export type ProSocialPlatform = (typeof PRO_SOCIAL_PLATFORMS)[number];
+
+/** Label, example link and allowed hosts (subdomains allowed) for each platform; mirrors SocialLinks.java. */
+export const PRO_SOCIAL_PLATFORM_INFO: Record<ProSocialPlatform, { label: string; placeholder: string; hosts: string[] }> = {
+  LINKEDIN: { label: "LinkedIn", placeholder: "https://www.linkedin.com/in/your-name", hosts: ["linkedin.com"] },
+  INSTAGRAM: { label: "Instagram", placeholder: "https://www.instagram.com/your-name", hosts: ["instagram.com"] },
+  FACEBOOK: { label: "Facebook", placeholder: "https://www.facebook.com/your-name", hosts: ["facebook.com"] },
+  X: { label: "X (Twitter)", placeholder: "https://x.com/your-name", hosts: ["x.com", "twitter.com"] },
+  YOUTUBE: { label: "YouTube", placeholder: "https://www.youtube.com/@your-channel", hosts: ["youtube.com", "youtu.be"] },
+  WEBSITE: { label: "Website", placeholder: "https://www.your-practice.in", hosts: [] },
 };
 
 /** The registration bodies each credential type may use (mirrors SubmissionChecklist), in display order. */
@@ -94,6 +126,10 @@ export interface ProProfile {
   contactPhone: string | null;
   availabilityNote: string | null;
   photoUrl: string | null;
+  /** YYYY-MM-DD. Only ever shown to the professional and the admin. */
+  dateOfBirth: string | null;
+  /** Only ever shown to the professional and the admin. */
+  socialLinks: Partial<Record<ProSocialPlatform, string>>;
   verificationStatus: ProVerificationStatus;
   verified: boolean;
   active: boolean;
@@ -117,7 +153,13 @@ export interface ProMe {
   profile: ProProfile;
   verificationNote: { note: string; action: string | null; at: string | null } | null;
   documents: ProDocument[];
+  /** For the saved credential type. */
   requiredDocuments: ProDocumentType[];
+  optionalDocuments: ProDocumentType[];
+  /** The same rule for every credential type, from the backend (SubmissionChecklist). */
+  documentRules: Record<ProCredentialType, { required: ProDocumentType[]; optional: ProDocumentType[] }>;
+  /** The states and union territories the backend accepts, in display order (IndianStates). */
+  stateOptions: string[];
   missingDocuments: ProDocumentType[];
   missingForSubmit: ProMissingItem[];
   canEditCredentials: boolean;
@@ -128,6 +170,7 @@ export interface ProMe {
 /** Body of PUT /api/pro/me. Only fields present are changed; the backend ignores anything else. */
 export type ProUpdate = Partial<{
   fullName: string;
+  dateOfBirth: string | null;
   credentialType: ProCredentialType;
   qualifications: string | null;
   registrationBody: ProRegistrationBody | null;
@@ -146,6 +189,7 @@ export type ProUpdate = Partial<{
   availabilityNote: string | null;
   photoUrl: string | null;
   contactPhone: string | null;
+  socialLinks: Partial<Record<ProSocialPlatform, string>>;
 }>;
 
 export const DISABLED_ACCOUNT_MESSAGE = "This professional account has been disabled. Please contact support.";
@@ -281,7 +325,8 @@ export function useProApi() {
       },
       deleteDocument: (docId: string) =>
         request<void>(`/pro/me/documents/${encodeURIComponent(docId)}`, { method: "DELETE" }),
-      submit: () => request<ProMe>("/pro/me/submit", { method: "POST" }),
+      submit: () =>
+        request<ProMe>("/pro/me/submit", { method: "POST", body: JSON.stringify({ declarationAccepted: true }) }),
     }),
     [request],
   );

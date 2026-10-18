@@ -9,6 +9,7 @@ import {
   ProApiError,
   checkUploadFile,
   formatFileSize,
+  type ProCredentialType,
   type ProDocument,
   type ProDocumentType,
   type ProMe,
@@ -16,6 +17,14 @@ import {
 } from "@/lib/pro-client";
 
 type ProApi = ReturnType<typeof useProApi>["api"];
+
+// The three identity and qualification documents, always shown in this order, then "Additional document".
+const DOCUMENT_CARDS: { type: ProDocumentType; hint: string }[] = [
+  { type: "REGISTRATION_CERTIFICATE", hint: "RCI, NMC or State Medical Council registration" },
+  { type: "DEGREE_CERTIFICATE", hint: "M.Phil Psychology, MD Psychiatry or equivalent" },
+  { type: "ID_PROOF", hint: "Passport, PAN card, driving licence or Aadhaar with the first 8 digits masked" },
+  { type: "OTHER", hint: "Any other supporting document, if you have one" },
+];
 
 function formatDate(iso: string) {
   const date = new Date(iso);
@@ -26,7 +35,18 @@ function formatDate(iso: string) {
  * Required-document checklist, uploads and the list of uploaded files. Only file names and details
  * are shown: no link or address to any file is ever displayed or built.
  */
-function ProDocuments({ me, api, onChanged }: { me: ProMe; api: ProApi; onChanged: () => Promise<void> }) {
+function ProDocuments({
+  me,
+  api,
+  onChanged,
+  credentialType,
+}: {
+  me: ProMe;
+  api: ProApi;
+  onChanged: () => Promise<void>;
+  /** The credential type currently selected in the form, which may not be saved yet. */
+  credentialType: ProCredentialType | "";
+}) {
   const editable = me.canManageDocuments;
   const inputRef = useRef<HTMLInputElement>(null);
   const [pendingType, setPendingType] = useState<ProDocumentType | null>(null);
@@ -38,7 +58,14 @@ function ProDocuments({ me, api, onChanged }: { me: ProMe; api: ProApi; onChange
 
   const atLimit = me.documents.length >= MAX_DOCUMENTS;
   const uploadedTypes = new Set(me.documents.map((d) => d.docType));
-  const rows: ProDocumentType[] = [...me.requiredDocuments, "OTHER"];
+  // Which documents are required comes only from the backend's rules (the registration certificate is
+  // optional only for counselors). They follow the credential type selected in the form; until one is
+  // chosen, every document that any credential type requires is shown as required.
+  const rule = credentialType ? me.documentRules[credentialType] : undefined;
+  const required = new Set<ProDocumentType>(
+    rule ? rule.required : Object.values(me.documentRules).flatMap((r) => r.required),
+  );
+  const optional = new Set<ProDocumentType>(rule ? rule.optional : []);
 
   const chooseFile = (type: ProDocumentType) => {
     setError(null);
@@ -123,13 +150,13 @@ function ProDocuments({ me, api, onChanged }: { me: ProMe; api: ProApi; onChange
       />
 
       <ul className="flex flex-col divide-y divide-border rounded-xl ring-1 ring-foreground/10">
-        {rows.map((type) => {
-          const required = type !== "OTHER";
+        {DOCUMENT_CARDS.map(({ type, hint }) => {
+          const isRequired = required.has(type);
           const done = uploadedTypes.has(type);
           return (
             <li key={type} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
               <span className="flex items-center gap-2.5 text-sm">
-                {required ? (
+                {isRequired ? (
                   done ? (
                     <CheckCircle2 className="size-5 text-emerald-600" aria-hidden="true" />
                   ) : (
@@ -139,14 +166,25 @@ function ProDocuments({ me, api, onChanged }: { me: ProMe; api: ProApi; onChange
                   <FileText className="size-5 text-muted-foreground" aria-hidden="true" />
                 )}
                 <span>
-                  <span className="font-medium text-foreground">{PRO_DOCUMENT_TYPE_LABELS[type]}</span>
-                  <span className="block text-xs text-muted-foreground">
-                    {required
-                      ? done
-                        ? "Required. This document has been uploaded."
-                        : "Required. This document has not been uploaded yet."
-                      : "Optional. Upload any other supporting document."}
+                  <span className="font-medium text-foreground">
+                    {PRO_DOCUMENT_TYPE_LABELS[type]}
+                    {isRequired ? (
+                      <>
+                        <span aria-hidden="true" className="text-destructive">
+                          {" "}*
+                        </span>
+                        <span className="sr-only"> (required)</span>
+                      </>
+                    ) : optional.has(type) ? (
+                      <span className="font-normal text-muted-foreground"> (optional)</span>
+                    ) : null}
                   </span>
+                  <span className="block text-xs text-muted-foreground">{hint}.</span>
+                  {isRequired || done ? (
+                    <span className="block text-xs text-muted-foreground">
+                      {done ? "This document has been uploaded." : "This document has not been uploaded yet."}
+                    </span>
+                  ) : null}
                 </span>
               </span>
               <button
@@ -156,7 +194,7 @@ function ProDocuments({ me, api, onChanged }: { me: ProMe; api: ProApi; onChange
                 onClick={() => chooseFile(type)}
               >
                 <Upload className="size-4" aria-hidden="true" />
-                {busyType === type ? "Uploading" : done && required ? "Upload another" : "Upload"}
+                {busyType === type ? "Uploading" : done && type !== "OTHER" ? "Upload another" : "Upload"}
               </button>
             </li>
           );

@@ -8,6 +8,7 @@ import com.neuronest.backend.professional.RegistrationBody;
 import com.neuronest.backend.professional.VerificationStatus;
 
 import java.time.LocalDate;
+import java.time.Period;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -24,6 +25,8 @@ public final class SubmissionChecklist {
     static final int MIN_BIO_LENGTH = 50;
     static final int MIN_AVAILABILITY_NOTE = 10;
     static final int MAX_YEARS_EXPERIENCE = 60;
+    static final int MIN_AGE = 21;
+    static final int MAX_AGE = 90;
     static final Set<VerificationStatus> EDITABLE_STATUSES = EnumSet.of(VerificationStatus.DRAFT, VerificationStatus.NEEDS_INFO);
 
     private SubmissionChecklist() {}
@@ -64,10 +67,27 @@ public final class SubmissionChecklist {
         return m.matches() ? "+91" + m.group(1) : null;
     }
 
+    /** Age in whole years on the given day (the caller passes today in IST). */
+    static int ageOn(LocalDate dateOfBirth, LocalDate today) {
+        return Period.between(dateOfBirth, today).getYears();
+    }
+
+    static boolean ageAllowed(LocalDate dateOfBirth, LocalDate today) {
+        if (dateOfBirth.isAfter(today)) return false;
+        int age = ageOn(dateOfBirth, today);
+        return age >= MIN_AGE && age <= MAX_AGE;
+    }
+
+    // The degree certificate and ID proof are required for everyone. The registration certificate is
+    // required for psychiatrists and psychologists, and optional only for counselors.
     static List<DocumentType> requiredDocuments(CredentialType type) {
         return isRegistered(type)
-                ? List.of(DocumentType.REGISTRATION_CERTIFICATE, DocumentType.ID_PROOF)
-                : List.of(DocumentType.DEGREE_CERTIFICATE);
+                ? List.of(DocumentType.REGISTRATION_CERTIFICATE, DocumentType.DEGREE_CERTIFICATE, DocumentType.ID_PROOF)
+                : List.of(DocumentType.DEGREE_CERTIFICATE, DocumentType.ID_PROOF);
+    }
+
+    static List<DocumentType> optionalDocuments(CredentialType type) {
+        return type == CredentialType.COUNSELOR ? List.of(DocumentType.REGISTRATION_CERTIFICATE) : List.of();
     }
 
     static List<DocumentType> missingDocuments(CredentialType type, Set<DocumentType> uploaded) {
@@ -77,13 +97,24 @@ public final class SubmissionChecklist {
     static List<MissingItem> missing(Professional p, Set<DocumentType> uploaded, LocalDate today) {
         List<MissingItem> missing = new ArrayList<>();
         if (blank(p.getFullName())) missing.add(new MissingItem("fullName", "Add your full name."));
+        if (p.getDateOfBirth() == null) {
+            missing.add(new MissingItem("dateOfBirth", "Add your date of birth."));
+        } else if (!ageAllowed(p.getDateOfBirth(), today)) {
+            missing.add(new MissingItem("dateOfBirth", "Your age must be between " + MIN_AGE + " and " + MAX_AGE
+                    + " years. Please check your date of birth."));
+        }
         if (p.getCredentialType() == null) missing.add(new MissingItem("credentialType", "Choose your credential type."));
         if (blank(p.getContactEmail())) missing.add(new MissingItem("contactEmail", "Your account has no contact email."));
         if (p.getConsultationMode() == null) missing.add(new MissingItem("consultationMode", "Choose how you consult."));
         if (blank(p.getQualifications())) missing.add(new MissingItem("qualifications", "Add your qualifications."));
+        if (blank(p.getState())) {
+            missing.add(new MissingItem("state", "Choose the state or union territory you practise in."));
+        } else if (IndianStates.canonical(p.getState()) == null) {
+            missing.add(new MissingItem("state", "Choose your state or union territory from the list."));
+        }
         if (blank(p.getCity())) missing.add(new MissingItem("city", "Add the city you practise in."));
         if (p.getLanguages().isEmpty()) missing.add(new MissingItem("languages", "Add at least one language."));
-        if (p.getSpecialties().isEmpty()) missing.add(new MissingItem("specialties", "Add at least one specialty."));
+        if (p.getSpecialties().isEmpty()) missing.add(new MissingItem("specialties", "Choose at least one specialization."));
         if (p.getBio() == null || p.getBio().trim().length() < MIN_BIO_LENGTH) {
             missing.add(new MissingItem("bio", "Write a bio of at least " + MIN_BIO_LENGTH + " characters."));
         }
@@ -138,7 +169,7 @@ public final class SubmissionChecklist {
     static String describe(DocumentType doc) {
         return switch (doc) {
             case REGISTRATION_CERTIFICATE -> "registration certificate";
-            case ID_PROOF -> "proof of identity";
+            case ID_PROOF -> "government ID proof";
             case DEGREE_CERTIFICATE -> "degree certificate";
             case OTHER -> "document";
         };

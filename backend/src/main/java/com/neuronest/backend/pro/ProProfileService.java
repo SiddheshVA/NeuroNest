@@ -3,6 +3,7 @@ package com.neuronest.backend.pro;
 import com.neuronest.backend.config.ApiValidationException;
 import com.neuronest.backend.config.ConflictException;
 import com.neuronest.backend.pro.ProDtos.AccountView;
+import com.neuronest.backend.pro.ProDtos.DocumentRule;
 import com.neuronest.backend.pro.ProDtos.DocumentView;
 import com.neuronest.backend.pro.ProDtos.ProMeResponse;
 import com.neuronest.backend.pro.ProDtos.ProfileView;
@@ -42,6 +43,7 @@ import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -59,6 +61,8 @@ public class ProProfileService {
     static final int MAX_LONG_TEXT = 4000;
     static final int MAX_LIST_ITEMS = 20;
     static final int MAX_LIST_ITEM = 60;
+    static final int MIN_SPECIALTY = 2;
+    static final int MAX_SPECIALTIES = 15;
     // Registration expiry is a calendar date for Indian registrations, so "today" is taken in IST.
     static final ZoneId ZONE = ZoneId.of("Asia/Kolkata");
 
@@ -67,7 +71,7 @@ public class ProProfileService {
     static final Set<VerificationStatus> NOTE_STATUSES = EnumSet.of(VerificationStatus.NEEDS_INFO,
             VerificationStatus.REJECTED, VerificationStatus.EXPIRED, VerificationStatus.SUSPENDED);
 
-    static final List<String> LOCKED_FIELDS = List.of("fullName", "credentialType", "qualifications",
+    static final List<String> LOCKED_FIELDS = List.of("fullName", "dateOfBirth", "credentialType", "qualifications",
             "registrationBody", "registrationNumber", "registrationCouncil", "registrationYear", "registrationExpiry");
 
     private final ProfessionalRepository professionals;
@@ -180,6 +184,8 @@ public class ProProfileService {
         // Locked fields: parsed first so a 409 can name exactly what was being changed.
         lockedField(b, "fullName", () -> required("fullName", b.text("fullName"), MAX_TEXT), p.getFullName(),
                 p::setFullName, changes, changedLocked);
+        LocalDate dateOfBirth = lockedField(b, "dateOfBirth", () -> b.date("dateOfBirth"), p.getDateOfBirth(),
+                p::setDateOfBirth, changes, changedLocked);
         CredentialType credentialType = lockedField(b, "credentialType",
                 () -> requiredEnum(CredentialType.class, "credentialType", b.text("credentialType")),
                 p.getCredentialType(), p::setCredentialType, changes, changedLocked);
@@ -205,10 +211,13 @@ public class ProProfileService {
 
         // Always editable (outside DISABLED, which the filter already refused).
         if (b.has("bio")) { String v = limit("bio", b.text("bio"), MAX_LONG_TEXT); changes.add(() -> p.setBio(v)); }
-        if (b.has("specialties")) { List<String> v = b.list("specialties"); changes.add(() -> p.setSpecialties(v)); }
+        if (b.has("specialties")) {
+            List<String> v = b.list("specialties", MIN_SPECIALTY, MAX_SPECIALTIES);
+            changes.add(() -> p.setSpecialties(v));
+        }
         if (b.has("languages")) { List<String> v = b.list("languages"); changes.add(() -> p.setLanguages(v)); }
         if (b.has("city")) { String v = limit("city", b.text("city"), MAX_TEXT); changes.add(() -> p.setCity(v)); }
-        if (b.has("state")) { String v = limit("state", b.text("state"), MAX_TEXT); changes.add(() -> p.setState(v)); }
+        if (b.has("state")) { String v = state(b.text("state")); changes.add(() -> p.setState(v)); }
         if (b.has("consultationMode")) {
             ConsultationMode v = requiredEnum(ConsultationMode.class, "consultationMode", b.text("consultationMode"));
             changes.add(() -> p.setConsultationMode(v));
@@ -227,11 +236,22 @@ public class ProProfileService {
         }
         if (b.has("photoUrl")) { String v = photoUrl(b.text("photoUrl")); changes.add(() -> p.setPhotoUrl(v)); }
         if (b.has("contactPhone")) { String v = phone(b.text("contactPhone")); changes.add(() -> p.setContactPhone(v)); }
+        // Social links stay editable in every status; the object sent replaces the saved one.
+        if (b.has("socialLinks")) {
+            Map<String, String> v = SocialLinks.parse(b.raw("socialLinks"));
+            changes.add(() -> p.setSocialLinks(v));
+        }
 
         // Rules across fields, checked on the resulting values before anything is applied. The
         // year and registration-body rules only apply when this request changes those fields, so an
         // older value set by the admin never blocks an unrelated edit.
         int currentYear = Year.now(clock).getValue();
+        LocalDate today = LocalDate.now(clock);
+        if (changedLocked.contains("dateOfBirth") && dateOfBirth != null
+                && !SubmissionChecklist.ageAllowed(dateOfBirth, today)) {
+            throw new ApiValidationException("dateOfBirth must give an age between " + SubmissionChecklist.MIN_AGE
+                    + " and " + SubmissionChecklist.MAX_AGE + " years.");
+        }
         if (changedLocked.contains("registrationYear") && registrationYear != null
                 && (registrationYear < MIN_REGISTRATION_YEAR || registrationYear > currentYear)) {
             throw new ApiValidationException("registrationYear must be between " + MIN_REGISTRATION_YEAR + " and "
@@ -262,8 +282,10 @@ public class ProProfileService {
 
     // ---- Submitting ----
 
+    // The body must be {"declarationAccepted": true}. The declaration is accepted again on every
+    // submission (including after NEEDS_INFO), and each acceptance stores a new timestamp.
     @Transactional
-    public ProMeResponse submit(ProPrincipal principal) {
+    public ProMeResponse submit(ProPrincipal principal, JsonNode body) {
         ProfessionalAccount account = account(principal);
         Professional p = professional(account);
         VerificationStatus from = p.getVerificationStatus();
@@ -271,17 +293,29 @@ public class ProProfileService {
             throw new ConflictException("Your profile can only be submitted while it is a draft or needs more "
                     + "information. Its current status is " + from + ".");
         }
-        List<MissingItem> missing = SubmissionChecklist.missing(p, uploadedTypes(p.getId()), LocalDate.now(clock));
+        List<MissingItem> missing = new ArrayList<>(
+                SubmissionChecklist.missing(p, uploadedTypes(p.getId()), LocalDate.now(clock)));
+        if (!declarationAccepted(body)) {
+            missing.add(new MissingItem("declaration", "Tick the declaration at the end of the form to confirm that "
+                    + "your information is true and that you consent to background verification."));
+        }
         if (!missing.isEmpty()) {
             throw new ProExceptions.SubmissionIncompleteException(missing);
         }
         p.setVerificationStatus(VerificationStatus.SUBMITTED);
         p.setVerified(false);
         p.setSubmittedAt(clock.instant());
+        p.setDeclarationAcceptedAt(clock.instant());
         Professional saved = professionals.saveAndFlush(p);
         verificationLog.save(new VerificationLogEntry(p.getId(), "SUBMITTED", from, VerificationStatus.SUBMITTED,
                 ACTOR, null));
         return view(saved, account);
+    }
+
+    private static boolean declarationAccepted(JsonNode body) {
+        if (body == null || !body.isObject()) return false;
+        JsonNode value = body.get("declarationAccepted");
+        return value != null && value.isBoolean() && value.asBoolean();
     }
 
     // ---- Shared ----
@@ -314,11 +348,24 @@ public class ProProfileService {
                 latestNote(p),
                 docs.stream().map(DocumentView::from).toList(),
                 SubmissionChecklist.requiredDocuments(p.getCredentialType()).stream().map(Enum::name).toList(),
+                SubmissionChecklist.optionalDocuments(p.getCredentialType()).stream().map(Enum::name).toList(),
+                documentRules(),
+                IndianStates.ALL,
                 SubmissionChecklist.missingDocuments(p.getCredentialType(), uploaded).stream().map(Enum::name).toList(),
                 missing,
                 editable,
                 editable,
                 editable && missing.isEmpty());
+    }
+
+    private static Map<String, DocumentRule> documentRules() {
+        Map<String, DocumentRule> rules = new java.util.LinkedHashMap<>();
+        for (CredentialType type : CredentialType.values()) {
+            rules.put(type.name(), new DocumentRule(
+                    SubmissionChecklist.requiredDocuments(type).stream().map(Enum::name).toList(),
+                    SubmissionChecklist.optionalDocuments(type).stream().map(Enum::name).toList()));
+        }
+        return rules;
     }
 
     // The note is professionals.verification_notes, the field the admin's needs-info and reject decisions
@@ -364,6 +411,10 @@ public class ProProfileService {
             return node.has(field);
         }
 
+        JsonNode raw(String field) {
+            return node.get(field);
+        }
+
         String text(String field) {
             JsonNode value = node.get(field);
             if (value == null || value.isNull()) return null;
@@ -390,8 +441,12 @@ public class ProProfileService {
             }
         }
 
-        // Trims entries and drops blanks and case-insensitive duplicates, keeping order.
         List<String> list(String field) {
+            return list(field, 1, MAX_LIST_ITEMS);
+        }
+
+        // Trims entries and drops blanks and case-insensitive duplicates, keeping order.
+        List<String> list(String field, int minItem, int maxItems) {
             JsonNode value = node.get(field);
             if (value == null || value.isNull()) return new ArrayList<>();
             if (!value.isArray()) throw new ApiValidationException(field + " must be a list of text values.");
@@ -406,10 +461,14 @@ public class ProProfileService {
                     throw new ApiValidationException("Each entry in " + field + " must be at most " + MAX_LIST_ITEM
                             + " characters.");
                 }
+                if (trimmed.length() < minItem) {
+                    throw new ApiValidationException("Each entry in " + field + " must be between " + minItem + " and "
+                            + MAX_LIST_ITEM + " characters.");
+                }
                 if (seen.add(trimmed.toLowerCase(Locale.ROOT))) cleaned.add(trimmed);
             }
-            if (cleaned.size() > MAX_LIST_ITEMS) {
-                throw new ApiValidationException(field + " can have at most " + MAX_LIST_ITEMS + " entries.");
+            if (cleaned.size() > maxItems) {
+                throw new ApiValidationException(field + " can have at most " + maxItems + " entries.");
             }
             return cleaned;
         }
@@ -427,6 +486,16 @@ public class ProProfileService {
             throw new ApiValidationException(field + " must be at most " + max + " characters.");
         }
         return trimmed;
+    }
+
+    // Null clears it; otherwise it must be a listed state or union territory, stored with the listed spelling.
+    private static String state(String value) {
+        if (value == null) return null;
+        String listed = IndianStates.canonical(value);
+        if (listed == null) {
+            throw new ApiValidationException("state must be one of the Indian states or union territories in the list.");
+        }
+        return listed;
     }
 
     private static Integer consultationFee(Integer value) {

@@ -7,12 +7,15 @@ import com.neuronest.backend.professional.ProfessionalDocument;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 // Request/response shapes for /api/pro/**. Entities are never serialized directly. Documents never
 // include their storage path, and the professional's view omits admin-internal fields (verifiedBy,
-// verificationSource, isSampleData).
+// verificationSource, isSampleData). The date of birth and social links are only ever returned to the
+// professional themselves (and to the admin), never in a public view.
 public final class ProDtos {
 
     private ProDtos() {}
@@ -47,6 +50,8 @@ public final class ProDtos {
             String contactPhone,
             String availabilityNote,
             String photoUrl,
+            LocalDate dateOfBirth,
+            Map<String, String> socialLinks,
             String verificationStatus,
             boolean verified,
             boolean active,
@@ -63,8 +68,8 @@ public final class ProDtos {
                     List.copyOf(p.getSpecialties()), List.copyOf(p.getLanguages()), p.getCity(), p.getState(),
                     p.getConsultationMode().name(), p.getConsultationFee(), p.getYearsExperience(),
                     p.getContactEmail(), p.getContactPhone(), p.getAvailabilityNote(), p.getPhotoUrl(),
-                    p.getVerificationStatus().name(), p.isVerified(), p.isActive(), p.getSubmittedAt(),
-                    p.getVerifiedAt(), p.getNextRecheckDate(), p.getCreatedAt(), p.getUpdatedAt());
+                    p.getDateOfBirth(), new LinkedHashMap<>(p.getSocialLinks()), p.getVerificationStatus().name(),
+                    p.isVerified(), p.isActive(), p.getSubmittedAt(), p.getVerifiedAt(),p.getNextRecheckDate(), p.getCreatedAt(), p.getUpdatedAt());
         }
     }
 
@@ -78,12 +83,21 @@ public final class ProDtos {
     /** The most recent note explaining a verification decision (for example why more information is needed). */
     public record VerificationNoteView(String note, String action, Instant at) {}
 
+    /** The documents one credential type must provide, and the ones it may provide. */
+    public record DocumentRule(List<String> required, List<String> optional) {}
+
     public record ProMeResponse(
             AccountView account,
             ProfileView profile,
             VerificationNoteView verificationNote,
             List<DocumentView> documents,
+            // For the saved credential type.
             List<String> requiredDocuments,
+            List<String> optionalDocuments,
+            // The same rule for every credential type, so the form can follow an unsaved credential type choice.
+            Map<String, DocumentRule> documentRules,
+            // The states and union territories that state may be set to (IndianStates).
+            List<String> stateOptions,
             List<String> missingDocuments,
             List<MissingItem> missingForSubmit,
             // What the professional may do in the current status.
