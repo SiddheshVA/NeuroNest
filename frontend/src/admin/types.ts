@@ -93,6 +93,10 @@ export interface ProfessionalDetail {
   verificationNotes: string | null;
   nextRecheckDate: string | null;
   submittedAt: string | null;
+  /** Read-only for the admin; set by the professional on their own profile. */
+  dateOfBirth: string | null;
+  socialLinks: Partial<Record<SocialPlatform, string>>;
+  declarationAcceptedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -143,4 +147,122 @@ export interface ProfessionalListFilters {
   active?: "true" | "false" | "";
   page: number;
   size: number;
+}
+
+// ---- Verification (AdminVerificationDtos and AdminVerificationService) ----
+
+export const SOCIAL_PLATFORMS = ["LINKEDIN", "INSTAGRAM", "FACEBOOK", "X", "YOUTUBE", "WEBSITE"] as const;
+export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
+export const SOCIAL_PLATFORM_LABELS: Record<SocialPlatform, string> = {
+  LINKEDIN: "LinkedIn",
+  INSTAGRAM: "Instagram",
+  FACEBOOK: "Facebook",
+  X: "X (Twitter)",
+  YOUTUBE: "YouTube",
+  WEBSITE: "Website",
+};
+
+export const DOCUMENT_TYPES = ["REGISTRATION_CERTIFICATE", "DEGREE_CERTIFICATE", "ID_PROOF", "OTHER"] as const;
+export type DocumentType = (typeof DOCUMENT_TYPES)[number];
+export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
+  REGISTRATION_CERTIFICATE: "Registration certificate",
+  DEGREE_CERTIFICATE: "Degree certificate",
+  ID_PROOF: "Government ID proof",
+  OTHER: "Additional document",
+};
+
+// The admin record has no requiredDocuments, so this mirrors SubmissionChecklist.requiredDocuments:
+// the registration certificate is optional only for counselors.
+export function requiredDocuments(type: CredentialType): DocumentType[] {
+  return type === "COUNSELOR"
+    ? ["DEGREE_CERTIFICATE", "ID_PROOF"]
+    : ["REGISTRATION_CERTIFICATE", "DEGREE_CERTIFICATE", "ID_PROOF"];
+}
+
+export const VERIFICATION_SOURCES = ["NMC", "STATE_COUNCIL", "RCI", "DEGREE_CERTIFICATE", "OTHER"] as const;
+export type VerificationSource = (typeof VERIFICATION_SOURCES)[number];
+export const VERIFICATION_SOURCE_LABELS: Record<VerificationSource, string> = {
+  NMC: "NMC (National Medical Commission)",
+  STATE_COUNCIL: "State Medical Council",
+  RCI: "RCI (Rehabilitation Council of India)",
+  DEGREE_CERTIFICATE: "Degree certificate",
+  OTHER: "Other",
+};
+
+/** Mirrors AdminVerificationService.allowedSources. */
+export function allowedSources(type: CredentialType): VerificationSource[] {
+  if (type === "PSYCHIATRIST") return ["NMC", "STATE_COUNCIL", "OTHER"];
+  if (type === "PSYCHOLOGIST") return ["RCI", "OTHER"];
+  return ["DEGREE_CERTIFICATE", "OTHER"];
+}
+
+/** Mirrors AdminVerificationService.REGISTERED_CHECKLIST and COUNSELOR_CHECKLIST, with the labels shown. */
+export function verificationChecklist(type: CredentialType): { key: string; label: string }[] {
+  if (type === "COUNSELOR") {
+    return [
+      { key: "nameMatchesDegree", label: "The name on the degree certificate matches the profile." },
+      { key: "degreeCertificateSeen", label: "I have seen the degree certificate." },
+      { key: "credentialTypeMatches", label: "The credential type matches what the person claims." },
+    ];
+  }
+  return [
+    { key: "nameMatchesRegister", label: "The name matches the official register and the ID proof." },
+    { key: "registrationNumberChecked", label: "I checked the registration number on the official register." },
+    { key: "registrationActive", label: "The registration is active and its expiry date is in the future." },
+    { key: "credentialTypeMatches", label: "The credential type matches what the person claims." },
+    { key: "idMatchesPerson", label: "The ID proof matches the person." },
+  ];
+}
+
+export const LOG_ACTION_LABELS: Record<string, string> = {
+  SUBMITTED: "Submitted",
+  VERIFIED: "Verified",
+  NEEDS_INFO: "Sent back for more information",
+  REJECTED: "Rejected",
+  EXPIRED: "Expired",
+  SUSPENDED: "Suspended",
+  REINSTATED: "Reinstated",
+};
+
+export interface ReviewQueueItem {
+  id: string;
+  fullName: string;
+  credentialType: CredentialType;
+  city: string | null;
+  submittedAt: string | null;
+  documentCount: number;
+  registrationBody: RegistrationBody | null;
+  registrationNumber: string | null;
+  registrationExpiry: string | null;
+}
+
+export interface AdminDocument {
+  id: string;
+  docType: DocumentType;
+  originalFilename: string | null;
+  contentType: string | null;
+  sizeBytes: number | null;
+  uploadedAt: string;
+}
+
+export interface LogEntry {
+  action: string;
+  fromStatus: string | null;
+  toStatus: string | null;
+  actor: string;
+  source: string | null;
+  note: string | null;
+  evidenceDocumentId: string | null;
+  createdAt: string;
+}
+
+/** Body of POST /{id}/verify. Empty optional values are left out. */
+export interface VerifyRequest {
+  source: VerificationSource;
+  registrationExpiry?: string;
+  nextRecheckDate?: string;
+  notes?: string;
+  evidenceDocumentId?: string;
+  activate: boolean;
+  checklist: Record<string, boolean>;
 }

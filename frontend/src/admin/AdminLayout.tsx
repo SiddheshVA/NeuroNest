@@ -1,19 +1,23 @@
-import { useEffect } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import AppBar from "@mui/material/AppBar";
+import Badge from "@mui/material/Badge";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import LogoutRounded from "@mui/icons-material/LogoutRounded";
 import {
+  AdminApiError,
   adminSessionRemainingMs,
   clearAdminSession,
   EXPIRED_LOGIN_PATH,
+  getReviewQueue,
   setAdminUnauthorizedHandler,
 } from "./admin-api";
 
-// Admin chrome: a top bar with the title and a log out button. Also sends the admin back to the
+// Admin chrome: a top bar with the title, the navigation (with the number of professionals waiting for
+// review) and a log out button. Also sends the admin back to the
 // login page on any 401 from the API, and when the token's expiry time is reached.
 export function AdminLayout() {
   const navigate = useNavigate();
@@ -36,6 +40,21 @@ export function AdminLayout() {
     };
   }, [navigate, location.pathname, location.search]);
 
+  // The waiting count is refreshed on every page change, so it is current after each decision.
+  const [waitingCount, setWaitingCount] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getReviewQueue(0, 1)
+      .then((page) => !cancelled && setWaitingCount(page.totalElements))
+      .catch((e) => {
+        // A 401 is already handled by the API helper; any other failure just hides the badge.
+        if (!cancelled && !(e instanceof AdminApiError && e.status === 401)) setWaitingCount(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname]);
+
   const logOut = () => {
     clearAdminSession();
     navigate("/admin/login", { replace: true });
@@ -45,9 +64,36 @@ export function AdminLayout() {
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default", color: "text.primary" }}>
       <AppBar position="sticky" color="primary">
         <Toolbar sx={{ gap: 2 }}>
-          <Typography variant="h6" component="span" sx={{ flexGrow: 1, fontWeight: 700 }}>
+          <Typography variant="h6" component="span" sx={{ fontWeight: 700, mr: 2 }}>
             NeuroNest Admin
           </Typography>
+          <Box component="nav" aria-label="Admin" sx={{ display: "flex", gap: 1, flexGrow: 1, flexWrap: "wrap" }}>
+            <Button color="inherit" component={NavLink} to="/admin/professionals" sx={navLinkSx}>
+              Professionals
+            </Button>
+            <Button
+              color="inherit"
+              component={NavLink}
+              to="/admin/review"
+              // Extra room on the right so the count badge does not overlap the button edge.
+              sx={{ ...navLinkSx, pr: waitingCount ? 3.5 : 1.5 }}
+              aria-label={
+                waitingCount === null
+                  ? "Review queue"
+                  : `Review queue, ${waitingCount} ${waitingCount === 1 ? "professional" : "professionals"} waiting`
+              }
+            >
+              <Badge
+                color="secondary"
+                badgeContent={waitingCount ?? 0}
+                max={99}
+                invisible={!waitingCount}
+                sx={{ "& .MuiBadge-badge": { right: -12 } }}
+              >
+                Review queue
+              </Badge>
+            </Button>
+          </Box>
           <Button color="inherit" variant="outlined" startIcon={<LogoutRounded />} onClick={logOut}>
             Log out
           </Button>
@@ -59,3 +105,10 @@ export function AdminLayout() {
     </Box>
   );
 }
+
+// The current section is underlined (NavLink adds the "active" class).
+const navLinkSx = {
+  borderRadius: 2,
+  px: 1.5,
+  "&.active": { textDecoration: "underline", textUnderlineOffset: "6px", textDecorationThickness: "2px" },
+} as const;

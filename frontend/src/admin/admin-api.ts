@@ -1,11 +1,15 @@
 import { API_BASE } from "@/lib/api";
 import type {
+  AdminDocument,
+  LogEntry,
   PageResponse,
   ProfessionalDetail,
   ProfessionalListFilters,
   ProfessionalRequest,
   ProfessionalSummary,
   ProfessionalUpdateResult,
+  ReviewQueueItem,
+  VerifyRequest,
 } from "./types";
 
 // Admin API client. Completely separate from the public apiFetch: it never sends the Clerk token or
@@ -25,10 +29,13 @@ interface StoredSession {
 
 export class AdminApiError extends Error {
   readonly status: number;
+  /** The "missing" list some 400 responses include, such as unconfirmed checklist items. */
+  readonly missing: string[];
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, missing: string[] = []) {
     super(message);
     this.status = status;
+    this.missing = missing;
   }
 }
 
@@ -94,13 +101,22 @@ function handleUnauthorized(): never {
 }
 
 async function errorMessage(response: Response): Promise<string> {
+  return (await errorDetails(response)).message;
+}
+
+async function errorDetails(response: Response): Promise<{ message: string; missing: string[] }> {
   try {
     const body = await response.json();
-    if (body && typeof body.error === "string") return body.error;
+    if (body && typeof body.error === "string") {
+      const missing: string[] = Array.isArray(body.missing)
+        ? body.missing.filter((item: unknown): item is string => typeof item === "string")
+        : [];
+      return { message: body.error, missing };
+    }
   } catch {
     // Not JSON; fall through to a generic message.
   }
-  return `The request failed with status ${response.status}. Please try again.`;
+  return { message: `The request failed with status ${response.status}. Please try again.`, missing: [] };
 }
 
 async function send(path: string, init: RequestInit, token: string | null): Promise<Response> {
@@ -120,7 +136,10 @@ async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T>
   if (!token) handleUnauthorized();
   const response = await send(path, init, token);
   if (response.status === 401) handleUnauthorized();
-  if (!response.ok) throw new AdminApiError(response.status, await errorMessage(response));
+  if (!response.ok) {
+    const { message, missing } = await errorDetails(response);
+    throw new AdminApiError(response.status, message, missing);
+  }
   return (await response.json()) as T;
 }
 
@@ -169,5 +188,53 @@ export function setProfessionalActive(id: string, active: boolean) {
   return adminRequest<ProfessionalDetail>(`/admin/professionals/${encodeURIComponent(id)}/active`, {
     method: "PATCH",
     body: JSON.stringify({ active }),
+  });
+}
+
+// ---- Verification ----
+
+const professionalPath = (id: string) => `/admin/professionals/${encodeURIComponent(id)}`;
+
+export function getReviewQueue(page: number, size: number) {
+  return adminRequest<PageResponse<ReviewQueueItem>>(`/admin/professionals/review-queue?page=${page}&size=${size}`);
+}
+
+export function getDocuments(id: string) {
+  return adminRequest<AdminDocument[]>(`${professionalPath(id)}/documents`);
+}
+
+export function getVerificationLog(id: string) {
+  return adminRequest<LogEntry[]>(`${professionalPath(id)}/log`);
+}
+
+// Fetched with the admin token in the Authorization header and returned as a Blob. The token never goes
+// into a URL, and there is no direct link to the file.
+export async function getDocumentFile(id: string, docId: string): Promise<Blob> {
+  const token = getValidAdminToken();
+  if (!token) handleUnauthorized();
+  const response = await send(`${professionalPath(id)}/documents/${encodeURIComponent(docId)}/file`, {}, token);
+  if (response.status === 401) handleUnauthorized();
+  if (!response.ok) throw new AdminApiError(response.status, await errorMessage(response));
+  return response.blob();
+}
+
+export function verifyProfessional(id: string, request: VerifyRequest) {
+  return adminRequest<ProfessionalDetail>(`${professionalPath(id)}/verify`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export function requestMoreInformation(id: string, note: string) {
+  return adminRequest<ProfessionalDetail>(`${professionalPath(id)}/needs-info`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+}
+
+export function rejectProfessional(id: string, reason: string) {
+  return adminRequest<ProfessionalDetail>(`${professionalPath(id)}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
   });
 }

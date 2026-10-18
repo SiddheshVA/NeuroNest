@@ -7,6 +7,7 @@ import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
 import FormControlLabel from "@mui/material/FormControlLabel";
+import FormHelperText from "@mui/material/FormHelperText";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -460,6 +461,7 @@ export function ProfessionalFormPage() {
                 }
                 label="This is sample data, not a real professional."
               />
+              {errors.isSampleData && <FormHelperText error>{errors.isSampleData}</FormHelperText>}
             </Section>
 
             <Divider />

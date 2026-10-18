@@ -7,6 +7,8 @@ import { AdminLayout } from "./AdminLayout";
 import { AdminLoginPage } from "./AdminLoginPage";
 import { ProfessionalsListPage } from "./ProfessionalsListPage";
 import { ProfessionalFormPage } from "./ProfessionalFormPage";
+import { ReviewQueuePage } from "./ReviewQueuePage";
+import { ReviewPlaceholderPage } from "./ReviewPlaceholderPage";
 
 // Everything under /admin. Loaded lazily from App.tsx, so none of this code ships in the public
 // bundle, and rendered outside RootLayout, so the public navbar and footer never appear here.
@@ -28,6 +30,8 @@ export default function AdminRoutes() {
           <Route path="professionals" element={<ProfessionalsListPage />} />
           <Route path="professionals/new" element={<ProfessionalFormPage key="new" />} />
           <Route path="professionals/:id/edit" element={<EditProfessionalRoute />} />
+          <Route path="review" element={<ReviewQueuePage />} />
+          <Route path="review/:id" element={<ReviewPlaceholderPage />} />
           <Route path="*" element={<Navigate to="professionals" replace />} />
         </Route>
       </Routes>
