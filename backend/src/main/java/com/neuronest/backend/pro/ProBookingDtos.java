@@ -81,6 +81,30 @@ public final class ProBookingDtos {
 
     public record ProBookingPage(List<ProBookingView> items, int page, int size, long totalElements, int totalPages) {}
 
+    /** A CONFIRMED appointment. The contact details follow the same rule as ProBookingView. */
+    public record ProAppointmentView(
+            UUID id,
+            String contactName,
+            String preferredMode,
+            String meetingMethod,
+            String meetingLink,
+            String meetingAddress,
+            OffsetDateTime scheduledTime,
+            String professionalNote,
+            String contactEmail,
+            String contactPhone) {
+
+        static ProAppointmentView from(Booking b, Instant now) {
+            ProBookingView view = ProBookingView.from(b, now);
+            return new ProAppointmentView(view.id(), view.contactName(), view.preferredMode(), view.meetingMethod(),
+                    view.meetingLink(), view.meetingAddress(), view.preferredDatetime(), view.professionalNote(),
+                    view.contactEmail(), view.contactPhone());
+        }
+    }
+
+    public record ProAppointmentPage(List<ProAppointmentView> items, int page, int size, long totalElements,
+                                     int totalPages) {}
+
     /** pending: PENDING requests that have not expired. awaitingUser: ALTERNATE_PROPOSED requests that have not expired. */
     public record ProBookingSummary(long pending, long awaitingUser) {}
 }

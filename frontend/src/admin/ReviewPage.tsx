@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Link as RouterLink, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -10,7 +10,6 @@ import Paper from "@mui/material/Paper";
 import Snackbar from "@mui/material/Snackbar";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
 import { AdminApiError, getDocuments, getProfessional, getVerificationLog } from "./admin-api";
 import { ageFromDateOfBirth, formatDate, formatDateTime, isPastDate } from "./format";
 import { RegisterShortcutsCard } from "./RegisterShortcutsCard";
@@ -84,16 +83,9 @@ export function ReviewPage() {
     };
   }, [id, reloadCount]);
 
-  const backLink = (
-    <Button component={RouterLink} to="/admin/review" startIcon={<ArrowBackRounded />} sx={{ alignSelf: "flex-start" }}>
-      Back to the review queue
-    </Button>
-  );
-
   if (state.status === "loading") {
     return (
       <Stack spacing={3}>
-        {backLink}
         <Box sx={{ display: "grid", placeItems: "center", py: 10 }}>
           <CircularProgress aria-label="Loading the professional" />
         </Box>
@@ -103,7 +95,6 @@ export function ReviewPage() {
   if (state.status === "not-found") {
     return (
       <Stack spacing={3}>
-        {backLink}
         <Alert severity="warning">This professional was not found.</Alert>
       </Stack>
     );
@@ -111,7 +102,6 @@ export function ReviewPage() {
   if (state.status === "error") {
     return (
       <Stack spacing={3}>
-        {backLink}
         <Alert
           severity="error"
           action={
@@ -135,7 +125,6 @@ export function ReviewPage() {
 
   return (
     <Stack spacing={3}>
-      {backLink}
       <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", flexWrap: "wrap", rowGap: 1 }}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
           {p.fullName}

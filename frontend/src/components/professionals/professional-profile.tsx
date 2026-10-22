@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import Link from "next/link";
+import { BackLink } from "@/components/navigation/back-link";
 import {
-  ArrowLeft,
   Briefcase,
   CalendarX,
   GraduationCap,
@@ -34,16 +33,9 @@ const REGISTRATION_BODY_LABELS: Record<string, string> = {
   OTHER: "Another registration body",
 };
 
+// The shared back control (to Find Professional, from the central map).
 function BackToDirectory() {
-  return (
-    <Link
-      href="/professionals"
-      className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline"
-    >
-      <ArrowLeft className="size-4" aria-hidden="true" />
-      Back to the directory
-    </Link>
-  );
+  return <BackLink />;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {

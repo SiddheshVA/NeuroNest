@@ -57,7 +57,49 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     long countByProfessionalIdAndStatusAndExpiresAtAfter(UUID professionalId, BookingStatus status, Instant now);
 
+    // ---- A professional's appointments (CONFIRMED; preferred_datetime is the scheduled time) ----
+
+    /** Upcoming: scheduled now or later. Sort with the Pageable (soonest first). */
+    Page<Booking> findByProfessionalIdAndStatusAndPreferredDatetimeGreaterThanEqual(UUID professionalId,
+                                                                                   BookingStatus status, Instant now,
+                                                                                   Pageable pageable);
+
+    /** Past: scheduled before now. Sort with the Pageable (newest first). */
+    Page<Booking> findByProfessionalIdAndStatusAndPreferredDatetimeLessThan(UUID professionalId, BookingStatus status,
+                                                                           Instant now, Pageable pageable);
+
+    long countByProfessionalIdAndStatusAndPreferredDatetimeGreaterThanEqual(UUID professionalId, BookingStatus status,
+                                                                           Instant now);
+
+    Optional<Booking> findFirstByProfessionalIdAndStatusAndPreferredDatetimeGreaterThanEqualOrderByPreferredDatetimeAscIdAsc(
+            UUID professionalId, BookingStatus status, Instant now);
+
+    /** Bookings in these statuses scheduled in [from, to). */
+    @Query("""
+            select count(b) from Booking b
+            where b.professionalId = :professionalId and b.status in :statuses
+              and b.preferredDatetime >= :fromTime and b.preferredDatetime < :toTime""")
+    long countScheduledBetween(@Param("professionalId") UUID professionalId,
+                               @Param("statuses") Collection<BookingStatus> statuses,
+                               @Param("fromTime") Instant from, @Param("toTime") Instant to);
+
+    /** Open requests (not expired at {@code now}) asking for a time in [from, to). */
+    @Query("""
+            select count(b) from Booking b
+            where b.professionalId = :professionalId and b.status in :statuses and b.expiresAt > :now
+              and b.preferredDatetime >= :fromTime and b.preferredDatetime < :toTime""")
+    long countOpenRequestedBetween(@Param("professionalId") UUID professionalId,
+                                   @Param("statuses") Collection<BookingStatus> statuses, @Param("now") Instant now,
+                                   @Param("fromTime") Instant from, @Param("toTime") Instant to);
+
     Page<Booking> findByUserId(UUID userId, Pageable pageable);
+
+    // ---- The user's own summary ----
+
+    long countByUserIdAndStatusAndExpiresAtAfter(UUID userId, BookingStatus status, Instant now);
+
+    Optional<Booking> findFirstByUserIdAndStatusAndPreferredDatetimeGreaterThanEqualOrderByPreferredDatetimeAscIdAsc(
+            UUID userId, BookingStatus status, Instant now);
 
     // Locks the row, so two quick cancels cannot both see an open status.
     @Lock(LockModeType.PESSIMISTIC_WRITE)

@@ -107,7 +107,7 @@ public class PublicProfessionalService {
         List<AvailabilityDay> days = free.entrySet().stream()
                 .map(e -> new AvailabilityDay(e.getKey(), e.getValue().stream().map(SLOT_FORMAT::format).toList()))
                 .toList();
-        return new PublicAvailability(p.getSessionMinutes(), p.getBufferMinutes(), AvailabilityService.ZONE.getId(), days);
+        return new PublicAvailability(p.getSessionMinutes(), AvailabilityService.ZONE.getId(), days);
     }
 
     /**

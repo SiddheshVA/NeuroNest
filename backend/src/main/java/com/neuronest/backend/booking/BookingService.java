@@ -5,6 +5,8 @@ import com.neuronest.backend.assessment.AssessmentResultRepository;
 import com.neuronest.backend.auth.User;
 import com.neuronest.backend.auth.UserRepository;
 import com.neuronest.backend.booking.BookingDtos.BookingPage;
+import com.neuronest.backend.booking.BookingDtos.BookingSummary;
+import com.neuronest.backend.booking.BookingDtos.NextAppointment;
 import com.neuronest.backend.booking.BookingDtos.BookingView;
 import com.neuronest.backend.booking.BookingDtos.CreateBookingRequest;
 import com.neuronest.backend.config.ApiValidationException;
@@ -212,7 +214,7 @@ public class BookingService {
         }
         switch (slots.check(p, start, now)) {
             case FREE -> { }
-            case TAKEN -> throw new ConflictException(TAKEN_MESSAGE);
+            case TAKEN, DAY_OFF -> throw new ConflictException(TAKEN_MESSAGE);
             case NOT_A_SLOT -> throw new ApiValidationException(field + " is not one of this professional's available "
                     + "times. Please choose a time from their availability.");
         }
@@ -234,6 +236,20 @@ public class BookingService {
         return new BookingPage(result.getContent().stream()
                 .map(b -> BookingView.from(b, byId.get(b.getProfessionalId()))).toList(),
                 page, size, result.getTotalElements(), result.getTotalPages());
+    }
+
+    // Only the user's own bookings: the next confirmed appointment and the open requests that have not expired.
+    @Transactional(readOnly = true)
+    public BookingSummary summary(UUID userId) {
+        Instant now = clock.instant();
+        NextAppointment next = bookings
+                .findFirstByUserIdAndStatusAndPreferredDatetimeGreaterThanEqualOrderByPreferredDatetimeAscIdAsc(
+                        userId, BookingStatus.CONFIRMED, now)
+                .map(b -> NextAppointment.from(b, professionals.findById(b.getProfessionalId()).orElse(null)))
+                .orElse(null);
+        return new BookingSummary(next,
+                bookings.countByUserIdAndStatusAndExpiresAtAfter(userId, BookingStatus.PENDING, now),
+                bookings.countByUserIdAndStatusAndExpiresAtAfter(userId, BookingStatus.ALTERNATE_PROPOSED, now));
     }
 
     // Someone else's booking gets the same 404 as a missing one.
@@ -285,7 +301,8 @@ public class BookingService {
             throw new ConflictException("This suggested time has expired.");
         }
         Instant proposed = b.getProposedDatetime();
-        if (proposed == null || !proposed.isAfter(now) || slots.overlapsConfirmed(p, proposed)) {
+        if (proposed == null || !proposed.isAfter(now) || slots.isDayOff(p, proposed)
+                || slots.overlapsConfirmed(p, proposed)) {
             throw new ConflictException(PROPOSAL_TAKEN_MESSAGE);
         }
         b.setStatus(BookingStatus.CONFIRMED);

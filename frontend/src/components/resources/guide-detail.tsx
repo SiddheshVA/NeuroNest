@@ -7,7 +7,7 @@ import type { Guide } from "@/data/wellness-resources";
 function GuideDetail({ guide }: { guide: Guide }) {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
-      <ResourceBackLink tab="guides" />
+      <ResourceBackLink />
 
       <header className="flex flex-col gap-4">
         <h1 className="font-heading text-3xl font-semibold tracking-tight text-balance text-foreground sm:text-4xl">

@@ -1,3 +1,4 @@
+import { BackLink } from "@/components/navigation/back-link";
 import { useCallback, useSyncExternalStore } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import Link from "next/link";
@@ -35,6 +36,7 @@ function AssessmentResult({ type }: { type: AssessmentType }) {
       <div className="min-h-screen text-[#1C352D]">
         <AssessmentResultBackground />
         <Container className="flex flex-col items-center gap-4 py-24 text-center">
+          <BackLink className="self-start" />
           <h1 className="font-heading text-2xl font-normal sm:text-3xl">No result to show yet</h1>
           <p className="max-w-md text-sm leading-relaxed text-[#4A5750] sm:text-base">
             We couldn&apos;t find a completed {ASSESSMENTS[type].label} check-in. Take a couple of minutes to
@@ -55,6 +57,7 @@ function AssessmentResult({ type }: { type: AssessmentType }) {
     <div className="min-h-screen text-[#1C352D]">
       <AssessmentResultBackground />
       <Container className="py-10 sm:py-14">
+        <BackLink className="mb-4" />
         <AssessmentResultCard result={result} onRetake={handleRetake} />
       </Container>
     </div>

@@ -6,7 +6,7 @@ import { AccentLink } from "@/components/shared/accent-link";
 import { safeRedirectPath } from "@/lib/safe-redirect";
 
 // Shown under the user sign-in and sign-up. Professionals have their own sign-in on /pro/join, which
-// always continues to /pro/profile, so a professional never lands on the user home.
+// always continues to /pro/dashboard, so a professional never lands on the user home.
 function ProfessionalAccent() {
   return (
     <AccentLink to="/pro/join" icon={Stethoscope}>

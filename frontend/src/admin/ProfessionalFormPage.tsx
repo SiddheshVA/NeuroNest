@@ -14,7 +14,6 @@ import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
 import TextField, { type TextFieldProps } from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
 import { AdminApiError, createProfessional, getProfessional, updateProfessional } from "./admin-api";
 import { formatDate, formatDateTime } from "./format";
 import { SampleChip, VerificationStatusChip } from "./VerificationStatusChip";
@@ -305,7 +304,6 @@ export function ProfessionalFormPage() {
   if (loadError) {
     return (
       <Stack spacing={2}>
-        <BackLink />
         <Alert severity="error">{loadError}</Alert>
       </Stack>
     );
@@ -357,7 +355,6 @@ export function ProfessionalFormPage() {
 
   return (
     <Stack spacing={3} ref={topRef}>
-      <BackLink />
       <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", flexWrap: "wrap" }}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
           {isEdit ? "Edit professional" : "Add professional"}
@@ -494,16 +491,6 @@ export function ProfessionalFormPage() {
         <VerificationPanel record={record} onChanged={setRecord} />
       </Box>
     </Stack>
-  );
-}
-
-function BackLink() {
-  return (
-    <Box>
-      <Button component={RouterLink} to="/admin/professionals" startIcon={<ArrowBackRounded />} size="small">
-        Back to professionals
-      </Button>
-    </Box>
   );
 }
 

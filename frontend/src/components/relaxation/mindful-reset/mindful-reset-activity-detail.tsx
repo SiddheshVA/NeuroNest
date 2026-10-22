@@ -1,8 +1,7 @@
 
 import { useState, type ReactNode } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Play } from "lucide-react";
+import { Play } from "lucide-react";
 
 import type {
   MindfulResetActivity,
@@ -107,13 +106,6 @@ function MindfulResetActivityDetail({
 
   return (
     <div className="flex flex-col gap-8 pb-4">
-      <Link
-        href="/relaxation/mindful-reset"
-        className="inline-flex w-fit items-center gap-1 text-sm font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
-      >
-        <ChevronLeft className="size-4" aria-hidden="true" />
-        Mindful Reset
-      </Link>
 
       <div
         className={cn(

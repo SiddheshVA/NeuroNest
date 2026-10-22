@@ -1,9 +1,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
 
 import type { BreathingExercise } from "@/data/breathing-exercises";
 import { breathingSessionTips } from "@/data/breathing-exercises";
@@ -52,13 +50,6 @@ function BreathingExerciseDetail({ exercise }: { exercise: BreathingExercise }) 
 
   return (
     <div className="flex flex-col gap-8 pb-4">
-      <Link
-        href="/relaxation/breathing"
-        className="inline-flex w-fit items-center gap-1 text-sm font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
-      >
-        <ChevronLeft className="size-4" aria-hidden="true" />
-        Breathing Exercises
-      </Link>
 
       <div className="relative w-full overflow-hidden rounded-2xl lg:h-[300px]">
         <Image

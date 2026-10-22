@@ -122,6 +122,14 @@
             <artifactId>testcontainers-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- A real local PostgreSQL started by the security test suite (no Docker), so the public
+             visibility SQL and the other PostgreSQL-only queries run under plain `mvn test`. -->
+        <dependency>
+            <groupId>io.zonky.test</groupId>
+            <artifactId>embedded-postgres</artifactId>
+            <version>2.2.2</version>
+            <scope>test</scope>
+        </dependency>
 	</dependencies>
 
 	<build>

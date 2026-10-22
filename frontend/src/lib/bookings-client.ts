@@ -115,6 +115,28 @@ export function cancelBooking(id: string) {
   return request<BookingView>(`/bookings/${encodeURIComponent(id)}/cancel`, { method: "POST" });
 }
 
+/** GET /api/bookings/summary: the signed-in user's next confirmed appointment and open requests. */
+export interface BookingSummary {
+  nextAppointment: {
+    id: string;
+    /** ISO date-time with the +05:30 offset. */
+    scheduledTime: string;
+    preferredMode: PreferredMode | null;
+    meetingMethod: MeetingMethod | null;
+    meetingLink: string | null;
+    meetingAddress: string | null;
+    professional: { id: string; fullName: string; credentialType: string; city: string | null } | null;
+  } | null;
+  /** PENDING requests that have not expired. */
+  waitingForProfessional: number;
+  /** ALTERNATE_PROPOSED requests that have not expired. */
+  needsYourAnswer: number;
+}
+
+export function getBookingSummary() {
+  return request<BookingSummary>("/bookings/summary");
+}
+
 /** Accepts the time the professional suggested (owner only, from ALTERNATE_PROPOSED). */
 export function acceptProposal(id: string) {
   return request<BookingView>(`/bookings/${encodeURIComponent(id)}/accept-proposal`, { method: "POST" });

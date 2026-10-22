@@ -5,6 +5,7 @@ import { CalendarClock } from "lucide-react";
 
 import { BookingStatusChip } from "@/components/bookings/booking-status-chip";
 import { Container } from "@/components/layout/container";
+import { BackLink } from "@/components/navigation/back-link";
 import { ConfirmDialog, ErrorNotice, LoadingBlock, primaryButtonClass, secondaryButtonClass } from "@/components/pro/pro-ui";
 import { CrisisResourcesBox } from "@/components/shared/crisis-resources-box";
 import {
@@ -289,6 +290,7 @@ export default function AppointmentsPage() {
   return (
     <section className="py-10 sm:py-14">
       <Container className="flex max-w-3xl flex-col gap-6">
+        <BackLink className="-mb-4" />
         <header className="flex items-center gap-3">
           <span className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
             <CalendarClock className="size-5" aria-hidden="true" />

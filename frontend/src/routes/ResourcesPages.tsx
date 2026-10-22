@@ -22,7 +22,7 @@ export function ArticleRoute() {
   const article = getArticleBySlug(slug);
   return (
     <DetailLayout>
-      {article ? <ArticleDetail article={article} /> : <ResourceNotFound kind="article" tab="articles" />}
+      {article ? <ArticleDetail article={article} /> : <ResourceNotFound kind="article" />}
     </DetailLayout>
   );
 }
@@ -32,7 +32,7 @@ export function VideoRoute() {
   const video = getVideoBySlug(slug);
   return (
     <DetailLayout>
-      {video ? <VideoDetail video={video} /> : <ResourceNotFound kind="video" tab="videos" />}
+      {video ? <VideoDetail video={video} /> : <ResourceNotFound kind="video" />}
     </DetailLayout>
   );
 }
@@ -42,7 +42,7 @@ export function GuideRoute() {
   const guide = getGuideBySlug(slug);
   return (
     <DetailLayout>
-      {guide ? <GuideDetail guide={guide} /> : <ResourceNotFound kind="guide" tab="guides" />}
+      {guide ? <GuideDetail guide={guide} /> : <ResourceNotFound kind="guide" />}
     </DetailLayout>
   );
 }

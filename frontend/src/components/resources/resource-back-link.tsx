@@ -1,16 +1,9 @@
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { BackLink } from "@/components/navigation/back-link";
 
-function ResourceBackLink({ tab }: { tab?: "articles" | "videos" | "guides" }) {
-  return (
-    <Link
-      href={tab ? `/resources?tab=${tab}` : "/resources"}
-      className="inline-flex w-fit items-center gap-1 text-sm font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
-    >
-      <ChevronLeft className="size-4" aria-hidden="true" />
-      Back to Resources
-    </Link>
-  );
+// The resource pages' back control: the shared one, whose parent (the right tab of /resources) comes
+// from the central map.
+function ResourceBackLink() {
+  return <BackLink />;
 }
 
 export { ResourceBackLink };

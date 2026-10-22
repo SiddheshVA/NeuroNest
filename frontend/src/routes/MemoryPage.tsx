@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Brain, Loader2, ShieldCheck, Trash2 } from "lucide-react";
+import { BackLink } from "@/components/navigation/back-link";
+import { Brain, Loader2, ShieldCheck, Trash2 } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
 import { Button } from "@/components/ui/button";
@@ -142,14 +142,8 @@ export default function MemoryPage() {
       <Container className="py-10 sm:py-14">
         <div className="mx-auto flex max-w-3xl flex-col gap-8">
           <header>
-            <Link
-              href="/ai-companion"
-              className="inline-flex items-center gap-1.5 text-sm text-[#4A5750] transition-colors hover:text-[#1C352D]"
-            >
-              <ArrowLeft className="size-4" aria-hidden="true" />
-              Back to chat
-            </Link>
-            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-[#5A6E5A]">Settings</p>
+            <BackLink />
+            <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-[#5A6E5A]">Settings</p>
             <h1 className="mt-2 font-heading text-3xl font-normal sm:text-4xl">Memory</h1>
             <p className="mt-2 text-sm text-[#4A5750]">
               Neuro can remember key things you share — like your goals or what helps you — to support you

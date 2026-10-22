@@ -1,7 +1,10 @@
 package com.neuronest.backend.booking;
 
 import com.neuronest.backend.professional.AvailabilityService;
+import com.neuronest.backend.professional.DateRange;
 import com.neuronest.backend.professional.Professional;
+import com.neuronest.backend.professional.ProfessionalDayOff;
+import com.neuronest.backend.professional.ProfessionalDayOffRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -11,41 +14,59 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-// A professional's bookable slots: AvailabilityService's slots for their weekly hours, minus every slot
-// that overlaps a CONFIRMED booking. Shared by the public availability endpoint, the booking check and the
+// A professional's bookable slots: AvailabilityService's slots for their weekly hours, minus their days
+// off and every slot that overlaps a CONFIRMED booking. Shared by the public availability endpoint, the booking check and the
 // professional's confirm, propose and accept checks, so all of them always agree.
 @Service
 public class SlotService {
 
-    public enum SlotCheck { FREE, TAKEN, NOT_A_SLOT }
+    /** DAY_OFF: a slot on the weekly hours, but on a date the professional marked as off. */
+    public enum SlotCheck { FREE, TAKEN, DAY_OFF, NOT_A_SLOT }
 
     private final AvailabilityService availability;
     private final BookingRepository bookings;
+    private final ProfessionalDayOffRepository daysOff;
 
-    public SlotService(AvailabilityService availability, BookingRepository bookings) {
+    public SlotService(AvailabilityService availability, BookingRepository bookings, ProfessionalDayOffRepository daysOff) {
         this.availability = availability;
         this.bookings = bookings;
+        this.daysOff = daysOff;
     }
 
-    /** Free slots per date, from and to included, with taken slots removed. */
+    /** Free slots per date, from and to included, with days off and taken slots removed. */
     public Map<LocalDate, List<ZonedDateTime>> freeSlots(Professional p, LocalDate from, LocalDate to, ZonedDateTime now) {
+        List<DateRange> off = daysOff(p, from, to);
         Map<LocalDate, List<ZonedDateTime>> all = availability.freeSlots(p.getWeeklyHours(), p.getSessionMinutes(),
-                p.getBufferMinutes(), from, to, now, Set.of());
+                p.getBufferMinutes(), from, to, now, Set.of(), off);
         if (all.isEmpty()) return all;
         Set<ZonedDateTime> taken = takenSlots(p, from, to, all);
         return taken.isEmpty() ? all : availability.freeSlots(p.getWeeklyHours(), p.getSessionMinutes(),
-                p.getBufferMinutes(), from, to, now, taken);
+                p.getBufferMinutes(), from, to, now, taken, off);
     }
 
-    /** Whether this exact start time is a free slot, a slot that is already taken, or not a slot at all. */
+    /**
+     * Whether this exact start time is a free slot, a slot that is already taken, a slot on one of the
+     * professional's days off, or not a slot at all.
+     */
     public SlotCheck check(Professional p, Instant start, ZonedDateTime now) {
         LocalDate date = start.atZone(AvailabilityService.ZONE).toLocalDate();
         Map<LocalDate, List<ZonedDateTime>> all = availability.freeSlots(p.getWeeklyHours(), p.getSessionMinutes(),
                 p.getBufferMinutes(), date, date, now, Set.of());
         boolean isSlot = all.getOrDefault(date, List.of()).stream().anyMatch(slot -> slot.toInstant().equals(start));
         if (!isSlot) return SlotCheck.NOT_A_SLOT;
+        if (isDayOff(p, start)) return SlotCheck.DAY_OFF;
         boolean taken = takenSlots(p, date, date, all).stream().anyMatch(slot -> slot.toInstant().equals(start));
         return taken ? SlotCheck.TAKEN : SlotCheck.FREE;
+    }
+
+    /** Whether the date of {@code start} (in India) is one of the professional's days off. */
+    public boolean isDayOff(Professional p, Instant start) {
+        LocalDate date = start.atZone(AvailabilityService.ZONE).toLocalDate();
+        return AvailabilityService.isDayOff(date, daysOff(p, date, date));
+    }
+
+    private List<DateRange> daysOff(Professional p, LocalDate from, LocalDate to) {
+        return daysOff.findOverlapping(p.getId(), from, to).stream().map(ProfessionalDayOff::range).toList();
     }
 
     /**

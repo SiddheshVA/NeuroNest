@@ -1,4 +1,5 @@
 
+import { BackLink } from "@/components/navigation/back-link";
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -128,6 +129,7 @@ export function NuroConversation({
             </NuroPanelToggle>
           )}
           <div>
+            <BackLink className="-my-1" />
             <h1 className="font-heading text-lg font-semibold text-foreground sm:text-xl">
               Chat with Neuro
             </h1>

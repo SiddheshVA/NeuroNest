@@ -30,7 +30,8 @@ class PublicProfessionalServiceTest {
     private final PublicProfessionalRepository repository = mock(PublicProfessionalRepository.class);
     private final PublicProfessionalService service = new PublicProfessionalService(repository,
             new com.neuronest.backend.booking.SlotService(new AvailabilityService(),
-                    mock(com.neuronest.backend.booking.BookingRepository.class)), CLOCK);
+                    mock(com.neuronest.backend.booking.BookingRepository.class),
+                    mock(ProfessionalDayOffRepository.class)), CLOCK);
 
     private static Professional professional(CredentialType type, boolean sample) {
         Professional p = new Professional();
@@ -148,7 +149,9 @@ class PublicProfessionalServiceTest {
 
         assertThat(a.timezone()).isEqualTo("Asia/Kolkata");
         assertThat(a.sessionMinutes()).isEqualTo(60);
-        assertThat(a.bufferMinutes()).isZero();
+        // The buffer between sessions is private: it is not part of the public availability.
+        assertThat(java.util.Arrays.stream(PublicProfessionalDtos.PublicAvailability.class.getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName)).doesNotContain("bufferMinutes");
         // 13 to 27 Oct: Wednesdays 14, 21 (the 28th is outside the default range).
         assertThat(a.days()).extracting(PublicProfessionalDtos.AvailabilityDay::date)
                 .containsExactly(LocalDate.of(2026, 10, 14), LocalDate.of(2026, 10, 21));

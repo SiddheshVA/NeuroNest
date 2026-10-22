@@ -17,6 +17,7 @@ import com.neuronest.backend.professional.AvailabilityService;
 import com.neuronest.backend.professional.Professional;
 import com.neuronest.backend.professional.ProfessionalAccount;
 import com.neuronest.backend.professional.ProfessionalAccountRepository;
+import com.neuronest.backend.professional.ProfessionalDayOffRepository;
 import com.neuronest.backend.professional.ProfessionalRepository;
 import com.neuronest.backend.professional.PublicProfessionalService;
 import com.neuronest.backend.safety.CrisisResource;
@@ -371,7 +372,7 @@ class BookingNotificationTest {
 
     private BookingService userService(BookingNotificationListener l) {
         ApplicationEventPublisher publisher = event -> l.handle((BookingEvent) event);
-        BookingService service = new BookingService(bookings, new SlotService(new AvailabilityService(), bookings),
+        BookingService service = new BookingService(bookings, new SlotService(new AvailabilityService(), bookings, mock(ProfessionalDayOffRepository.class)),
                 mock(PublicProfessionalService.class), professionals, mock(ProfessionalAccountRepository.class),
                 mock(UserRepository.class), mock(AssessmentResultRepository.class), publisher);
         ReflectionTestUtils.setField(service, "clock", CLOCK);
@@ -383,7 +384,7 @@ class BookingNotificationTest {
         ProfessionalAccountRepository accounts = mock(ProfessionalAccountRepository.class);
         when(accounts.findByClerkUserId("pro_clerk"))
                 .thenReturn(Optional.of(new ProfessionalAccount(professionalId, PRO_EMAIL, "pro_clerk")));
-        ProBookingService service = new ProBookingService(bookings, new SlotService(new AvailabilityService(), bookings),
+        ProBookingService service = new ProBookingService(bookings, new SlotService(new AvailabilityService(), bookings, mock(ProfessionalDayOffRepository.class)),
                 professionals, accounts, publisher);
         ReflectionTestUtils.setField(service, "clock", CLOCK);
         return service;

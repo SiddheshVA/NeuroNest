@@ -63,9 +63,11 @@ public final class PublicProfessionalDtos {
         }
     }
 
-    /** GET /api/professionals/{id}/availability. Slots are ISO date-times with the +05:30 offset. */
-    public record PublicAvailability(Integer sessionMinutes, int bufferMinutes, String timezone,
-                                     List<AvailabilityDay> days) {}
+    /**
+     * GET /api/professionals/{id}/availability. Slots are ISO date-times with the +05:30 offset. The buffer
+     * between sessions is private and only shapes which slots exist.
+     */
+    public record PublicAvailability(Integer sessionMinutes, String timezone, List<AvailabilityDay> days) {}
 
     public record AvailabilityDay(LocalDate date, List<String> slots) {}
 

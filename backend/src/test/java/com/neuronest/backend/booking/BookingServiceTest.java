@@ -50,7 +50,8 @@ class BookingServiceTest {
     private final ProfessionalAccountRepository accounts = mock(ProfessionalAccountRepository.class);
     private final UserRepository users = mock(UserRepository.class);
     private final AssessmentResultRepository assessments = mock(AssessmentResultRepository.class);
-    private final SlotService slots = new SlotService(new AvailabilityService(), bookings);
+    private final ProfessionalDayOffRepository daysOff = mock(ProfessionalDayOffRepository.class);
+    private final SlotService slots = new SlotService(new AvailabilityService(), bookings, daysOff);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final PublicProfessionalService directory = new PublicProfessionalService(directoryRepository, slots, CLOCK);
     private final BookingService service = new BookingService(bookings, slots, directory, professionals, accounts, users, assessments, events, CLOCK);
@@ -312,6 +313,65 @@ class BookingServiceTest {
     }
 
     // ---- reading and cancelling ----
+
+
+    // Marks a single date as off for this professional, as the repository's overlap query would answer.
+    private void dayOff(LocalDate off, String reason) {
+        when(daysOff.findOverlapping(eq(professionalId), any(), any())).thenAnswer(inv -> {
+            LocalDate from = inv.getArgument(1);
+            LocalDate to = inv.getArgument(2);
+            return off.isBefore(from) || off.isAfter(to) ? List.of()
+                    : List.of(new ProfessionalDayOff(professionalId, off, off, reason));
+        });
+    }
+
+    @Test
+    void aSlotOnADayOffIsNotOfferedAndBookingItIsAConflict() {
+        dayOff(LocalDate.of(2026, 10, 14), "PRIVATE-REASON family wedding");
+
+        var availability = directory.availability(professionalId.toString(), "2026-10-13", "2026-10-21");
+
+        assertThat(availability.days()).extracting(d -> d.date()).containsExactly(LocalDate.of(2026, 10, 21));
+        assertThat(availability.toString()).doesNotContain("PRIVATE-REASON");
+        assertThatThrownBy(() -> book(WED_18)).isInstanceOf(ConflictException.class)
+                .hasMessage(BookingService.TAKEN_MESSAGE);
+        assertThatThrownBy(() -> service.create(userId, request("2026-10-21T18:00:00+05:30", WED_19, true)))
+                .isInstanceOf(ConflictException.class).hasMessage(BookingService.TAKEN_MESSAGE);
+        verify(bookings, never()).saveAndFlush(any());
+        // The next Wednesday is still bookable.
+        assertThat(book("2026-10-21T18:00:00+05:30").status()).isEqualTo("PENDING");
+    }
+
+    @Test
+    void theSummaryUsesOnlyTheUsersOwnBookingsAndTheProfessionalsPublicFields() {
+        Booking next = existing(BookingStatus.CONFIRMED, WED_18, null, userId);
+        ReflectionTestUtils.setField(next, "id", UUID.randomUUID());
+        next.setPreferredMode("IN_PERSON");
+        next.setMeetingMethod("IN_PERSON");
+        next.setMeetingAddress("Clinic 4, MG Road, Pune");
+        doReturn(Optional.of(next)).when(bookings)
+                .findFirstByUserIdAndStatusAndPreferredDatetimeGreaterThanEqualOrderByPreferredDatetimeAscIdAsc(
+                        userId, BookingStatus.CONFIRMED, NOW);
+        doReturn(3L).when(bookings).countByUserIdAndStatusAndExpiresAtAfter(userId, BookingStatus.PENDING, NOW);
+        doReturn(1L).when(bookings).countByUserIdAndStatusAndExpiresAtAfter(userId, BookingStatus.ALTERNATE_PROPOSED, NOW);
+        when(professionals.findById(professionalId)).thenReturn(Optional.of(professional));
+
+        var summary = service.summary(userId);
+
+        assertThat(summary.waitingForProfessional()).isEqualTo(3);
+        assertThat(summary.needsYourAnswer()).isEqualTo(1);
+        assertThat(summary.nextAppointment().id()).isEqualTo(next.getId());
+        assertThat(summary.nextAppointment().scheduledTime()).isEqualTo(OffsetDateTime.parse(WED_18));
+        assertThat(summary.nextAppointment().meetingAddress()).isEqualTo("Clinic 4, MG Road, Pune");
+        assertThat(summary.nextAppointment().professional().fullName()).isEqualTo("Dr. Asha Rao");
+        assertThat(summary.toString()).doesNotContain("asha@example.com", "user@example.com");
+
+        UUID otherUser = UUID.randomUUID();
+        var empty = service.summary(otherUser);
+        assertThat(empty.nextAppointment()).isNull();
+        assertThat(empty.waitingForProfessional()).isZero();
+        verify(bookings).countByUserIdAndStatusAndExpiresAtAfter(otherUser, BookingStatus.PENDING, NOW);
+    }
 
     @Test
     void cancelWorksOnceAndASecondCancelIsAConflict() {

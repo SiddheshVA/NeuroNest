@@ -16,6 +16,7 @@ import {
   getReviewQueue,
   setAdminUnauthorizedHandler,
 } from "./admin-api";
+import { AdminBackLink } from "./AdminBackLink";
 
 // Admin chrome: a top bar with the title, the navigation (with the number of professionals waiting for
 // review and of requests with no reply after 48 hours) and a log out button. Also sends the admin back to the
@@ -143,6 +144,7 @@ export function AdminLayout() {
         </Toolbar>
       </AppBar>
       <Box component="main" sx={{ maxWidth: 1200, mx: "auto", px: { xs: 2, md: 3 }, py: { xs: 3, md: 4 } }}>
+        <AdminBackLink />
         <Outlet />
       </Box>
     </Box>

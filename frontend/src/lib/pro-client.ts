@@ -11,6 +11,7 @@ import type {
   ProBookingSummary,
   ProposeBookingBody,
 } from "./pro-bookings";
+import type { ProAppointmentPage, ProDashboard, ProDayOff, ProDayOffCreated, ProDayOffRequest } from "./pro-home";
 
 /**
  * Client for the professional self-service API (/api/pro/**). Shapes mirror the backend's ProDtos
@@ -282,7 +283,7 @@ export function useProApi() {
     return null;
   }, []);
 
-  // Signed-out professionals sign in on /pro/join, which always continues to /pro/profile.
+  // Signed-out professionals sign in on /pro/join, which always continues to /pro/dashboard.
   const goToSignIn = useCallback(() => {
     navigate("/pro/join", { replace: true });
   }, [navigate]);
@@ -372,6 +373,14 @@ export function useProApi() {
         request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}/decline`, { method: "POST", body: JSON.stringify(body) }),
       proposeBooking: (id: string, body: ProposeBookingBody) =>
         request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}/propose`, { method: "POST", body: JSON.stringify(body) }),
+      // Home summary, confirmed appointments and days off.
+      dashboard: () => request<ProDashboard>("/pro/dashboard"),
+      appointments: (when: "upcoming" | "past", page: number, size: number) =>
+        request<ProAppointmentPage>(`/pro/appointments?${new URLSearchParams({ when, page: String(page), size: String(size) })}`),
+      daysOff: () => request<ProDayOff[]>("/pro/days-off"),
+      addDayOff: (body: ProDayOffRequest) =>
+        request<ProDayOffCreated>("/pro/days-off", { method: "POST", body: JSON.stringify(body) }),
+      deleteDayOff: (id: string) => request<void>(`/pro/days-off/${encodeURIComponent(id)}`, { method: "DELETE" }),
     }),
     [request],
   );

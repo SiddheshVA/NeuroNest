@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useUser } from "@clerk/clerk-react";
 import { AlertTriangle, ClipboardCheck, Loader2, MessageCircle } from "lucide-react";
+import { AppointmentsSummary } from "@/components/dashboard/appointments-summary";
 import { Container } from "@/components/layout/container";
+import { BackLink } from "@/components/navigation/back-link";
 import { apiFetch } from "@/lib/api";
 
 interface DashboardAssessment {
@@ -89,6 +91,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-[#FBF9F4] text-[#1C352D]">
       <Container className="py-10 sm:py-14">
+        <BackLink className="mb-4" />
         {loading && (
           <div className="flex justify-center py-24 text-[#4A5750]">
             <Loader2 className="size-6 animate-spin" aria-label="Loading" />
@@ -189,6 +192,8 @@ export default function DashboardPage() {
                 </Link>
               </section>
             </div>
+
+            <AppointmentsSummary />
           </div>
         )}
       </Container>

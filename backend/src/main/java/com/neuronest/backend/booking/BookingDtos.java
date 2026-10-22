@@ -70,10 +70,33 @@ public final class BookingDtos {
                     b.getSharedAssessment(), b.getAssessmentSharedAt());
         }
 
-        private static OffsetDateTime inIndia(Instant instant) {
+        static OffsetDateTime inIndia(Instant instant) {
             return instant == null ? null : instant.atZone(AvailabilityService.ZONE).toOffsetDateTime();
         }
     }
 
     public record BookingPage(List<BookingView> items, int page, int size, long totalElements, int totalPages) {}
+
+    /**
+     * The signed-in user's next confirmed appointment. The meeting details are the ones the professional
+     * set for this user; the professional's own contact details are never included.
+     */
+    public record NextAppointment(
+            UUID id,
+            // Shown in Indian Standard Time, for example 2026-10-20T18:00+05:30.
+            OffsetDateTime scheduledTime,
+            String preferredMode,
+            String meetingMethod,
+            String meetingLink,
+            String meetingAddress,
+            ProfessionalSummary professional) {
+
+        static NextAppointment from(Booking b, Professional p) {
+            return new NextAppointment(b.getId(), BookingView.inIndia(b.getPreferredDatetime()), b.getPreferredMode(),
+                    b.getMeetingMethod(), b.getMeetingLink(), b.getMeetingAddress(), ProfessionalSummary.from(p));
+        }
+    }
+
+    /** GET /api/bookings/summary: counts of open requests that have not expired, and the next appointment. */
+    public record BookingSummary(NextAppointment nextAppointment, long waitingForProfessional, long needsYourAnswer) {}
 }

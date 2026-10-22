@@ -39,6 +39,14 @@ public class AvailabilityService {
                                                          Integer sessionMinutes, int bufferMinutes,
                                                          LocalDate from, LocalDate to, ZonedDateTime now,
                                                          Set<ZonedDateTime> taken) {
+        return freeSlots(weeklyHours, sessionMinutes, bufferMinutes, from, to, now, taken, List.of());
+    }
+
+    /** As above, and no slot at all on a date inside any of {@code daysOff}. */
+    public Map<LocalDate, List<ZonedDateTime>> freeSlots(Map<String, List<Map<String, String>>> weeklyHours,
+                                                         Integer sessionMinutes, int bufferMinutes,
+                                                         LocalDate from, LocalDate to, ZonedDateTime now,
+                                                         Set<ZonedDateTime> taken, Collection<DateRange> daysOff) {
         Map<LocalDate, List<ZonedDateTime>> result = new TreeMap<>();
         if (sessionMinutes == null || sessionMinutes <= 0 || from == null || to == null || now == null
                 || to.isBefore(from)) {
@@ -56,7 +64,7 @@ public class AvailabilityService {
 
         for (LocalDate date = from; !date.isAfter(end); date = date.plusDays(1)) {
             List<WeeklyHours.Range> ranges = rangesByDay.get(date.getDayOfWeek());
-            if (ranges == null) continue;
+            if (ranges == null || isDayOff(date, daysOff)) continue;
             List<ZonedDateTime> slots = new ArrayList<>();
             for (WeeklyHours.Range range : ranges) {
                 for (int start = range.startMinute(); start + sessionMinutes <= range.endMinute(); start += step) {
@@ -68,6 +76,14 @@ public class AvailabilityService {
             if (!slots.isEmpty()) result.put(date, slots);
         }
         return result;
+    }
+
+    public static boolean isDayOff(LocalDate date, Collection<DateRange> daysOff) {
+        if (daysOff == null) return false;
+        for (DateRange range : daysOff) {
+            if (range.contains(date)) return true;
+        }
+        return false;
     }
 
     /**

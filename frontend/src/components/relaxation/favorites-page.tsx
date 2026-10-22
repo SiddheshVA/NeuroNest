@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, Heart, Trash2 } from "lucide-react";
+import { Heart, Trash2 } from "lucide-react";
 
 import {
   useClearRelaxationData,
@@ -79,13 +79,6 @@ function FavoritesPage() {
       <RelaxationTopbar currentPage="Your favorites" />
 
       <div className="flex flex-col gap-2">
-        <Link
-          href="/relaxation"
-          className="inline-flex w-fit items-center gap-1 text-sm font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground lg:hidden"
-        >
-          <ChevronLeft className="size-4" aria-hidden="true" />
-          Relaxation Hub
-        </Link>
         <h1 className="font-heading text-2xl font-semibold text-foreground">Your favorites</h1>
         <p className="text-sm text-muted-foreground">
           Everything you&apos;ve saved with the heart, newest first.

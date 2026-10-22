@@ -6,7 +6,7 @@ import type { Video } from "@/data/wellness-resources";
 function VideoDetail({ video }: { video: Video }) {
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-      <ResourceBackLink tab="videos" />
+      <ResourceBackLink />
 
       <div className="aspect-video w-full overflow-hidden rounded-2xl bg-black ring-1 ring-foreground/10">
         <iframe

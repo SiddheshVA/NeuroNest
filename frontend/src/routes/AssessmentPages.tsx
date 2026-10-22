@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Container } from "@/components/layout/container";
 import { AssessmentHero } from "@/components/assessment/assessment-hero";
+import { BackLink } from "@/components/navigation/back-link";
 import { AssessmentLibrary } from "@/components/assessment/assessment-library";
 import { WellbeingAreas } from "@/components/assessment/wellbeing-areas";
 import { ReminderCard } from "@/components/assessment/reminder-card";
@@ -27,6 +28,7 @@ export function AssessmentPage() {
   return (
     <div className="min-h-screen bg-[#FBF9F4] text-[#1C352D] selection:bg-[#233E33]/15 selection:text-[#1C352D]">
       <Container className="py-2 sm:py-4">
+        <BackLink className="mt-2" />
         <AssessmentHero onBeginCheckIn={() => setIsModalOpen(true)} />
         <AssessmentLibrary onStartWho5={() => setIsModalOpen(true)} />
         <WellbeingAreas />

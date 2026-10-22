@@ -22,6 +22,23 @@ public final class ProExceptions {
         }
     }
 
+    /**
+     * 401 on the professional home, appointments and days-off routes for a valid Clerk sign-in that has no
+     * professional account (for example a regular user's token).
+     */
+    public static class NotAProfessionalException extends RuntimeException {
+        public NotAProfessionalException() {
+            super("Please sign in with a professional account to continue.");
+        }
+    }
+
+    /** A missing day-off entry, or one that belongs to another professional: the same 404 for both. */
+    public static class DayOffNotFoundException extends RuntimeException {
+        public DayOffNotFoundException() {
+            super("This day-off entry was not found.");
+        }
+    }
+
     /** A missing booking request, or one that belongs to another professional: the same 404 for both. */
     public static class BookingNotFoundException extends RuntimeException {
         public BookingNotFoundException() {

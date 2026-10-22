@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { NuroApp } from "@/components/nuro/nuro-app";
 import { PlaceholderPage } from "@/components/shared/placeholder-page";
 import RootLayout from "@/routes/RootLayout";
+import { NavigationTracker } from "@/components/navigation/back-link";
 import HomePage from "@/routes/HomePage";
 import DashboardPage from "@/routes/DashboardPage";
 import MemoryPage from "@/routes/MemoryPage";
@@ -12,7 +13,15 @@ import { AssessmentPage, Gad7Page, K10Page, Phq9Page, Pss10Page, SciPage } from 
 import { ArticleRoute, GuideRoute, ResourcesPage, VideoRoute } from "@/routes/ResourcesPages";
 import { LoginPage, RequireAuth, SignUpPage } from "@/routes/AuthPages";
 import { FindProfessionalRedirect, ProfessionalProfileRoute, ProfessionalsPage } from "@/routes/ProfessionalsPages";
-import { ProJoinPage, ProProfileRoute, ProRequestRoute, ProRequestsRoute } from "@/routes/ProPages";
+import {
+  ProAppointmentsRoute,
+  ProDashboardRoute,
+  ProDaysOffRoute,
+  ProJoinPage,
+  ProProfileRoute,
+  ProRequestRoute,
+  ProRequestsRoute,
+} from "@/routes/ProPages";
 import {
   BreathingExerciseRoute,
   BreathingPage,
@@ -32,6 +41,8 @@ const AdminRoutes = lazy(() => import("@/admin/AdminRoutes"));
 
 export default function App() {
   return (
+    <>
+    <NavigationTracker />
     <Routes>
       <Route
         path="/admin/*"
@@ -106,7 +117,10 @@ export default function App() {
 
         {/* Professional self-service. Not in the navigation; linked from the directory page. */}
         <Route path="/pro/join" element={<ProJoinPage />} />
+        <Route path="/pro/dashboard" element={<ProDashboardRoute />} />
         <Route path="/pro/profile" element={<ProProfileRoute />} />
+        <Route path="/pro/appointments" element={<ProAppointmentsRoute />} />
+        <Route path="/pro/days-off" element={<ProDaysOffRoute />} />
         <Route path="/pro/requests" element={<ProRequestsRoute />} />
         <Route path="/pro/requests/:id" element={<ProRequestRoute />} />
 
@@ -129,5 +143,6 @@ export default function App() {
         />
       </Route>
     </Routes>
+    </>
   );
 }

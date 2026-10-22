@@ -26,6 +26,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -56,7 +57,8 @@ class ProBookingServiceTest {
     private final BookingRepository bookings = mock(BookingRepository.class, withSettings().defaultAnswer(CALLS_REAL_METHODS));
     private final ProfessionalRepository professionals = mock(ProfessionalRepository.class);
     private final ProfessionalAccountRepository accounts = mock(ProfessionalAccountRepository.class);
-    private final SlotService slots = new SlotService(new AvailabilityService(), bookings);
+    private final ProfessionalDayOffRepository daysOff = mock(ProfessionalDayOffRepository.class);
+    private final SlotService slots = new SlotService(new AvailabilityService(), bookings, daysOff);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final ProBookingService service = new ProBookingService(bookings, slots, professionals, accounts, events, CLOCK);
     private final BookingService userService = new BookingService(bookings, slots, mock(PublicProfessionalService.class),
@@ -374,6 +376,44 @@ class ProBookingServiceTest {
 
         assertThat(b.getStatus()).isEqualTo(BookingStatus.PENDING);
         assertThat(b.getProposedDatetime()).isNull();
+    }
+
+
+    // Marks a single date as off for this professional, as the repository's overlap query would answer.
+    private void dayOff(LocalDate off, String reason) {
+        when(daysOff.findOverlapping(eq(professionalId), any(), any())).thenAnswer(inv -> {
+            LocalDate from = inv.getArgument(1);
+            LocalDate to = inv.getArgument(2);
+            return off.isBefore(from) || off.isAfter(to) ? List.of()
+                    : List.of(new ProfessionalDayOff(professionalId, off, off, reason));
+        });
+    }
+
+    @Test
+    void aPendingRequestOnADayOffCanStillBeConfirmed() {
+        dayOff(LocalDate.of(2026, 10, 14), null);
+        Booking b = online();
+
+        service.confirm(me, b.getId().toString(), confirmBody("PREFERRED", "VIDEO", LINK, null, null));
+
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+    }
+
+    @Test
+    void proposingOrAcceptingATimeOnADayOffIsRefused() {
+        Booking b = online();
+        dayOff(LocalDate.of(2026, 10, 15), null);
+        assertThatThrownBy(() -> service.propose(me, b.getId().toString(), new ProposeRequest(THU_18, "VIDEO", LINK, null, null)))
+                .isInstanceOf(ConflictException.class).hasMessage(ProBookingService.DAY_OFF_MESSAGE);
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.PENDING);
+
+        // A suggestion made before the date was marked as off cannot be accepted afterwards.
+        dayOff(LocalDate.of(2026, 12, 1), null);
+        service.propose(me, b.getId().toString(), new ProposeRequest(THU_18, "VIDEO", LINK, null, null));
+        dayOff(LocalDate.of(2026, 10, 15), null);
+        assertThatThrownBy(() -> userService.acceptProposal(userId, b.getId().toString()))
+                .isInstanceOf(ConflictException.class).hasMessage("This time is no longer available.");
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.ALTERNATE_PROPOSED);
     }
 
     @Test

@@ -5,8 +5,11 @@ import { Loader2 } from "lucide-react";
 import { ProJoin } from "@/components/pro/pro-join";
 import { ProProfilePage } from "@/components/pro/pro-profile";
 import { ProRequestPage, ProRequestsPage } from "@/components/pro/pro-requests";
+import { ProDashboardPage } from "@/components/pro/pro-dashboard";
+import { ProAppointmentsPage } from "@/components/pro/pro-appointments";
+import { ProDaysOffPage } from "@/components/pro/pro-days-off";
 
-/** Open to everyone: explains the process and shows sign-in; a signed-in visitor goes to /pro/profile. */
+/** Open to everyone: explains the process and shows sign-in; a signed-in visitor goes to /pro/dashboard. */
 export function ProJoinPage() {
   return <ProJoin />;
 }
@@ -54,6 +57,31 @@ export function ProRequestRoute() {
   return (
     <SignedInPro>
       <ProRequestPage />
+    </SignedInPro>
+  );
+}
+
+/** The home page. Someone without a professional account yet is sent on to /pro/profile from there. */
+export function ProDashboardRoute() {
+  return (
+    <SignedInPro>
+      <ProDashboardPage />
+    </SignedInPro>
+  );
+}
+
+export function ProAppointmentsRoute() {
+  return (
+    <SignedInPro>
+      <ProAppointmentsPage />
+    </SignedInPro>
+  );
+}
+
+export function ProDaysOffRoute() {
+  return (
+    <SignedInPro>
+      <ProDaysOffPage />
     </SignedInPro>
   );
 }

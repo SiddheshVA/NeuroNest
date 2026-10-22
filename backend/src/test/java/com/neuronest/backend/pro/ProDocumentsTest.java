@@ -1,5 +1,6 @@
 package com.neuronest.backend.pro;
 
+import com.neuronest.backend.professional.DocumentType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.json.JsonMapper;
@@ -48,11 +49,12 @@ class ProDocumentsTest {
     @Test
     void storageUsesServerSideNamesInsideTheRoot(@TempDir Path dir) throws Exception {
         ProDocumentStorage storage = new ProDocumentStorage(dir.toString());
-        UUID professionalId = UUID.randomUUID();
+        String folder = DocumentPaths.newFolder("Dr. Asha Rao", UUID.randomUUID());
 
-        String relative = storage.store(professionalId, "%PDF-1.7".getBytes(), FileSignature.PDF);
+        String relative = storage.store(folder, DocumentType.REGISTRATION_CERTIFICATE, "%PDF-1.7".getBytes(),
+                FileSignature.PDF);
 
-        assertThat(relative).matches(professionalId + "/[0-9a-f-]{36}\\.pdf");
+        assertThat(relative).matches(folder + "/registration-certificate__[0-9a-f]{8}\\.pdf");
         assertThat(Files.readString(dir.resolve(relative))).isEqualTo("%PDF-1.7");
         storage.delete(relative);
         assertThat(Files.exists(dir.resolve(relative))).isFalse();

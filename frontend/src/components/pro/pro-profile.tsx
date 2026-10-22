@@ -3,7 +3,9 @@ import { useAuth, useUser } from "@clerk/clerk-react";
 import { CheckCircle2, Circle, Mail, Send } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
+import { BackLink } from "@/components/navigation/back-link";
 import { ProDocuments } from "@/components/pro/pro-documents";
+import { ProPortalNav } from "@/components/pro/pro-portal-nav";
 import { ProRequestsLink } from "@/components/pro/pro-requests-link";
 import { ProStatusBanner } from "@/components/pro/pro-status-banner";
 import { WeeklyHoursEditor } from "@/components/pro/weekly-hours-editor";
@@ -817,7 +819,7 @@ function ProProfilePage() {
   };
 
   return (
-    <PageFrame>
+    <PageFrame showBack={registered}>
       {me ? <ProStatusBanner me={me} /> : null}
       {me ? <ProRequestsLink me={me} /> : null}
 
@@ -1252,11 +1254,15 @@ function ProProfilePage() {
   );
 }
 
-function PageFrame({ children }: { children: ReactNode }) {
+// The back control appears only once the person has a professional account (before that there is no
+// dashboard to go back to).
+function PageFrame({ children, showBack = false }: { children: ReactNode; showBack?: boolean }) {
   return (
     <section className="py-10 sm:py-14">
       <Container className="flex max-w-4xl flex-col gap-6">
+        <ProPortalNav />
         <header className="flex flex-col gap-2">
+          {showBack ? <BackLink /> : null}
           <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
             Your professional profile
           </h1>

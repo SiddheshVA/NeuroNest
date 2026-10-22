@@ -2,10 +2,10 @@ import { SearchX } from "lucide-react";
 import { ResourceBackLink } from "@/components/resources/resource-back-link";
 import { ResourceEmptyState } from "@/components/resources/resource-empty-state";
 
-function ResourceNotFound({ kind, tab }: { kind: string; tab: "articles" | "videos" | "guides" }) {
+function ResourceNotFound({ kind }: { kind: string }) {
   return (
     <div className="flex flex-col gap-8">
-      <ResourceBackLink tab={tab} />
+      <ResourceBackLink />
       <ResourceEmptyState
         icon={SearchX}
         title={`We couldn't find that ${kind}`}

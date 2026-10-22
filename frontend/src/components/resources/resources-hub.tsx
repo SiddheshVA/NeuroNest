@@ -4,6 +4,7 @@ import { Tabs } from "@base-ui/react/tabs";
 import { BookOpen, ListChecks, PlayCircle, Search, SearchX, type LucideIcon } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
+import { BackLink } from "@/components/navigation/back-link";
 import { Input } from "@/components/ui/input";
 import { ArticleCard } from "@/components/resources/article-card";
 import { VideoCard } from "@/components/resources/video-card";
@@ -155,6 +156,7 @@ function ResourcesHub() {
   return (
     <section className="py-10 sm:py-14">
       <Container className="flex flex-col gap-8">
+        <BackLink className="-mb-6" />
         <header className="flex flex-col gap-2">
           <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
             Wellness Resources

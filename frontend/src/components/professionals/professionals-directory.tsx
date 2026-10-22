@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, RefreshCw, Search, SearchX } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
+import { BackLink } from "@/components/navigation/back-link";
 import { Input } from "@/components/ui/input";
 import { CrisisResourcesBox } from "@/components/shared/crisis-resources-box";
 import { ResourceEmptyState } from "@/components/resources/resource-empty-state";
@@ -156,6 +157,7 @@ function ProfessionalsDirectory() {
   return (
     <section className="py-10 sm:py-14">
       <Container className="flex flex-col gap-6">
+        <BackLink className="-mb-4" />
         {urgent ? (
           <CrisisResourcesBox
             intro={

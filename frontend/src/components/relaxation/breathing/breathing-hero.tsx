@@ -1,16 +1,8 @@
-import Link from "next/link";
-import { ChevronLeft, Info } from "lucide-react";
+import { Info } from "lucide-react";
 
 function BreathingHero() {
   return (
     <section className="flex flex-col gap-4">
-      <Link
-        href="/relaxation"
-        className="inline-flex w-fit items-center gap-1 text-sm font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
-      >
-        <ChevronLeft className="size-4" aria-hidden="true" />
-        Relaxation Hub
-      </Link>
 
       <div className="flex flex-col gap-2">
         <span className="text-xs font-medium tracking-wide text-primary uppercase">

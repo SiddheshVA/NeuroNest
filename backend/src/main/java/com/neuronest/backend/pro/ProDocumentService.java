@@ -74,7 +74,7 @@ public class ProDocumentService {
                     + ", which does not match its file name extension.");
         }
 
-        String storagePath = storage.store(p.getId(), content, signature);
+        String storagePath = storage.store(folderFor(p), docType, content, signature);
         try {
             ProfessionalDocument saved = documents.saveAndFlush(new ProfessionalDocument(p.getId(), docType, storagePath,
                     originalFilename, signature.contentType(), content.length));
@@ -114,6 +114,16 @@ public class ProDocumentService {
                 storage.delete(storagePath);
             }
         });
+    }
+
+    // A professional's files stay together: later uploads reuse the folder of their earliest document, so
+    // a name change never splits them. Only the first upload computes a folder from the name.
+    private String folderFor(Professional p) {
+        return documents.findByProfessionalIdOrderByUploadedAtAsc(p.getId()).stream()
+                .map(d -> DocumentPaths.folderOf(d.getStoragePath()))
+                .flatMap(java.util.Optional::stream)
+                .findFirst()
+                .orElseGet(() -> DocumentPaths.newFolder(p.getFullName(), p.getId()));
     }
 
     private static void requireEditable(Professional p) {

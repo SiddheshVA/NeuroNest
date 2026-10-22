@@ -24,9 +24,14 @@ import java.util.Map;
 public class ProExceptionHandler {
 
     @ExceptionHandler({ProExceptions.NotRegisteredException.class, ProExceptions.DocumentNotFoundException.class,
-            ProExceptions.BookingNotFoundException.class})
+            ProExceptions.BookingNotFoundException.class, ProExceptions.DayOffNotFoundException.class})
     public ResponseEntity<?> handleNotFound(RuntimeException ex) {
         return error(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(ProExceptions.NotAProfessionalException.class)
+    public ResponseEntity<?> handleNotAProfessional(ProExceptions.NotAProfessionalException ex) {
+        return error(HttpStatus.UNAUTHORIZED, ex.getMessage());
     }
 
     @ExceptionHandler(ProExceptions.EmailNotVerifiedException.class)

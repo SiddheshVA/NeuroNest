@@ -8,7 +8,9 @@ import { LoadingBlock } from "@/components/pro/pro-ui";
 import { cn } from "@/lib/utils";
 
 const JOIN_PATH = "/pro/join";
-const PROFILE_PATH = "/pro/profile";
+// After sign-in or sign-up: an existing professional stays on the dashboard; someone without a
+// professional account yet is sent on from there to /pro/profile, where the first save registers them.
+const HOME_PATH = "/pro/dashboard";
 
 const STEPS: { icon: LucideIcon; title: string; text: string }[] = [
   { icon: UserPlus, title: "Create an account", text: "You sign in to NeuroNest and create your professional account." },
@@ -44,9 +46,9 @@ function ProcessExplainer() {
 
 /**
  * Clerk's own sign-in and sign-up, kept on this page. Afterwards Clerk always sends the person to
- * /pro/profile (never the user home), where someone without a professional account yet fills in the
- * empty profile and their first save creates the account. Switching between sign-in and sign-up stays
- * on this page.
+ * /pro/dashboard (never the user home); someone without a professional account yet goes on from there to
+ * the empty profile, where their first save creates the account. Switching between sign-in and sign-up
+ * stays on this page.
  */
 function SignInOrUp() {
   const [params, setParams] = useSearchParams();
@@ -74,15 +76,15 @@ function SignInOrUp() {
         <SignIn
           routing="hash"
           signUpUrl={`${JOIN_PATH}?mode=sign-up`}
-          forceRedirectUrl={PROFILE_PATH}
-          signUpForceRedirectUrl={PROFILE_PATH}
+          forceRedirectUrl={HOME_PATH}
+          signUpForceRedirectUrl={HOME_PATH}
         />
       ) : (
         <SignUp
           routing="hash"
           signInUrl={JOIN_PATH}
-          forceRedirectUrl={PROFILE_PATH}
-          signInForceRedirectUrl={PROFILE_PATH}
+          forceRedirectUrl={HOME_PATH}
+          signInForceRedirectUrl={HOME_PATH}
         />
       )}
     </div>
@@ -109,12 +111,12 @@ function ProJoin() {
         {!isLoaded ? (
           <LoadingBlock label="Loading your sign-in status." />
         ) : isSignedIn ? (
-          // Signed in already: the profile page handles both a new and an existing professional account.
-          <Navigate to={PROFILE_PATH} replace />
+          // Signed in already: the dashboard sends someone without a professional account on to the profile.
+          <Navigate to={HOME_PATH} replace />
         ) : (
           <div className="flex flex-col gap-3">
             <p className="text-center text-sm text-muted-foreground">
-              Sign in or create an account to begin. You will go to your professional profile afterwards.
+              Sign in or create an account to begin. You will go to your professional dashboard afterwards.
             </p>
             <SignInOrUp />
             <div className="flex justify-center">

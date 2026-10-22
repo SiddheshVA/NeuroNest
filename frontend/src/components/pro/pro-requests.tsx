@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
-import { ArrowLeft, CheckCircle2, ChevronRight, Copy, Inbox, X } from "lucide-react";
+import { CheckCircle2, ChevronRight, Copy, Inbox, X } from "lucide-react";
 
 import { BookingStatusChip } from "@/components/bookings/booking-status-chip";
 import { Container } from "@/components/layout/container";
+import { BackLink } from "@/components/navigation/back-link";
+import { ProPortalNav } from "@/components/pro/pro-portal-nav";
 import { ReplyDialog, type ReplyKind } from "@/components/pro/pro-request-dialogs";
 import {
   DisabledAccountNotice,
@@ -36,6 +38,7 @@ function Frame({ title, intro, back, children }: { title: string; intro?: string
   return (
     <section className="py-10 sm:py-14">
       <Container className="flex max-w-4xl flex-col gap-6">
+        <ProPortalNav />
         <header className="flex flex-col gap-2">
           {back}
           <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">{title}</h1>
@@ -44,15 +47,6 @@ function Frame({ title, intro, back, children }: { title: string; intro?: string
         {children}
       </Container>
     </section>
-  );
-}
-
-function BackLink({ href, children }: { href: string; children: string }) {
-  return (
-    <Link href={href} className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline">
-      <ArrowLeft className="size-4" aria-hidden="true" />
-      {children}
-    </Link>
   );
 }
 
@@ -205,7 +199,7 @@ export function ProRequestsPage() {
     <Frame
       title="Appointment requests"
       intro="Reply to people who asked for an appointment with you. All times are in Indian Standard Time."
-      back={<BackLink href="/pro/profile">Back to your profile</BackLink>}
+      back={<BackLink />}
     >
       {children}
     </Frame>
@@ -418,7 +412,7 @@ export function ProRequestPage() {
 
   const reload = () => setReloadCount((n) => n + 1);
   const frame = (children: ReactNode) => (
-    <Frame title="Appointment request" back={<BackLink href="/pro/requests">All appointment requests</BackLink>}>
+    <Frame title="Appointment request" back={<BackLink />}>
       {children}
     </Frame>
   );

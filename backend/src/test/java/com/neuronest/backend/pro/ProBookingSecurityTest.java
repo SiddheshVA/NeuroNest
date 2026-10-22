@@ -11,6 +11,7 @@ import com.neuronest.backend.professional.AvailabilityService;
 import com.neuronest.backend.professional.ProfessionalAccount;
 import com.neuronest.backend.professional.ProfessionalAccountRepository;
 import com.neuronest.backend.professional.ProfessionalAccountStatus;
+import com.neuronest.backend.professional.ProfessionalDayOffRepository;
 import com.neuronest.backend.professional.ProfessionalRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -64,6 +65,8 @@ class ProBookingSecurityTest {
     private ProfessionalRepository professionals;
     @MockitoBean
     private BookingRepository bookings;
+    @MockitoBean
+    private ProfessionalDayOffRepository daysOff;
 
     private final UUID professionalId = UUID.randomUUID();
 

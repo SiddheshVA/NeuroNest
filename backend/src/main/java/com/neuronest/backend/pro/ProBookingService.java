@@ -57,6 +57,7 @@ public class ProBookingService {
     /** The user's time to answer a proposed time. */
     static final Duration USER_REPLY_WINDOW = Duration.ofHours(72);
     static final String OVERLAP_MESSAGE = "You already have an appointment at that time.";
+    static final String DAY_OFF_MESSAGE = "You marked this date as a day off. Please choose another time.";
     static final String EXPIRED_MESSAGE = "This request has expired.";
     static final String NOT_WAITING_MESSAGE = "This request is no longer waiting for a reply.";
 
@@ -243,6 +244,7 @@ public class ProBookingService {
         switch (slots.check(p, start, now)) {
             case FREE -> { }
             case TAKEN -> throw new ConflictException(OVERLAP_MESSAGE);
+            case DAY_OFF -> throw new ConflictException(DAY_OFF_MESSAGE);
             case NOT_A_SLOT -> throw new ApiValidationException("proposedSlot is not one of your available times. "
                     + "Please choose a time from your weekly hours.");
         }

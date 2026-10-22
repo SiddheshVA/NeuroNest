@@ -2,6 +2,7 @@ package com.neuronest.backend.booking;
 
 import com.neuronest.backend.auth.AuthUtil;
 import com.neuronest.backend.booking.BookingDtos.BookingPage;
+import com.neuronest.backend.booking.BookingDtos.BookingSummary;
 import com.neuronest.backend.booking.BookingDtos.BookingView;
 import com.neuronest.backend.booking.BookingDtos.CreateBookingRequest;
 import org.springframework.http.HttpStatus;
@@ -41,6 +42,12 @@ public class BookingController {
                             @RequestParam(defaultValue = "0") int page,
                             @RequestParam(defaultValue = "" + BookingService.DEFAULT_PAGE_SIZE) int size) {
         return service.mine(userId(authentication), page, size);
+    }
+
+    // The user's next appointment and open requests, for their dashboard.
+    @GetMapping("/summary")
+    public BookingSummary summary(Authentication authentication) {
+        return service.summary(userId(authentication));
     }
 
     // The id is taken as text so a malformed one gets the same 404 as a missing one.
