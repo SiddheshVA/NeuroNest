@@ -174,8 +174,10 @@ class ProProfileServiceTest {
         assertThatThrownBy(() -> put("{\"registrationBody\":\"OTHER\"}"))
                 .hasMessage("registrationCouncil must contain the name of the registration body when registrationBody is OTHER.");
         assertThatThrownBy(() -> put("{\"yearsExperience\":61}")).hasMessage("yearsExperience must be between 0 and 60.");
-        assertThatThrownBy(() -> put("{\"availabilityNote\":\"Evenings\"}"))
-                .hasMessage("availabilityNote must be between 10 and 200 characters.");
+        // The availability note is optional free text with no minimum.
+        assertThat(put("{\"availabilityNote\":\"Evenings\"}").profile().availabilityNote()).isEqualTo("Evenings");
+        assertThatThrownBy(() -> put("{\"availabilityNote\":\"" + "x".repeat(201) + "\"}"))
+                .hasMessage("availabilityNote must be at most 200 characters.");
         assertThatThrownBy(() -> put("{\"photoUrl\":\"http://example.com/a.jpg\"}")).hasMessage("photoUrl must start with https://.");
         for (String bad : List.of("12345", "5876543210", "+91 98765 4321", "+44 9876543210", "98765432100")) {
             assertThatThrownBy(() -> put("{\"contactPhone\":\"" + bad + "\"}")).hasMessageStartingWith("contactPhone must be a 10-digit");
@@ -226,7 +228,7 @@ class ProProfileServiceTest {
                 .isInstanceOfSatisfying(ProExceptions.SubmissionIncompleteException.class, e ->
                         assertThat(e.missing()).extracting(MissingItem::item).containsExactly(
                                 "dateOfBirth", "qualifications", "state", "city", "languages", "specialties", "bio",
-                                "yearsExperience", "consultationFee", "availabilityNote", "contactPhone",
+                                "yearsExperience", "consultationFee", "sessionMinutes", "weeklyHours", "contactPhone",
                                 "registrationBody", "registrationCouncil", "registrationYear", "registrationExpiry",
                                 "document:REGISTRATION_CERTIFICATE", "document:DEGREE_CERTIFICATE",
                                 "document:ID_PROOF", "declaration"));
@@ -244,7 +246,8 @@ class ProProfileServiceTest {
         professional.setBio("I help students and young professionals manage stress and anxiety.");
         professional.setYearsExperience(4);
         professional.setConsultationFee(0);
-        professional.setAvailabilityNote("Weekdays 6 pm to 9 pm");
+        professional.setSessionMinutes(60);
+        professional.setWeeklyHours(Map.of("TUE", List.of(Map.of("start", "18:00", "end", "20:00"))));
         professional.setContactPhone("+919876543210");
         professional.setDateOfBirth(LocalDate.of(1990, 5, 1));
         ProfessionalDocument degree = new ProfessionalDocument(UUID.randomUUID(), DocumentType.DEGREE_CERTIFICATE,
@@ -275,6 +278,62 @@ class ProProfileServiceTest {
         assertThat(entry.getValue().getActor()).isEqualTo("PROFESSIONAL");
 
         assertThatThrownBy(() -> submit(ACCEPTED)).isInstanceOf(ConflictException.class);
+    }
+
+    private static String noContact(String field) {
+        return field + " must not contain phone numbers, email addresses or website links. "
+                + "People reach you through NeuroNest.";
+    }
+
+    @Test
+    void contactDetailsAreRefusedInPublicTextButNotInContactFields() {
+        existing(VerificationStatus.DRAFT, CredentialType.COUNSELOR);
+
+        assertThatThrownBy(() -> put("{\"bio\":\"Call me on 98765 43210 any time.\"}"))
+                .isInstanceOf(ApiValidationException.class).hasMessage(noContact("Bio"));
+        assertThatThrownBy(() -> put("{\"availabilityNote\":\"Book at www.example.com\"}"))
+                .hasMessage(noContact("Availability note"));
+        assertThatThrownBy(() -> put("{\"qualifications\":\"MA, see asha@example.com\"}"))
+                .hasMessage(noContact("Qualifications"));
+        assertThatThrownBy(() -> put("{\"specialties\":[\"Anxiety\",\"Other: insta @asha_rao\"]}"))
+                .hasMessage(noContact("Specializations"));
+        assertThat(professional.getBio()).isNull();
+        assertThat(professional.getSpecialties()).isEmpty();
+
+        // Contact fields, the photo URL and social links are not checked.
+        ProMeResponse me = put("{\"bio\":\"I help students manage stress.\",\"contactPhone\":\"9876543210\","
+                + "\"photoUrl\":\"https://example.com/me.jpg\",\"qualifications\":\"B.Com, MA Counselling\"}");
+        assertThat(me.profile().bio()).isEqualTo("I help students manage stress.");
+        assertThat(professional.getContactPhone()).isEqualTo("+919876543210");
+        assertThat(professional.getQualifications()).isEqualTo("B.Com, MA Counselling");
+    }
+
+    @Test
+    void oldTextWithContactDetailsIsListedOnSubmitAndNeverBreaksReading() {
+        existing(VerificationStatus.DRAFT, CredentialType.COUNSELOR);
+        professional.setBio("Reach me at asha@example.com for sessions.");
+        professional.setQualifications("MA, www.asha.in");
+        professional.setSpecialties(List.of("Stress", "WhatsApp: 98765 43210"));
+        professional.setAvailabilityNote("Evenings, call +91 98765 43210");
+
+        // Reading still works and shows the problems.
+        ProMeResponse me = service.me(principal);
+        assertThat(me.profile().bio()).isEqualTo("Reach me at asha@example.com for sessions.");
+        assertThat(me.missingForSubmit()).contains(new MissingItem("bio", noContact("Bio")),
+                new MissingItem("qualifications", noContact("Qualifications")),
+                new MissingItem("specialties", noContact("Specializations")),
+                new MissingItem("availabilityNote", noContact("Availability note")));
+
+        assertThatThrownBy(() -> submit(ACCEPTED))
+                .isInstanceOfSatisfying(ProExceptions.SubmissionIncompleteException.class, e ->
+                        assertThat(e.missing()).contains(new MissingItem("bio", noContact("Bio")),
+                                new MissingItem("qualifications", noContact("Qualifications")),
+                                new MissingItem("specialties", noContact("Specializations")),
+                                new MissingItem("availabilityNote", noContact("Availability note"))));
+
+        // Once submitted, an unchanged locked qualification does not block unrelated edits.
+        professional.setVerificationStatus(VerificationStatus.SUBMITTED);
+        assertThat(put("{\"qualifications\":\"MA, www.asha.in\",\"city\":\"Pune\"}").profile().city()).isEqualTo("Pune");
     }
 
     @Test
@@ -372,6 +431,51 @@ class ProProfileServiceTest {
         assertThatThrownBy(() -> put("{\"socialLinks\":{\"TIKTOK\":\"https://tiktok.com/@a\"}}"))
                 .hasMessageStartingWith("socialLinks can only contain");
         assertThat(put("{\"socialLinks\":{}}").profile().socialLinks()).isEmpty();
+    }
+
+    @Test
+    void weeklyHoursAreSoftFieldsCheckedAgainstTheSessionLength() {
+        existing(VerificationStatus.VERIFIED, CredentialType.PSYCHOLOGIST);
+        professional.setVerified(true);
+        professional.setActive(true);
+
+        ProMeResponse me = put("{\"sessionMinutes\":45,\"bufferMinutes\":15,\"weeklyHours\":{"
+                + "\"SAT\":[{\"start\":\"14:00\",\"end\":\"16:00\"},{\"start\":\"09:00\",\"end\":\"12:00\"}],\"MON\":[]}}");
+        // Editing hours on a VERIFIED listing keeps it verified and listed.
+        assertThat(me.profile().verificationStatus()).isEqualTo("VERIFIED");
+        assertThat(me.profile().active()).isTrue();
+        assertThat(me.profile().sessionMinutes()).isEqualTo(45);
+        assertThat(me.profile().bufferMinutes()).isEqualTo(15);
+        // Sorted by start, and empty days left out.
+        assertThat(me.profile().weeklyHours()).containsOnlyKeys("SAT");
+        assertThat(me.profile().weeklyHours().get("SAT")).extracting(r -> r.get("start")).containsExactly("09:00", "14:00");
+        verify(log, never()).save(any());
+
+        // A longer session is checked against the hours already saved.
+        professional.setWeeklyHours(Map.of("TUE", List.of(Map.of("start", "18:00", "end", "18:45"))));
+        assertThatThrownBy(() -> put("{\"sessionMinutes\":60}"))
+                .hasMessage("weeklyHours: Tuesday 18:00 to 18:45 is shorter than one 60-minute session.");
+        assertThatThrownBy(() -> put("{\"sessionMinutes\":50}")).hasMessage("sessionMinutes must be 30, 45 or 60.");
+        assertThatThrownBy(() -> put("{\"bufferMinutes\":7}")).hasMessage("bufferMinutes must be 0, 5, 10 or 15.");
+        assertThat(put("{\"weeklyHours\":null,\"sessionMinutes\":null}").profile().weeklyHours()).isEmpty();
+
+        // Submit lists both when missing.
+        existing(VerificationStatus.DRAFT, CredentialType.COUNSELOR);
+        assertThat(service.me(principal).missingForSubmit()).extracting(MissingItem::message).contains(
+                "Choose how long one session lasts: 30, 45 or 60 minutes.",
+                "Add at least one time range to your weekly hours.");
+    }
+
+    @Test
+    void bioMustBeAtLeastTenCharactersToSubmit() {
+        Professional p = new Professional();
+        p.setCredentialType(CredentialType.COUNSELOR);
+        p.setBio(" 123456789 ");
+        assertThat(SubmissionChecklist.missing(p, Set.of(), TODAY)).extracting(MissingItem::message)
+                .contains("Write a bio of at least 10 characters.");
+        // Letters, since ten digits in a row would now count as a phone number.
+        p.setBio("abcdefghij");
+        assertThat(SubmissionChecklist.missing(p, Set.of(), TODAY)).extracting(MissingItem::item).doesNotContain("bio");
     }
 
     @Test

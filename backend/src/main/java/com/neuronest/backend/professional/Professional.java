@@ -12,7 +12,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-// Maps the professionals table (hand-made baseline + V2 verification columns + V4 profile fields). Flyway owns the schema.
+// Maps the professionals table (hand-made baseline + V2 verification columns + V4 profile fields + V5 weekly
+// hours). Flyway owns the schema.
 @Entity
 @Table(name = "professionals")
 public class Professional {
@@ -90,6 +91,18 @@ public class Professional {
 
     @Column(name = "availability_note")
     private String availabilityNote;
+
+    // V5: weekly hours for booking, {"MON": [{"start": "09:00", "end": "12:00"}]} in Asia/Kolkata time
+    // (see WeeklyHours), the length of one session and the gap after each session.
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "weekly_hours", nullable = false)
+    private Map<String, List<Map<String, String>>> weeklyHours = new LinkedHashMap<>();
+
+    @Column(name = "session_minutes")
+    private Integer sessionMinutes;
+
+    @Column(name = "buffer_minutes", nullable = false)
+    private int bufferMinutes = 0;
 
     @Column(name = "photo_url")
     private String photoUrl;
@@ -215,6 +228,15 @@ public class Professional {
 
     public String getAvailabilityNote() { return availabilityNote; }
     public void setAvailabilityNote(String availabilityNote) { this.availabilityNote = availabilityNote; }
+
+    public Map<String, List<Map<String, String>>> getWeeklyHours() { return weeklyHours; }
+    public void setWeeklyHours(Map<String, List<Map<String, String>>> weeklyHours) { this.weeklyHours = weeklyHours; }
+
+    public Integer getSessionMinutes() { return sessionMinutes; }
+    public void setSessionMinutes(Integer sessionMinutes) { this.sessionMinutes = sessionMinutes; }
+
+    public int getBufferMinutes() { return bufferMinutes; }
+    public void setBufferMinutes(int bufferMinutes) { this.bufferMinutes = bufferMinutes; }
 
     public String getPhotoUrl() { return photoUrl; }
     public void setPhotoUrl(String photoUrl) { this.photoUrl = photoUrl; }

@@ -4,6 +4,7 @@ import com.neuronest.backend.pro.ProExceptions.MissingItem;
 import com.neuronest.backend.professional.Professional;
 import com.neuronest.backend.professional.ProfessionalAccount;
 import com.neuronest.backend.professional.ProfessionalDocument;
+import com.neuronest.backend.professional.WeeklyHours;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -52,6 +53,9 @@ public final class ProDtos {
             String photoUrl,
             LocalDate dateOfBirth,
             Map<String, String> socialLinks,
+            Map<String, List<Map<String, String>>> weeklyHours,
+            Integer sessionMinutes,
+            int bufferMinutes,
             String verificationStatus,
             boolean verified,
             boolean active,
@@ -68,7 +72,8 @@ public final class ProDtos {
                     List.copyOf(p.getSpecialties()), List.copyOf(p.getLanguages()), p.getCity(), p.getState(),
                     p.getConsultationMode().name(), p.getConsultationFee(), p.getYearsExperience(),
                     p.getContactEmail(), p.getContactPhone(), p.getAvailabilityNote(), p.getPhotoUrl(),
-                    p.getDateOfBirth(), new LinkedHashMap<>(p.getSocialLinks()), p.getVerificationStatus().name(),
+                    p.getDateOfBirth(), new LinkedHashMap<>(p.getSocialLinks()), WeeklyHours.copy(p.getWeeklyHours()),
+                    p.getSessionMinutes(), p.getBufferMinutes(), p.getVerificationStatus().name(),
                     p.isVerified(), p.isActive(), p.getSubmittedAt(), p.getVerifiedAt(),p.getNextRecheckDate(), p.getCreatedAt(), p.getUpdatedAt());
         }
     }

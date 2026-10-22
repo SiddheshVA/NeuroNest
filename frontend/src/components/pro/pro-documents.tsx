@@ -40,14 +40,21 @@ function ProDocuments({
   api,
   onChanged,
   credentialType,
+  blockedReason,
 }: {
-  me: ProMe;
+  /** Null while the person has no professional account yet. */
+  me: ProMe | null;
   api: ProApi;
   onChanged: () => Promise<void>;
   /** The credential type currently selected in the form, which may not be saved yet. */
   credentialType: ProCredentialType | "";
+  /** When set, uploads are disabled and this sentence explains why (no professional account yet). */
+  blockedReason?: string;
 }) {
-  const editable = me.canManageDocuments;
+  // Uploads are blocked with blockedReason while there is no account; otherwise the status decides.
+  const editable = !blockedReason && Boolean(me?.canManageDocuments);
+  const documents = me?.documents ?? [];
+  const documentRules = me?.documentRules ?? ({} as ProMe["documentRules"]);
   const inputRef = useRef<HTMLInputElement>(null);
   const [pendingType, setPendingType] = useState<ProDocumentType | null>(null);
   const [busyType, setBusyType] = useState<ProDocumentType | null>(null);
@@ -56,14 +63,14 @@ function ProDocuments({
   const [toDelete, setToDelete] = useState<ProDocument | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const atLimit = me.documents.length >= MAX_DOCUMENTS;
-  const uploadedTypes = new Set(me.documents.map((d) => d.docType));
+  const atLimit = documents.length >= MAX_DOCUMENTS;
+  const uploadedTypes = new Set(documents.map((d) => d.docType));
   // Which documents are required comes only from the backend's rules (the registration certificate is
   // optional only for counselors). They follow the credential type selected in the form; until one is
   // chosen, every document that any credential type requires is shown as required.
-  const rule = credentialType ? me.documentRules[credentialType] : undefined;
+  const rule = credentialType ? documentRules[credentialType] : undefined;
   const required = new Set<ProDocumentType>(
-    rule ? rule.required : Object.values(me.documentRules).flatMap((r) => r.required),
+    rule ? rule.required : Object.values(documentRules).flatMap((r) => r.required),
   );
   const optional = new Set<ProDocumentType>(rule ? rule.optional : []);
 
@@ -128,7 +135,9 @@ function ProDocuments({
         <p className="text-sm text-muted-foreground">Accepted files are PDF, JPG and PNG, up to 5 MB each.</p>
       </div>
 
-      {!editable ? (
+      {blockedReason ? (
+        <p className="rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">{blockedReason}</p>
+      ) : !editable ? (
         <p className="rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
           Documents can only be changed while your profile is a draft or when the NeuroNest team asks for more
           information.
@@ -208,11 +217,11 @@ function ProDocuments({
 
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold text-foreground">Uploaded files</h3>
-        {me.documents.length === 0 ? (
+        {documents.length === 0 ? (
           <p className="text-sm text-muted-foreground">You have not uploaded any documents yet.</p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {me.documents.map((doc) => (
+            {documents.map((doc) => (
               <li key={doc.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted/50 px-4 py-3">
                 <span className="flex min-w-0 items-center gap-2.5">
                   <FileText className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />

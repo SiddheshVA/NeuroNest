@@ -1,9 +1,11 @@
-export type AssessmentType = "who5" | "gad7" | "phq9" | "pss10" | "psqi";
+export type AssessmentType = "who5" | "gad7" | "phq9" | "pss10" | "k10" | "sci";
 
 export interface AssessmentQuestion {
   id: number;
   area?: string;
   text: string;
+  /** Per-question answer options, for instruments whose items each use different labels (SCI). Falls back to the questionnaire-wide options when absent. */
+  options?: AssessmentOption[];
 }
 
 export interface AssessmentOption {
@@ -15,9 +17,9 @@ export interface AssessmentOption {
 export type ResultTone = "positive" | "neutral" | "caution" | "concern";
 
 /**
- * Common shape every assessment (WHO-5, GAD-7, PHQ-9, PSS-10, PSQI) produces.
+ * Common shape every assessment (WHO-5, GAD-7, PHQ-9, PSS-10, K10, SCI) produces.
  * Keeping scoring output assessment-agnostic lets the result page, routing,
- * and a future backend work against one contract instead of five bespoke
+ * and a future backend work against one contract instead of six bespoke
  * ones. The shape intentionally mirrors what a future REST call to the Java
  * backend (e.g. POST /api/assessments) would send as its JSON body — see
  * `userId` and `responses` below — so wiring that call up later only means
@@ -30,7 +32,7 @@ export interface AssessmentResult {
   assessmentType: AssessmentType;
   assessmentLabel: string;
   snapshotTitle: string;
-  /** Raw answers this result was computed from — shape depends on assessmentType (Record<questionId, score> for the Likert instruments, PsqiAnswers for PSQI). Opaque here on purpose, the same way a JSON payload would be until deserialized against a per-type schema. */
+  /** Raw answers this result was computed from — shape depends on assessmentType (Record<questionId, score> for every current instrument). Opaque here on purpose, the same way a JSON payload would be until deserialized against a per-type schema. */
   responses: unknown;
   rawScore: number;
   maxScore: number;
@@ -55,27 +57,8 @@ export interface Phq9Result extends AssessmentResult {
   item9Score: number;
 }
 
-export interface PsqiComponents {
-  subjectiveSleepQuality: number;
-  sleepLatency: number;
-  sleepDuration: number;
-  sleepEfficiency: number;
-  sleepDisturbances: number;
-  sleepMedication: number;
-  daytimeDysfunction: number;
-}
-
-export interface PsqiResult extends AssessmentResult {
-  assessmentType: "psqi";
-  components: PsqiComponents;
-}
-
-export type AnyAssessmentResult = AssessmentResult | Phq9Result | PsqiResult;
+export type AnyAssessmentResult = AssessmentResult | Phq9Result;
 
 export function isPhq9Result(result: AnyAssessmentResult): result is Phq9Result {
   return result.assessmentType === "phq9";
-}
-
-export function isPsqiResult(result: AnyAssessmentResult): result is PsqiResult {
-  return result.assessmentType === "psqi";
 }

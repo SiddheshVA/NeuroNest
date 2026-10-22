@@ -3,8 +3,9 @@ package com.neuronest.backend.pro;
 import java.util.List;
 import java.util.Locale;
 
-// The one list of Indian states and union territories a professional may choose. GET /api/pro/me sends
-// it as stateOptions, so the profile form's dropdown uses exactly these spellings.
+// The list of Indian states and union territories a professional may choose. GET /api/pro/me sends
+// it as stateOptions, so the profile form's dropdown uses exactly these spellings. The frontend keeps a
+// copy (PRO_INDIAN_STATES in pro-client.ts) for the form shown before an account exists; keep them equal.
 public final class IndianStates {
 
     static final List<String> ALL = List.of(

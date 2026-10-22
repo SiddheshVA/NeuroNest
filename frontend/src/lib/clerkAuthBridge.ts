@@ -15,3 +15,15 @@ export function getAuthToken() {
   // the "neuronest" JWT template configured in the Clerk dashboard.
   return currentGetToken({ template: "neuronest" });
 }
+
+// The signed-in Clerk user's id, or null for a guest (or while Clerk is still loading, when no token
+// is sent either). Lets plain modules tell whose data they are holding.
+let currentUserId: string | null = null;
+
+export function registerCurrentUserId(userId: string | null) {
+  currentUserId = userId;
+}
+
+export function getCurrentUserId() {
+  return currentUserId;
+}

@@ -1,40 +1,22 @@
 import type { AssessmentOption, AssessmentQuestion, AssessmentResult } from "./types";
 import { ASSESSMENTS } from "./registry";
 
+// Official WHO-5 statements (WHO, 2024), in the official order. The stem
+// "Over the last two weeks..." is shown as the instruction in the modal.
 export const WHO5_QUESTIONS: AssessmentQuestion[] = [
-  {
-    id: 1,
-    area: "Mood",
-    text: "Over the past 2 weeks, how often have you felt cheerful, calm, or in good spirits?",
-  },
-  {
-    id: 2,
-    area: "Energy",
-    text: "Over the past 2 weeks, how often have you felt active, energetic, and motivated?",
-  },
-  {
-    id: 3,
-    area: "Sleep",
-    text: "Over the past 2 weeks, how often have you woken up feeling well-rested and refreshed?",
-  },
-  {
-    id: 4,
-    area: "Interest",
-    text: "Over the past 2 weeks, how often have you felt interested and engaged in your daily life?",
-  },
-  {
-    id: 5,
-    area: "Overall Wellbeing",
-    text: "Overall, how satisfied and at ease have you felt with your day-to-day life recently?",
-  },
+  { id: 1, area: "Mood", text: "I have felt cheerful and in good spirits" },
+  { id: 2, area: "Calm", text: "I have felt calm and relaxed" },
+  { id: 3, area: "Energy", text: "I have felt active and vigorous" },
+  { id: 4, area: "Sleep", text: "I woke up feeling fresh and rested" },
+  { id: 5, area: "Interest", text: "My daily life has been filled with things that interest me" },
 ];
 
 // Official WHO-5 response scale: 0 (At no time) – 5 (All of the time).
 export const WHO5_OPTIONS: AssessmentOption[] = [
   { label: "All of the time", score: 5 },
   { label: "Most of the time", score: 4 },
-  { label: "More than half the time", score: 3 },
-  { label: "Less than half the time", score: 2 },
+  { label: "More than half of the time", score: 3 },
+  { label: "Less than half of the time", score: 2 },
   { label: "Some of the time", score: 1 },
   { label: "At no time", score: 0 },
 ];

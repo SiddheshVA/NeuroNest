@@ -48,9 +48,14 @@ export const SCORE_RANGES: Record<AssessmentType, ScoreRange[]> = {
     { min: 14, max: 26, levelKey: "moderate", label: "Moderate perceived stress" },
     { min: 27, max: 40, levelKey: "high", label: "High perceived stress" },
   ],
-  psqi: [
-    { min: 0, max: 5, levelKey: "good", label: "Good sleep quality" },
-    { min: 6, max: 10, levelKey: "poor", label: "Poor sleep quality" },
-    { min: 11, max: 21, levelKey: "very-poor", label: "Very poor sleep quality" },
+  k10: [
+    { min: 10, max: 19, levelKey: "likely-well", label: "Likely well" },
+    { min: 20, max: 24, levelKey: "mild", label: "Mild distress" },
+    { min: 25, max: 29, levelKey: "moderate", label: "Moderate distress" },
+    { min: 30, max: 50, levelKey: "severe", label: "Severe distress" },
+  ],
+  sci: [
+    { min: 0, max: 16, levelKey: "difficulty", label: "Sleep difficulty" },
+    { min: 17, max: 32, levelKey: "steady", label: "Steady sleep" },
   ],
 };

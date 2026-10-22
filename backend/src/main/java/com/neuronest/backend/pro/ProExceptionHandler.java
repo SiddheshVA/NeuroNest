@@ -23,7 +23,8 @@ import java.util.Map;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class ProExceptionHandler {
 
-    @ExceptionHandler({ProExceptions.NotRegisteredException.class, ProExceptions.DocumentNotFoundException.class})
+    @ExceptionHandler({ProExceptions.NotRegisteredException.class, ProExceptions.DocumentNotFoundException.class,
+            ProExceptions.BookingNotFoundException.class})
     public ResponseEntity<?> handleNotFound(RuntimeException ex) {
         return error(HttpStatus.NOT_FOUND, ex.getMessage());
     }

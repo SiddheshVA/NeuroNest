@@ -8,6 +8,12 @@ const wellbeingAreas = [
     icon: Smile,
   },
   {
+    id: "calm",
+    title: "Calm",
+    description: "How calm and relaxed you've felt",
+    icon: Heart,
+  },
+  {
     id: "energy",
     title: "Energy",
     description: "Your energy and motivation levels",
@@ -24,12 +30,6 @@ const wellbeingAreas = [
     title: "Interest",
     description: "Your interest and enjoyment in daily life",
     icon: Sprout,
-  },
-  {
-    id: "overall",
-    title: "Overall wellbeing",
-    description: "Your general sense of wellbeing",
-    icon: Heart,
   },
 ];
 

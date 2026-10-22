@@ -3,7 +3,6 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Briefcase,
-  CalendarClock,
   CalendarX,
   GraduationCap,
   IndianRupee,
@@ -15,7 +14,9 @@ import {
 } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
+import { BookingSection, BookingStatusCard } from "@/components/professionals/booking-section";
 import { CredentialsChip, DirectoryDisclaimer, ProfessionalAvatar } from "@/components/professionals/professional-bits";
+import { WeeklyAvailabilityTable } from "@/components/professionals/weekly-availability";
 import {
   CONSULTATION_MODE_LABELS,
   CREDENTIAL_TYPE_LABELS,
@@ -198,10 +199,13 @@ function ProfileBody({ professional: p }: { professional: PublicProfessional }) 
             </p>
           </Section>
 
-          <Section title="Availability">
-            <p className="text-sm text-foreground sm:text-base">
-              {p.availabilityNote ?? "Availability is not listed."}
-            </p>
+          <Section title="Weekly availability">
+            <div className="flex flex-col gap-3">
+              <WeeklyAvailabilityTable hours={p.weeklyHours} sessionMinutes={p.sessionMinutes} />
+              {p.availabilityNote ? (
+                <p className="text-sm text-foreground sm:text-base">{p.availabilityNote}</p>
+              ) : null}
+            </div>
           </Section>
         </div>
 
@@ -225,22 +229,11 @@ function ProfileBody({ professional: p }: { professional: PublicProfessional }) 
             ) : null}
           </div>
 
-          <div className="flex flex-col gap-2 rounded-2xl bg-card p-6 ring-1 ring-foreground/10">
-            <button
-              type="button"
-              disabled
-              aria-describedby="booking-caption"
-              className="inline-flex h-10 cursor-not-allowed items-center justify-center gap-2 rounded-full bg-muted px-4 text-sm font-medium text-muted-foreground ring-1 ring-border"
-            >
-              <CalendarClock className="size-4" aria-hidden="true" />
-              Request appointment
-            </button>
-            <p id="booking-caption" className="text-center text-xs text-muted-foreground">
-              Booking opens in the next update.
-            </p>
-          </div>
+          <BookingStatusCard professional={p} />
         </aside>
       </div>
+
+      <BookingSection professional={p} />
     </>
   );
 }

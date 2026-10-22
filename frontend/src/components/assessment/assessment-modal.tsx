@@ -3,7 +3,9 @@ import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { WHO5_QUESTIONS, WHO5_OPTIONS, calculateWHO5 } from "@/lib/assessments/who5";
 import { saveAssessmentResult } from "@/lib/assessments/storage";
+import { ASSESSMENTS } from "@/lib/assessments/registry";
 import { LikertQuestionnaire } from "@/components/assessment/likert-questionnaire";
+import { AssessmentSourceNote } from "@/components/assessment/assessment-source-note";
 
 interface AssessmentModalProps {
   isOpen: boolean;
@@ -34,7 +36,19 @@ export function AssessmentModal({ isOpen, onClose }: AssessmentModalProps) {
           <X className="size-5" />
         </button>
 
+        <div className="mb-6 pr-12">
+          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#5A6E5A]">
+            {ASSESSMENTS.who5.label} • {ASSESSMENTS.who5.resultEyebrow}
+          </span>
+          <p className="mt-2 text-sm leading-relaxed text-[#4A5750]">
+            Please indicate for each of the five statements which is closest to how you have been feeling over the
+            last two weeks.
+          </p>
+        </div>
+
         <LikertQuestionnaire questions={WHO5_QUESTIONS} options={WHO5_OPTIONS} onComplete={handleComplete} />
+
+        <AssessmentSourceNote type="who5" className="mt-6" />
       </div>
     </div>
   );

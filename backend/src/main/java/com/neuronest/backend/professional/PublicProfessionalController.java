@@ -1,5 +1,6 @@
 package com.neuronest.backend.professional;
 
+import com.neuronest.backend.professional.PublicProfessionalDtos.PublicAvailability;
 import com.neuronest.backend.professional.PublicProfessionalDtos.PublicPage;
 import com.neuronest.backend.professional.PublicProfessionalDtos.PublicProfessional;
 import com.neuronest.backend.professional.PublicProfessionalDtos.PublicProfessionalMeta;
@@ -43,5 +44,13 @@ public class PublicProfessionalController {
     @GetMapping("/{id}")
     public PublicProfessional get(@PathVariable String id) {
         return service.get(id);
+    }
+
+    // Dates are taken as strings so a bad date gets a readable 400 from the service.
+    @GetMapping("/{id}/availability")
+    public PublicAvailability availability(@PathVariable String id,
+                                           @RequestParam(required = false) String from,
+                                           @RequestParam(required = false) String to) {
+        return service.availability(id, from, to);
     }
 }

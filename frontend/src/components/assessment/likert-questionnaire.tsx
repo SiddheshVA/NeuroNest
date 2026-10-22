@@ -5,14 +5,15 @@ import type { AssessmentOption, AssessmentQuestion } from "@/lib/assessments/typ
 
 interface LikertQuestionnaireProps {
   questions: AssessmentQuestion[];
-  options: AssessmentOption[];
+  /** Shared answer options; a question with its own `options` (SCI) overrides these. */
+  options?: AssessmentOption[];
   onComplete: (answers: Record<number, number>) => void;
 }
 
 /**
  * Shared single-select question flow (progress bar, question text, option
  * list, prev/next nav) used by every Likert-style screening — WHO-5, GAD-7,
- * PHQ-9, PSS-10. Extracted from the original WHO-5 modal so its visual
+ * PHQ-9, PSS-10, K10, SCI. Extracted from the original WHO-5 modal so its visual
  * design and interaction stay identical across assessments.
  */
 export function LikertQuestionnaire({ questions, options, onComplete }: LikertQuestionnaireProps) {
@@ -21,6 +22,7 @@ export function LikertQuestionnaire({ questions, options, onComplete }: LikertQu
 
   const currentQuestion = questions[currentIndex];
   const selectedScore = answers[currentQuestion.id];
+  const currentOptions = currentQuestion.options ?? options ?? [];
 
   const handleSelectOption = (score: number) => {
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: score }));
@@ -65,7 +67,7 @@ export function LikertQuestionnaire({ questions, options, onComplete }: LikertQu
 
       {/* Options */}
       <div className="flex flex-col gap-2.5 mb-8">
-        {options.map((opt) => {
+        {currentOptions.map((opt) => {
           const isSelected = selectedScore === opt.score;
           return (
             <button

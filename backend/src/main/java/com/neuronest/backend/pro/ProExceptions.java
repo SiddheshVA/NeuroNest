@@ -22,6 +22,13 @@ public final class ProExceptions {
         }
     }
 
+    /** A missing booking request, or one that belongs to another professional: the same 404 for both. */
+    public static class BookingNotFoundException extends RuntimeException {
+        public BookingNotFoundException() {
+            super("This booking request was not found.");
+        }
+    }
+
     public static class FileTooLargeException extends RuntimeException {
         public FileTooLargeException() {
             super("The file is larger than 5 MB. Please upload a smaller file.");

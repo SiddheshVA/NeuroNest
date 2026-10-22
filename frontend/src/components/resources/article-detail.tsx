@@ -15,7 +15,7 @@ const ASSESSMENT_LINKS: Record<RelatedAssessment, { label: string; href: string 
   GAD7: { label: "Take the GAD-7 check-in", href: "/assessment/gad7" },
   PHQ9: { label: "Take the PHQ-9 check-in", href: "/assessment/phq9" },
   PSS10: { label: "Take the PSS-10 stress check", href: "/assessment/pss10" },
-  PSQI: { label: "Take the PSQI sleep check-in", href: "/assessment/psqi" },
+  SCI: { label: "Take the SCI sleep check-in", href: "/assessment/sci" },
 };
 
 // Currently a PlaceholderPage route in App.tsx until the directory is built.

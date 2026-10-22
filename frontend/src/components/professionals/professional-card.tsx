@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Briefcase, IndianRupee, Languages, MapPin, Video } from "lucide-react";
+import { ArrowRight, Briefcase, CalendarClock, IndianRupee, Languages, MapPin, Video } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
   CONSULTATION_MODE_LABELS,
@@ -9,6 +9,7 @@ import {
   formatLocation,
   type PublicProfessional,
 } from "@/lib/professionals-client";
+import { summarizeDays } from "@/lib/weekly-hours";
 import { CredentialsChip, ProfessionalAvatar } from "@/components/professionals/professional-bits";
 
 // label is read to screen readers only; omit it when the visible text already names the detail.
@@ -28,6 +29,11 @@ function ProfessionalCard({ professional }: { professional: PublicProfessional }
   const location = formatLocation(professional.city, null);
   const fee = formatFee(professional.consultationFee);
   const experience = formatExperience(professional.yearsExperience);
+  // "Available Mon to Fri, 60-minute sessions" from the weekly hours; the gap between sessions is never shown.
+  const days = summarizeDays(professional.weeklyHours);
+  const availability = days
+    ? `Available ${days}${professional.sessionMinutes ? `, ${professional.sessionMinutes}-minute sessions` : ""}`
+    : null;
 
   return (
     <article className="flex flex-col gap-4 rounded-2xl bg-card p-5 ring-1 ring-foreground/10 transition-shadow duration-300 hover:shadow-lg">
@@ -52,6 +58,7 @@ function ProfessionalCard({ professional }: { professional: PublicProfessional }
         </Detail>
         {fee ? <Detail icon={IndianRupee} label="Consultation fee">{fee}</Detail> : null}
         {experience ? <Detail icon={Briefcase} label="Experience">{experience}</Detail> : null}
+        {availability ? <Detail icon={CalendarClock} label="Availability">{availability}</Detail> : null}
       </ul>
 
       <Link

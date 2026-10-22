@@ -190,15 +190,27 @@ function pss10Kinds(level: string): RecommendationKind[] {
   }
 }
 
-function psqiKinds(level: string): RecommendationKind[] {
+function k10Kinds(level: string): RecommendationKind[] {
   switch (level) {
-    case "good":
-      return ["sleep-sounds", "relaxation-before-sleep"];
-    case "poor":
-      return ["sleep-sounds", "sleep-meditation", "relaxation-before-sleep", "sleep-routine-resources"];
-    case "very-poor":
+    case "likely-well":
+      return ["mindfulness", "wellness-resources"];
+    case "mild":
+      return ["breathing", "journaling", "talk-to-nuro"];
+    case "moderate":
+      return ["breathing", "grounding", "relaxation-hub", "talk-to-nuro"];
+    case "severe":
     default:
-      return ["sleep-meditation", "relaxation-before-sleep", "sleep-routine-resources"];
+      return ["grounding", "relaxation-hub", "talk-to-nuro", "wellness-resources"];
+  }
+}
+
+function sciKinds(level: string): RecommendationKind[] {
+  switch (level) {
+    case "steady":
+      return ["sleep-sounds", "relaxation-before-sleep"];
+    case "difficulty":
+    default:
+      return ["sleep-sounds", "sleep-meditation", "relaxation-before-sleep", "sleep-routine-resources"];
   }
 }
 
@@ -213,8 +225,10 @@ function getKinds(input: RecommendationInput): RecommendationKind[] {
         return phq9Kinds(input.level);
       case "pss10":
         return pss10Kinds(input.level);
-      case "psqi":
-        return psqiKinds(input.level);
+      case "k10":
+        return k10Kinds(input.level);
+      case "sci":
+        return sciKinds(input.level);
       default:
         return [];
     }

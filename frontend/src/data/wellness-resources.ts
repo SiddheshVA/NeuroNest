@@ -20,7 +20,7 @@ export type ArticleCategory = (typeof articleCategories)[number];
 export type GuideType = (typeof guideTypes)[number];
 
 /** Assessment codes an article can point readers to (see App.tsx routes). */
-export type RelatedAssessment = "WHO5" | "GAD7" | "PHQ9" | "PSS10" | "PSQI";
+export type RelatedAssessment = "WHO5" | "GAD7" | "PHQ9" | "PSS10" | "SCI";
 
 export interface ResourceSource {
   title: string;

@@ -86,6 +86,32 @@ public class SecurityConfig {
         return http.build();
     }
 
+    // Booking requests of signed-in users. Only a verified Clerk token is accepted: ClerkAuthFilter maps
+    // it onto the user's own users row (creating it on first use with the verified Clerk email). The
+    // user cookie is not part of this chain, and an admin token is not a Clerk token, so neither works.
+    @Bean
+    @Order(3)
+    public SecurityFilterChain bookingFilterChain(HttpSecurity http, ClerkAuthFilter clerkAuthFilter) throws Exception {
+        http
+                .securityMatcher("/api/bookings/**")
+                .csrf(csrf -> csrf.disable())
+                .cors(Customizer.withDefaults())
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .anyRequest().authenticated())
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) ->
+                                writeJsonError(response, 401, "Authentication required."))
+                        .accessDeniedHandler((request, response, accessDeniedException) ->
+                                writeJsonError(response, 403, "Access denied.")))
+                .formLogin(form -> form.disable())
+                .httpBasic(basic -> basic.disable())
+                .addFilterBefore(clerkAuthFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+
     // ClerkAuthFilter and JwtAuthFilter are @Components, so Spring Boot would also register them as
     // global servlet filters that run after every security chain. They already run inside the main
     // chain below; the duplicate registration only reached /api/admin/** and /api/pro/**, where it

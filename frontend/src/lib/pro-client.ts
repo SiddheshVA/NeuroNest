@@ -2,6 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE } from "./api";
+import type { WeeklyHours } from "./weekly-hours";
+import type {
+  ConfirmBookingBody,
+  DeclineBookingBody,
+  ProBooking,
+  ProBookingPage,
+  ProBookingSummary,
+  ProposeBookingBody,
+} from "./pro-bookings";
 
 /**
  * Client for the professional self-service API (/api/pro/**). Shapes mirror the backend's ProDtos
@@ -84,6 +93,20 @@ export const PRO_SOCIAL_PLATFORM_INFO: Record<ProSocialPlatform, { label: string
   WEBSITE: { label: "Website", placeholder: "https://www.your-practice.in", hosts: [] },
 };
 
+/**
+ * Indian states and union territories, spelled exactly as IndianStates.java on the backend. Only used on
+ * the profile page before the person has an account; afterwards GET /api/pro/me sends the backend's own
+ * list (stateOptions). Keep the two lists the same.
+ */
+export const PRO_INDIAN_STATES: string[] = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana",
+  "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+  "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana",
+  "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  "Andaman and Nicobar Islands", "Chandigarh", "Dadra and Nagar Haveli and Daman and Diu", "Delhi",
+  "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry",
+];
+
 /** The registration bodies each credential type may use (mirrors SubmissionChecklist), in display order. */
 export function allowedRegistrationBodies(type: ProCredentialType | ""): ProRegistrationBody[] {
   if (type === "PSYCHIATRIST") return ["NMC", "OTHER"];
@@ -125,6 +148,11 @@ export interface ProProfile {
   contactEmail: string;
   contactPhone: string | null;
   availabilityNote: string | null;
+  /** Days and times in Indian Standard Time (see lib/weekly-hours). */
+  weeklyHours: WeeklyHours;
+  sessionMinutes: number | null;
+  /** Gap after each session; never shown publicly. */
+  bufferMinutes: number;
   photoUrl: string | null;
   /** YYYY-MM-DD. Only ever shown to the professional and the admin. */
   dateOfBirth: string | null;
@@ -190,6 +218,9 @@ export type ProUpdate = Partial<{
   photoUrl: string | null;
   contactPhone: string | null;
   socialLinks: Partial<Record<ProSocialPlatform, string>>;
+  weeklyHours: WeeklyHours;
+  sessionMinutes: number | null;
+  bufferMinutes: number;
 }>;
 
 export const DISABLED_ACCOUNT_MESSAGE = "This professional account has been disabled. Please contact support.";
@@ -327,6 +358,20 @@ export function useProApi() {
         request<void>(`/pro/me/documents/${encodeURIComponent(docId)}`, { method: "DELETE" }),
       submit: () =>
         request<ProMe>("/pro/me/submit", { method: "POST", body: JSON.stringify({ declarationAccepted: true }) }),
+      // Booking requests: always the signed-in professional's own (the server takes them from the token).
+      bookings: (status: string, page: number, size: number) => {
+        const params = new URLSearchParams({ page: String(page), size: String(size) });
+        if (status) params.set("status", status);
+        return request<ProBookingPage>(`/pro/bookings?${params}`);
+      },
+      bookingSummary: () => request<ProBookingSummary>("/pro/bookings/summary"),
+      booking: (id: string) => request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}`),
+      confirmBooking: (id: string, body: ConfirmBookingBody) =>
+        request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}/confirm`, { method: "POST", body: JSON.stringify(body) }),
+      declineBooking: (id: string, body: DeclineBookingBody) =>
+        request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}/decline`, { method: "POST", body: JSON.stringify(body) }),
+      proposeBooking: (id: string, body: ProposeBookingBody) =>
+        request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}/propose`, { method: "POST", body: JSON.stringify(body) }),
     }),
     [request],
   );

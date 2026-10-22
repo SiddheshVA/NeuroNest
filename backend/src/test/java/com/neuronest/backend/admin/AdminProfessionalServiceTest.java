@@ -50,7 +50,16 @@ class AdminProfessionalServiceTest {
                                                String email, Boolean sample) {
         return new ProfessionalRequest(fullName, credentialType, " M.Phil ", "rci", registrationNumber, null,
                 registrationYear, null, null, List.of(" Anxiety ", "", "Anxiety", "Stress"), null, " Pune ", null,
-                "online", consultationFee, 5, email, null, null, null, sample);
+                "online", consultationFee, 5, email, null, null, null, sample, null, null, null);
+    }
+
+    // The valid request plus weekly hours fields.
+    private static ProfessionalRequest withHours(String weeklyHoursJson, Integer sessionMinutes, Integer bufferMinutes) {
+        tools.jackson.databind.JsonNode hours = weeklyHoursJson == null ? null
+                : tools.jackson.databind.json.JsonMapper.builder().build().readTree(weeklyHoursJson);
+        return new ProfessionalRequest("  Dr. Asha Rao ", "psychologist", " M.Phil ", "rci", "A123", null,
+                2015, null, null, List.of("Anxiety"), null, " Pune ", null,
+                "online", 1000, 5, " asha@example.com ", null, null, null, null, hours, sessionMinutes, bufferMinutes);
     }
 
     private static ProfessionalRequest valid() {
@@ -71,6 +80,39 @@ class AdminProfessionalServiceTest {
         p.setSampleData(sample);
         when(repository.findById(id)).thenReturn(Optional.of(p));
         return p;
+    }
+
+    private static ProfessionalRequest withText(String qualifications, String bio, List<String> specialties,
+                                                String availabilityNote) {
+        return new ProfessionalRequest("Dr. Asha Rao", "psychologist", qualifications, "rci", "A123", null,
+                2015, null, bio, specialties, null, "Pune", null, "online", 1000, 5, "asha@example.com",
+                "+919876543210", availabilityNote, "https://example.com/photo.jpg", null, null, null, null);
+    }
+
+    @Test
+    void createAndUpdateRefuseContactDetailsInPublicText() {
+        String suffix = " must not contain phone numbers, email addresses or website links. People reach you through NeuroNest.";
+        existing(VerificationStatus.DRAFT, false, false, false);
+        List<ProfessionalRequest> bad = List.of(
+                withText("MA, asha@example.com", null, List.of("Anxiety"), null),
+                withText("MA", "Call 98765 43210", List.of("Anxiety"), null),
+                withText("MA", null, List.of("Anxiety", "Other: @asha_rao"), null),
+                withText("MA", null, List.of("Anxiety"), "Book at example.in"));
+        List<String> fields = List.of("Qualifications", "Bio", "Specializations", "Availability note");
+        for (int i = 0; i < bad.size(); i++) {
+            ProfessionalRequest request = bad.get(i);
+            assertThatThrownBy(() -> service.create(request)).isInstanceOf(ApiValidationException.class)
+                    .hasMessage(fields.get(i) + suffix);
+            assertThatThrownBy(() -> service.update(id, request, "admin")).isInstanceOf(ApiValidationException.class)
+                    .hasMessage(fields.get(i) + suffix);
+        }
+        verify(repository, never()).save(any());
+        verify(repository, never()).saveAndFlush(any());
+
+        // The contact fields and the photo URL are not checked.
+        ProfessionalDetail created = service.create(withText("B.Com, MA", "I help with stress.", List.of("Anxiety"),
+                "Evenings"));
+        assertThat(created.bio()).isEqualTo("I help with stress.");
     }
 
     @Test
@@ -144,6 +186,33 @@ class AdminProfessionalServiceTest {
         assertThat(r2.reReviewRequired()).isFalse();
         assertThat(draft.getVerificationStatus()).isEqualTo(VerificationStatus.DRAFT);
         assertThat(draft.isSampleData()).isTrue(); // kept when omitted
+        verify(log, never()).save(any());
+    }
+
+    @Test
+    void weeklyHoursUseTheSharedRulesAreKeptWhenOmittedAndNeverTriggerReReview() {
+        Professional p = existing(VerificationStatus.VERIFIED, true, true, false);
+
+        ProfessionalUpdateResult result = service.update(id,
+                withHours("{\"TUE\":[{\"start\":\"18:00\",\"end\":\"20:00\"}]}", 60, 10), "Admin");
+        assertThat(result.reReviewRequired()).isFalse();
+        assertThat(p.getVerificationStatus()).isEqualTo(VerificationStatus.VERIFIED);
+        assertThat(result.professional().weeklyHours()).containsOnlyKeys("TUE");
+        assertThat(result.professional().sessionMinutes()).isEqualTo(60);
+        assertThat(result.professional().bufferMinutes()).isEqualTo(10);
+
+        // A request without them (as the current admin form sends) keeps what is stored.
+        service.update(id, valid(), "Admin");
+        assertThat(p.getWeeklyHours()).containsOnlyKeys("TUE");
+        assertThat(p.getSessionMinutes()).isEqualTo(60);
+        assertThat(p.getBufferMinutes()).isEqualTo(10);
+
+        assertThatThrownBy(() -> service.update(id,
+                withHours("{\"MON\":[{\"start\":\"09:00\",\"end\":\"09:30\"}]}", 45, null), "Admin"))
+                .isInstanceOf(ApiValidationException.class)
+                .hasMessage("weeklyHours: Monday 09:00 to 09:30 is shorter than one 45-minute session.");
+        assertThatThrownBy(() -> service.update(id, withHours(null, null, 7), "Admin"))
+                .hasMessage("bufferMinutes must be 0, 5, 10 or 15.");
         verify(log, never()).save(any());
     }
 

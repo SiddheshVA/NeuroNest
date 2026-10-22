@@ -18,6 +18,7 @@ import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
 import { AdminApiError, createProfessional, getProfessional, updateProfessional } from "./admin-api";
 import { formatDate, formatDateTime } from "./format";
 import { SampleChip, VerificationStatusChip } from "./VerificationStatusChip";
+import { WeeklyHoursReadOnly } from "./WeeklyHoursReadOnly";
 import {
   CONSULTATION_MODE_LABELS,
   CONSULTATION_MODES,
@@ -448,6 +449,19 @@ export function ProfessionalFormPage() {
               {numberField("consultationFee", "Consultation fee (₹ per session)", "1000", 6)}
               {field("availabilityNote", "Availability note", { placeholder: "Weekday evenings and Saturday mornings" })}
             </Section>
+
+            {record && (
+              <Section title="Weekly availability" columns={1}>
+                <Typography variant="body2" color="text.secondary">
+                  The professional sets these on their own profile. They are shown here for reference only.
+                </Typography>
+                <WeeklyHoursReadOnly
+                  weeklyHours={record.weeklyHours}
+                  sessionMinutes={record.sessionMinutes}
+                  bufferMinutes={record.bufferMinutes}
+                />
+              </Section>
+            )}
 
             <Section title="Profile" columns={1}>
               {field("bio", "Bio", { multiline: true, minRows: 4, placeholder: "Describe how this professional works and who they help." })}

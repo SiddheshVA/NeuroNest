@@ -1,7 +1,7 @@
 
 import Link from "next/link";
 import { Menu } from "lucide-react";
-import { useUser, UserButton } from "@clerk/nextjs";
+import { useUser } from "@clerk/nextjs";
 import { usePathname } from "next/navigation";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import { isNavLinkActive, mainNavLinks } from "@/lib/site-config";
 import { cn } from "@/lib/utils";
+import { AccountMenu } from "@/components/layout/account-menu";
 import { Logo } from "@/components/layout/logo";
 
 function MobileNav() {
@@ -63,7 +64,7 @@ function MobileNav() {
                 Dashboard
               </SheetClose>
               <div className="flex items-center justify-center py-1">
-                <UserButton />
+                <AccountMenu />
               </div>
             </>
           ) : (

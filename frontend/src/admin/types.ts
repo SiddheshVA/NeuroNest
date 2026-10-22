@@ -1,3 +1,5 @@
+import type { WeeklyHours } from "@/lib/weekly-hours";
+
 // Shapes of the admin professionals API. Field names and enum values mirror the backend's
 // AdminProfessionalDtos and the professional enums exactly.
 
@@ -93,6 +95,10 @@ export interface ProfessionalDetail {
   verificationNotes: string | null;
   nextRecheckDate: string | null;
   submittedAt: string | null;
+  /** Shown read-only in the admin area; the professional edits them on their profile. */
+  weeklyHours: WeeklyHours;
+  sessionMinutes: number | null;
+  bufferMinutes: number;
   /** Read-only for the admin; set by the professional on their own profile. */
   dateOfBirth: string | null;
   socialLinks: Partial<Record<SocialPlatform, string>>;

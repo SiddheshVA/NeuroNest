@@ -1,11 +1,13 @@
 package com.neuronest.backend.pro;
 
 import com.neuronest.backend.pro.ProExceptions.MissingItem;
+import com.neuronest.backend.professional.ContactDetailsGuard;
 import com.neuronest.backend.professional.CredentialType;
 import com.neuronest.backend.professional.DocumentType;
 import com.neuronest.backend.professional.Professional;
 import com.neuronest.backend.professional.RegistrationBody;
 import com.neuronest.backend.professional.VerificationStatus;
+import com.neuronest.backend.professional.WeeklyHours;
 
 import java.time.LocalDate;
 import java.time.Period;
@@ -22,11 +24,11 @@ import java.util.stream.Collectors;
 // incomplete submit and to show the professional what is still missing.
 public final class SubmissionChecklist {
 
-    static final int MIN_BIO_LENGTH = 50;
-    static final int MIN_AVAILABILITY_NOTE = 10;
+    static final int MIN_BIO_LENGTH = 10;
     static final int MAX_YEARS_EXPERIENCE = 60;
     static final int MIN_AGE = 21;
     static final int MAX_AGE = 90;
+    static final String SPECIALTIES_LABEL = "Specializations";
     static final Set<VerificationStatus> EDITABLE_STATUSES = EnumSet.of(VerificationStatus.DRAFT, VerificationStatus.NEEDS_INFO);
 
     private SubmissionChecklist() {}
@@ -119,16 +121,27 @@ public final class SubmissionChecklist {
             missing.add(new MissingItem("bio", "Write a bio of at least " + MIN_BIO_LENGTH + " characters."));
         }
 
+        // Saved text that contains contact details (for example from before this check existed).
+        ContactDetailsGuard.check("Qualifications", p.getQualifications())
+                .ifPresent(error -> missing.add(new MissingItem("qualifications", error)));
+        ContactDetailsGuard.check("Bio", p.getBio()).ifPresent(error -> missing.add(new MissingItem("bio", error)));
+        ContactDetailsGuard.checkAll(SPECIALTIES_LABEL, p.getSpecialties())
+                .ifPresent(error -> missing.add(new MissingItem("specialties", error)));
+        ContactDetailsGuard.check("Availability note", p.getAvailabilityNote())
+                .ifPresent(error -> missing.add(new MissingItem("availabilityNote", error)));
+
         if (p.getYearsExperience() == null) {
             missing.add(new MissingItem("yearsExperience", "Add your years of experience."));
         }
         if (p.getConsultationFee() == null) {
             missing.add(new MissingItem("consultationFee", "Add your consultation fee. Enter 0 if you do not charge a fee."));
         }
-        String note = p.getAvailabilityNote() == null ? "" : p.getAvailabilityNote().trim();
-        if (note.length() < MIN_AVAILABILITY_NOTE) {
-            missing.add(new MissingItem("availabilityNote", "Add an availability note of at least "
-                    + MIN_AVAILABILITY_NOTE + " characters."));
+        // The availability note is optional; the weekly hours and session length are what booking uses.
+        if (p.getSessionMinutes() == null) {
+            missing.add(new MissingItem("sessionMinutes", "Choose how long one session lasts: 30, 45 or 60 minutes."));
+        }
+        if (!WeeklyHours.hasAnyRange(p.getWeeklyHours())) {
+            missing.add(new MissingItem("weeklyHours", "Add at least one time range to your weekly hours."));
         }
         if (blank(p.getContactPhone())) {
             missing.add(new MissingItem("contactPhone", "Add your contact phone number."));

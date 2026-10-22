@@ -13,7 +13,7 @@ export function AssessmentHero({ onBeginCheckIn }: AssessmentHeroProps) {
         {/* Left Side: Copy & Actions */}
         <div className="flex flex-col items-start lg:col-span-6 xl:col-span-6">
           <span className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-[#5A6E5A]">
-            Wellbeing Check-in
+            Suggested starting point • WHO-5
           </span>
 
           <h1 className="font-heading text-4xl font-normal leading-[1.12] tracking-tight text-[#1C352D] sm:text-5xl sm:leading-[1.1] lg:text-[52px] xl:text-[58px]">
@@ -25,6 +25,10 @@ export function AssessmentHero({ onBeginCheckIn }: AssessmentHeroProps) {
           <p className="mt-5 max-w-lg text-base leading-relaxed text-[#4A5750] sm:text-lg sm:leading-relaxed">
             Take a few minutes to reflect on your wellbeing. There are no right or
             wrong answers — just answer based on how you’ve been feeling recently.
+          </p>
+          <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#66746E] sm:text-base">
+            This is our suggestion for a starting point. Every other check-in is open to you too — none of
+            them is required.
           </p>
 
           {/* Info Badge Row */}
@@ -49,13 +53,22 @@ export function AssessmentHero({ onBeginCheckIn }: AssessmentHeroProps) {
               onClick={onBeginCheckIn}
               className="inline-flex items-center gap-2.5 rounded-full bg-[#233E33] px-8 py-3.5 text-base font-medium text-white shadow-sm transition-all duration-200 hover:bg-[#192E26] hover:shadow-md active:scale-[0.99] sm:px-9 sm:py-4 sm:text-lg cursor-pointer"
             >
-              <span>Begin check-in</span>
+              <span>Start the WHO-5 check-in</span>
               <ArrowRight className="size-5" aria-hidden="true" />
             </button>
 
             <p className="pl-1 text-xs text-[#66746E] sm:text-sm">
               Your responses are private and secure.
             </p>
+            <button
+              type="button"
+              onClick={() =>
+                document.getElementById("all-checkins")?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+              className="pl-1 text-sm font-medium text-[#5A6E5A] hover:text-[#233E33] hover:underline underline-offset-4 cursor-pointer"
+            >
+              Or choose a different check-in
+            </button>
           </div>
         </div>
 

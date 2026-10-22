@@ -6,12 +6,13 @@ import RootLayout from "@/routes/RootLayout";
 import HomePage from "@/routes/HomePage";
 import DashboardPage from "@/routes/DashboardPage";
 import MemoryPage from "@/routes/MemoryPage";
+import AppointmentsPage from "@/routes/AppointmentsPage";
 import AssessmentResultPage from "@/routes/AssessmentResultPage";
-import { AssessmentPage, Gad7Page, Phq9Page, PsqiPage, Pss10Page } from "@/routes/AssessmentPages";
+import { AssessmentPage, Gad7Page, K10Page, Phq9Page, Pss10Page, SciPage } from "@/routes/AssessmentPages";
 import { ArticleRoute, GuideRoute, ResourcesPage, VideoRoute } from "@/routes/ResourcesPages";
 import { LoginPage, RequireAuth, SignUpPage } from "@/routes/AuthPages";
 import { FindProfessionalRedirect, ProfessionalProfileRoute, ProfessionalsPage } from "@/routes/ProfessionalsPages";
-import { ProJoinPage, ProProfileRoute } from "@/routes/ProPages";
+import { ProJoinPage, ProProfileRoute, ProRequestRoute, ProRequestsRoute } from "@/routes/ProPages";
 import {
   BreathingExerciseRoute,
   BreathingPage,
@@ -53,7 +54,8 @@ export default function App() {
         <Route path="/assessment/gad7" element={<Gad7Page />} />
         <Route path="/assessment/phq9" element={<Phq9Page />} />
         <Route path="/assessment/pss10" element={<Pss10Page />} />
-        <Route path="/assessment/psqi" element={<PsqiPage />} />
+        <Route path="/assessment/k10" element={<K10Page />} />
+        <Route path="/assessment/sci" element={<SciPage />} />
         <Route path="/assessment/result/:type" element={<AssessmentResultPage />} />
 
         <Route path="/relaxation" element={<RelaxationLayout />}>
@@ -85,6 +87,15 @@ export default function App() {
           }
         />
 
+        <Route
+          path="/appointments"
+          element={
+            <RequireAuth>
+              <AppointmentsPage />
+            </RequireAuth>
+          }
+        />
+
         <Route path="/resources" element={<ResourcesPage />} />
         <Route path="/resources/articles/:slug" element={<ArticleRoute />} />
         <Route path="/resources/videos/:slug" element={<VideoRoute />} />
@@ -96,6 +107,8 @@ export default function App() {
         {/* Professional self-service. Not in the navigation; linked from the directory page. */}
         <Route path="/pro/join" element={<ProJoinPage />} />
         <Route path="/pro/profile" element={<ProProfileRoute />} />
+        <Route path="/pro/requests" element={<ProRequestsRoute />} />
+        <Route path="/pro/requests/:id" element={<ProRequestRoute />} />
 
         {/* Old URLs from the previous frontend. */}
         <Route path="/home" element={<Navigate to="/" replace />} />

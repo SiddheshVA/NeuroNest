@@ -9,7 +9,7 @@ import { ASSESSMENTS } from "@/lib/assessments/registry";
 import { clearAssessmentResult, loadAssessmentResult, subscribeAssessmentResults } from "@/lib/assessments/storage";
 import type { AssessmentType } from "@/lib/assessments/types";
 
-const VALID_TYPES: AssessmentType[] = ["who5", "gad7", "phq9", "pss10", "psqi"];
+const VALID_TYPES: AssessmentType[] = ["who5", "gad7", "phq9", "pss10", "k10", "sci"];
 
 export default function AssessmentResultPage() {
   const { type = "" } = useParams();

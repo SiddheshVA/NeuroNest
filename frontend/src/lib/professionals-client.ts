@@ -1,3 +1,4 @@
+import type { WeeklyHours } from "./weekly-hours";
 import { API_BASE } from "./api";
 
 /**
@@ -41,10 +42,23 @@ export interface PublicProfessional {
   consultationFee: number | null;
   yearsExperience: number | null;
   availabilityNote: string | null;
+  /** Days and times in Indian Standard Time (see lib/weekly-hours). */
+  weeklyHours: WeeklyHours;
+  sessionMinutes: number | null;
   photoUrl: string | null;
   registrationBody: string | null;
   isSampleData: boolean;
   credentialsLabel: string;
+  /** True only when the listing can take booking requests. */
+  bookable: boolean;
+}
+
+/** GET /api/professionals/{id}/availability. Slots are ISO date-times with the +05:30 offset. */
+export interface ProfessionalAvailability {
+  sessionMinutes: number | null;
+  bufferMinutes: number;
+  timezone: string;
+  days: { date: string; slots: string[] }[];
 }
 
 export interface ProfessionalPage {
@@ -116,6 +130,12 @@ export function searchProfessionals(filters: ProfessionalFilters, signal?: Abort
 
 export function getPublicProfessional(id: string, signal?: AbortSignal) {
   return getJson<PublicProfessional>(`/professionals/${encodeURIComponent(id)}`, signal);
+}
+
+/** Free slots between two dates (YYYY-MM-DD, India time, both included; at most 31 days apart). */
+export function getProfessionalAvailability(id: string, from: string, to: string, signal?: AbortSignal) {
+  const params = new URLSearchParams({ from, to });
+  return getJson<ProfessionalAvailability>(`/professionals/${encodeURIComponent(id)}/availability?${params}`, signal);
 }
 
 export function getProfessionalMeta(signal?: AbortSignal) {

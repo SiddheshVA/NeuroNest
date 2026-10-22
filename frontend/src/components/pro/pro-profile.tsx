@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "@clerk/clerk-react";
-import { CheckCircle2, Circle, Send } from "lucide-react";
+import { useAuth, useUser } from "@clerk/clerk-react";
+import { CheckCircle2, Circle, Mail, Send } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
 import { ProDocuments } from "@/components/pro/pro-documents";
+import { ProRequestsLink } from "@/components/pro/pro-requests-link";
 import { ProStatusBanner } from "@/components/pro/pro-status-banner";
+import { WeeklyHoursEditor } from "@/components/pro/weekly-hours-editor";
 import {
   CheckboxField,
   ChipInputField,
@@ -25,6 +26,7 @@ import {
   PRO_CONSULTATION_MODES,
   PRO_CREDENTIAL_TYPE_LABELS,
   PRO_CREDENTIAL_TYPES,
+  PRO_INDIAN_STATES,
   PRO_REGISTRATION_BODY_LABELS,
   PRO_SOCIAL_PLATFORM_INFO,
   PRO_SOCIAL_PLATFORMS,
@@ -43,19 +45,33 @@ import {
   type ProSocialPlatform,
   type ProUpdate,
 } from "@/lib/pro-client";
+import {
+  WEEK_DAYS,
+  draftFromHours,
+  draftHasAnyRange,
+  emptyDraft,
+  hoursFromDraft,
+  validateDraft,
+  type WeekDay,
+  type WeeklyDraft,
+} from "@/lib/weekly-hours";
 
 const LOCKED_HELPER = "These details can only be changed by the admin after submission.";
 const UNSAVED_MESSAGE = "You have changes that are not saved. If you leave now, you will lose them.";
 const CHOOSE_OPTION = "Please choose an option.";
 const FILL_IN = "Please fill in this field.";
 const CHOOSE_CREDENTIAL_FIRST = "Choose your credential type first.";
-const AVAILABILITY_HELPER =
-  "This is shown on your public profile so people know when to ask for an appointment. It does not set your calendar.";
+const AVAILABILITY_HELPER = "Optional. Add anything else people should know, for example days you are away.";
 const SPECIALIZATIONS_HELPER = "Choose all professional roles that apply to you.";
 const SOCIAL_HELPER = "Only the NeuroNest team will see these links. They help us verify who you are.";
 const DECLARATION_START =
   "I certify that all information provided is true. I consent to background verification. I agree to NeuroNest";
 const DECLARATION_END = "I understand submitting this application does not guarantee approval.";
+// Shown while the person has no professional account yet (the first save creates it).
+const FIRST_SAVE_NOTICE =
+  "Your account is created when you save for the first time. Save your details first, then you can upload your documents.";
+const SAVE_FIRST = "Save your details first, then you can upload your documents.";
+const ACCOUNT_CREATED_FIX = "Your account was created. Please correct the details below and save again.";
 const SUBMIT_CONFIRMATION =
   "After you submit, you can't change your name or registration details until the admin has reviewed your profile. Do you want to continue?";
 
@@ -67,7 +83,8 @@ const MAX_LIST_ITEM = 60;
 const MIN_REGISTRATION_YEAR = 1950;
 const MAX_CONSULTATION_FEE = 100000;
 const MAX_YEARS_EXPERIENCE = 60;
-const MIN_AVAILABILITY_NOTE = 10;
+// Mirrors SubmissionChecklist.MIN_BIO_LENGTH (checked when submitting).
+const MIN_BIO_LENGTH = 10;
 const MAX_SPECIALTIES = 15;
 const MIN_SPECIALTY = 2;
 const MIN_AGE = 21;
@@ -99,13 +116,49 @@ interface FormValues {
   availabilityNote: string;
   photoUrl: string;
   contactPhone: string;
+  /** The weekly hours editor's days and ranges; times are "" until chosen. */
+  weeklyHours: WeeklyDraft;
+  /** "30", "45", "60" or "" (not chosen). */
+  sessionMinutes: string;
+  /** "0", "5", "10", "15" or "" (sent as 0). */
+  bufferMinutes: string;
   /** A key is present while its platform is ticked; keys are kept in PRO_SOCIAL_PLATFORMS order. */
   socialLinks: Partial<Record<ProSocialPlatform, string>>;
 }
 type FieldName = keyof FormValues;
 // "specialties" is the backend's name for the whole specializations group.
-type ErrorKey = FieldName | "specialties" | `socialLinks.${ProSocialPlatform}`;
+type ErrorKey = FieldName | "specialties" | `socialLinks.${ProSocialPlatform}` | `weeklyHours.${WeekDay}`;
 type FieldErrors = Partial<Record<ErrorKey, string>>;
+
+// Every field empty, for a person who has no professional account yet.
+const EMPTY_FORM: FormValues = {
+  fullName: "",
+  dateOfBirth: "",
+  credentialType: "",
+  qualifications: "",
+  registrationBody: "",
+  registrationNumber: "",
+  registrationCouncil: "",
+  registrationYear: "",
+  registrationExpiry: "",
+  bio: "",
+  specializations: [],
+  otherSpecializationTicked: false,
+  otherSpecialization: "",
+  languages: [],
+  city: "",
+  state: "",
+  consultationMode: "",
+  consultationFee: "",
+  yearsExperience: "",
+  availabilityNote: "",
+  photoUrl: "",
+  contactPhone: "",
+  weeklyHours: emptyDraft(),
+  sessionMinutes: "",
+  bufferMinutes: "",
+  socialLinks: {},
+};
 
 const LOCKED_FIELDS: FieldName[] = [
   "fullName",
@@ -130,6 +183,9 @@ const ALL_FIELDS: FieldName[] = [
   "availabilityNote",
   "photoUrl",
   "contactPhone",
+  "weeklyHours",
+  "sessionMinutes",
+  "bufferMinutes",
 ];
 const ERROR_KEYS: string[] = [
   ...ALL_FIELDS,
@@ -247,6 +303,9 @@ function toForm(p: ProProfile, stateOptions: string[]): FormValues {
     availabilityNote: text(p.availabilityNote),
     photoUrl: text(p.photoUrl),
     contactPhone: text(p.contactPhone),
+    weeklyHours: draftFromHours(p.weeklyHours),
+    sessionMinutes: num(p.sessionMinutes),
+    bufferMinutes: num(p.bufferMinutes),
     socialLinks: orderedLinks(p.socialLinks ?? {}),
   };
 }
@@ -267,6 +326,10 @@ function toUpdate(v: FormValues, includeLocked: boolean): ProUpdate {
     availabilityNote: text(v.availabilityNote),
     photoUrl: text(v.photoUrl),
     contactPhone: text(v.contactPhone),
+    weeklyHours: hoursFromDraft(v.weeklyHours),
+    sessionMinutes: num(v.sessionMinutes),
+    // An empty gap means no gap.
+    bufferMinutes: v.bufferMinutes.trim() === "" ? 0 : Number(v.bufferMinutes),
     // Only ticked platforms are sent, so unticked ones are removed from the saved links.
     socialLinks: Object.fromEntries(Object.entries(v.socialLinks).map(([platform, link]) => [platform, (link ?? "").trim()])),
   };
@@ -284,6 +347,17 @@ function toUpdate(v: FormValues, includeLocked: boolean): ProUpdate {
     });
   }
   return update;
+}
+
+// After the account is created, only the fields the person actually filled in are saved.
+function filledOnly(update: ProUpdate): ProUpdate {
+  const entries = Object.entries(update).filter(([, value]) => {
+    if (value === null || value === undefined || value === "") return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === "object") return Object.keys(value).length > 0;
+    return true;
+  });
+  return Object.fromEntries(entries) as ProUpdate;
 }
 
 function validate(v: FormValues, includeLocked: boolean): FieldErrors {
@@ -336,9 +410,12 @@ function validate(v: FormValues, includeLocked: boolean): FieldErrors {
   maxLength("bio", "Bio", MAX_LONG_TEXT);
   maxLength("city", "City", MAX_TEXT);
   maxLength("state", "State", MAX_TEXT);
-  const note = v.availabilityNote.trim();
-  if (note && (note.length < MIN_AVAILABILITY_NOTE || note.length > MAX_TEXT)) {
-    errors.availabilityNote = `Availability note must be between ${MIN_AVAILABILITY_NOTE} and ${MAX_TEXT} characters.`;
+  // The availability note is optional, with no minimum length.
+  maxLength("availabilityNote", "Availability note", MAX_TEXT);
+  // The weekly hours rules the backend applies on every save (at least one range is only needed to submit).
+  const dayErrors = validateDraft(v.weeklyHours, v.sessionMinutes ? Number(v.sessionMinutes) : null);
+  for (const day of WEEK_DAYS) {
+    if (dayErrors[day]) errors[`weeklyHours.${day}`] = dayErrors[day];
   }
   if (v.otherSpecializationTicked) {
     const other = v.otherSpecialization.trim();
@@ -409,11 +486,13 @@ function MissingChecklist({ items, title }: { items: ProMissingItem[]; title: st
 type LoadState = { status: "loading" } | { status: "error"; message: string } | { status: "ready" };
 
 function ProProfilePage() {
-  const navigate = useNavigate();
   const { isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
   const { api, disabled } = useProApi();
   const [load, setLoad] = useState<LoadState>({ status: "loading" });
   const [retry, setRetry] = useState(0);
+  // Null once loaded means the person has no professional account yet: the form is empty and the first
+  // save creates the account. Otherwise the page behaves as it always has.
   const [me, setMe] = useState<ProMe | null>(null);
   const [values, setValues] = useState<FormValues | null>(null);
   const [saved, setSaved] = useState<FormValues | null>(null);
@@ -436,8 +515,9 @@ function ProProfilePage() {
   }, []);
 
   // Nothing is requested until Clerk has finished loading and reports a signed-in user (RequireAuth
-  // handles signed-out visitors). The form is always filled from the saved data on each load, and
-  // any failure shows an error with Retry rather than an empty form or a redirect.
+  // handles signed-out visitors). The form is always filled from the saved data on each load. No
+  // professional account yet is not an error: the empty form is shown. Any other failure shows an
+  // error with Retry rather than an empty form or a redirect.
   const ready = isLoaded && isSignedIn;
   useEffect(() => {
     if (!ready) return;
@@ -452,7 +532,10 @@ function ProProfilePage() {
       .catch((e) => {
         if (cancelled) return;
         if (e instanceof ProApiError && e.kind === "not-registered") {
-          navigate("/pro/join", { replace: true });
+          setMe(null);
+          setValues(EMPTY_FORM);
+          setSaved(EMPTY_FORM);
+          setLoad({ status: "ready" });
         } else if (!(e instanceof ProApiError) || (e.kind !== "unauthorized" && e.kind !== "disabled")) {
           setLoad({
             status: "error",
@@ -463,7 +546,7 @@ function ProProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [ready, api, adopt, navigate, retry]);
+  }, [ready, api, adopt, retry]);
 
   const dirty = values !== null && saved !== null && JSON.stringify(values) !== JSON.stringify(saved);
 
@@ -511,7 +594,7 @@ function ProProfilePage() {
       </PageFrame>
     );
   }
-  if (!isLoaded || load.status === "loading" || !me || !values || !saved) {
+  if (!isLoaded || load.status !== "ready" || !values || !saved) {
     return (
       <PageFrame>
         {isLoaded && load.status === "error" ? (
@@ -529,14 +612,19 @@ function ProProfilePage() {
     );
   }
 
-  const canEditLocked = me.canEditCredentials;
-  const status = me.profile.verificationStatus;
-  const canAttemptSubmit = status === "DRAFT" || status === "NEEDS_INFO";
+  const registered = me !== null;
+  // Before the account exists every field may be filled in; nothing is locked yet.
+  const canEditLocked = me ? me.canEditCredentials : true;
+  const status = me?.profile.verificationStatus;
+  const canAttemptSubmit = !me || status === "DRAFT" || status === "NEEDS_INFO";
+  // The backend's list once the account exists; before that the same list from pro-client.
+  const stateOptions = me?.stateOptions ?? PRO_INDIAN_STATES;
+  const accountEmail = user?.primaryEmailAddress?.emailAddress ?? null;
   const isCounselor = values.credentialType === "COUNSELOR";
   const allowedBodies = allowedRegistrationBodies(values.credentialType);
   const council = councilField(values.registrationBody);
   const unlistedSavedState =
-    !values.state && me.profile.state && !me.stateOptions.includes(me.profile.state) ? me.profile.state : null;
+    me && !values.state && me.profile.state && !me.stateOptions.includes(me.profile.state) ? me.profile.state : null;
 
   const clearErrors = (...keys: ErrorKey[]) =>
     setErrors((current) => {
@@ -582,10 +670,81 @@ function ProProfilePage() {
     helper: !canEditLocked ? LOCKED_HELPER : undefined,
   });
 
+  // The first save for a person without an account: register with the three required fields, then save
+  // everything else they filled in, then load the new account.
+  const createAccount = async () => {
+    const clientErrors = validate(values, true);
+    if (!values.fullName.trim()) clientErrors.fullName = FILL_IN;
+    if (!values.credentialType) clientErrors.credentialType = CHOOSE_OPTION;
+    if (!values.consultationMode) clientErrors.consultationMode = CHOOSE_OPTION;
+    setErrors(clientErrors);
+    if (Object.keys(clientErrors).length > 0 || !values.credentialType || !values.consultationMode) {
+      setSaveError("Please correct the highlighted fields and save again.");
+      return;
+    }
+    const typed = values;
+    setSaving(true);
+    try {
+      try {
+        await api.register({
+          fullName: typed.fullName.trim(),
+          credentialType: typed.credentialType as ProCredentialType,
+          consultationMode: typed.consultationMode as ProConsultationMode,
+        });
+      } catch (e) {
+        if (e instanceof ProApiError && (e.kind === "unauthorized" || e.kind === "disabled")) return;
+        if (e instanceof ProApiError && e.status === 409) {
+          // The same 409 is used when the email belongs to another account, so check that this sign-in
+          // really has an account before continuing with it.
+          try {
+            adopt(await api.me());
+            setErrors({});
+            setSaveSuccess("A professional account already exists for this sign-in, so your saved details have been loaded.");
+          } catch (meError) {
+            if (meError instanceof ProApiError && (meError.kind === "unauthorized" || meError.kind === "disabled")) return;
+            setSaveError(e.message);
+          }
+          return;
+        }
+        setSaveError(e instanceof Error && e.message ? e.message : "Your account could not be created. Please try again.");
+        return;
+      }
+
+      // The account exists from here on; the rest of the details follow with the normal save.
+      const rest = filledOnly(toUpdate(typed, true));
+      try {
+        await api.update(rest);
+        adopt(await api.me());
+        setSaveSuccess("Your account has been created and your details have been saved.");
+      } catch (e) {
+        if (e instanceof ProApiError && (e.kind === "unauthorized" || e.kind === "disabled")) return;
+        // Switch to the new account but keep what was typed, so it can be corrected and saved again.
+        try {
+          const next = await api.me();
+          setMe(next);
+          setSaved(toForm(next.profile, next.stateOptions));
+          setValues(typed);
+        } catch {
+          // The account was created; the next page load shows it.
+        }
+        const message = e instanceof Error ? e.message : "Your details could not be saved. Please try again.";
+        setSaveError(`${ACCOUNT_CREATED_FIX} ${message}`);
+        const field = e instanceof ProApiError && e.status === 400 ? fieldOf(message) : null;
+        setErrors(field ? { [field]: message } : {});
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const save = async (event?: FormEvent) => {
     event?.preventDefault();
     setSaveError(null);
     setSaveSuccess(null);
+    if (!registered) {
+      await createAccount();
+      return;
+    }
     const clientErrors = validate(values, canEditLocked);
     setErrors(clientErrors);
     if (Object.keys(clientErrors).length > 0) {
@@ -640,9 +799,11 @@ function ProProfilePage() {
     if (!values.state) selectErrors.state = CHOOSE_OPTION;
     if (needsRegistration && !values.registrationBody) selectErrors.registrationBody = CHOOSE_OPTION;
     const fillErrors: FieldErrors = {};
-    for (const field of ["dateOfBirth", "yearsExperience", "consultationFee", "availabilityNote", "contactPhone"] as const) {
+    for (const field of ["dateOfBirth", "yearsExperience", "consultationFee", "contactPhone"] as const) {
       if (!values[field].trim()) fillErrors[field] = FILL_IN;
     }
+    if (!draftHasAnyRange(values.weeklyHours)) fillErrors.weeklyHours = "Add at least one time range to your weekly hours.";
+    if (!values.sessionMinutes) selectErrors.sessionMinutes = CHOOSE_OPTION;
     if (specialtiesOf(values).length === 0) fillErrors.specialties = "Please choose at least one specialization.";
     if (Object.keys(selectErrors).length > 0 || Object.keys(fillErrors).length > 0) {
       setErrors((current) => ({ ...current, ...selectErrors, ...fillErrors }));
@@ -657,7 +818,29 @@ function ProProfilePage() {
 
   return (
     <PageFrame>
-      <ProStatusBanner me={me} />
+      {me ? <ProStatusBanner me={me} /> : null}
+      {me ? <ProRequestsLink me={me} /> : null}
+
+      {!registered ? (
+        <div className="flex flex-col gap-3">
+          <p role="status" className="rounded-xl border border-border bg-muted/60 px-4 py-3 text-sm font-medium text-foreground">
+            {FIRST_SAVE_NOTICE}
+          </p>
+          <div className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+            <Mail className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <p>
+              NeuroNest will send notifications about your listing to the email address on your sign-in account
+              {accountEmail ? (
+                <>
+                  , which is <span className="font-semibold">{accountEmail}</span>
+                </>
+              ) : null}
+              . To use a different address, change it in your account settings before you save. This email address
+              must be verified.
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <form onSubmit={save} noValidate className="flex flex-col gap-8 rounded-2xl bg-card p-6 ring-1 ring-foreground/10 sm:p-8">
         <p className="text-sm text-muted-foreground">
@@ -757,7 +940,7 @@ function ProProfilePage() {
             value={values.bio}
             onChange={(v) => set("bio", v)}
             error={errors.bio}
-            helper={`Describe how you work and who you help. Use at least 50 characters. You have written ${values.bio.trim().length} characters.`}
+            helper={`Describe how you work and who you help. Use at least ${MIN_BIO_LENGTH} characters. You have written ${values.bio.trim().length} characters.`}
             disabled={saving}
             className="sm:col-span-2"
           />
@@ -825,7 +1008,7 @@ function ProProfilePage() {
           <TextField
             label="Contact email"
             type="email"
-            value={me.profile.contactEmail}
+            value={me ? me.profile.contactEmail : (accountEmail ?? "")}
             onChange={() => {}}
             disabled
             helper="This is the email on your account. Booking requests are sent here."
@@ -840,7 +1023,7 @@ function ProProfilePage() {
             emptyLabel="Select state"
             value={values.state}
             onChange={(v) => set("state", v)}
-            options={me.stateOptions.map((name) => ({ value: name, label: name }))}
+            options={stateOptions.map((name) => ({ value: name, label: name }))}
             error={errors.state}
             helper={
               unlistedSavedState
@@ -863,12 +1046,35 @@ function ProProfilePage() {
           />
           <TextField label="Consultation fee (₹ per session)" required digits={6} placeholder="1000" value={values.consultationFee} onChange={(v) => set("consultationFee", v)} error={errors.consultationFee} disabled={saving}
             helper="Enter 0 if you do not charge a fee." />
+          <WeeklyHoursEditor
+            draft={values.weeklyHours}
+            onChange={(next) => {
+              set("weeklyHours", next);
+              clearErrors(...WEEK_DAYS.map((day) => `weeklyHours.${day}` as const));
+            }}
+            sessionMinutes={values.sessionMinutes}
+            onSessionMinutesChange={(v) => {
+              set("sessionMinutes", v);
+              // A different session length changes which ranges are long enough.
+              clearErrors(...WEEK_DAYS.map((day) => `weeklyHours.${day}` as const));
+            }}
+            bufferMinutes={values.bufferMinutes}
+            onBufferMinutesChange={(v) => set("bufferMinutes", v)}
+            errors={{
+              general: errors.weeklyHours,
+              days: Object.fromEntries(
+                WEEK_DAYS.flatMap((day) => (errors[`weeklyHours.${day}`] ? [[day, errors[`weeklyHours.${day}`]]] : [])),
+              ),
+              sessionMinutes: errors.sessionMinutes,
+              bufferMinutes: errors.bufferMinutes,
+            }}
+            disabled={saving}
+          />
           <TextField
             label="Availability note"
-            required
             value={values.availabilityNote}
             onChange={(v) => set("availabilityNote", v)}
-            placeholder="Weekdays 6 pm to 9 pm, Saturdays 10 am to 1 pm"
+            placeholder="Closed from 24 to 28 December."
             error={errors.availabilityNote}
             helper={AVAILABILITY_HELPER}
             disabled={saving}
@@ -939,7 +1145,7 @@ function ProProfilePage() {
           ) : null}
           <div className="flex flex-wrap items-center gap-3">
             <button type="submit" className={primaryButtonClass} disabled={saving || !dirty}>
-              {saving ? "Saving" : "Save changes"}
+              {saving ? "Saving" : registered ? "Save changes" : "Save and create my account"}
             </button>
             {dirty ? (
               <button type="button" className={secondaryButtonClass} disabled={saving} onClick={() => { setValues(saved); setErrors({}); setSaveError(null); }}>
@@ -957,9 +1163,31 @@ function ProProfilePage() {
         </div>
       </form>
 
-      <ProDocuments me={me} api={api} onChanged={refreshAfterDocuments} credentialType={values.credentialType} />
+      <ProDocuments
+        me={me}
+        api={api}
+        onChanged={refreshAfterDocuments}
+        credentialType={values.credentialType}
+        blockedReason={registered ? undefined : SAVE_FIRST}
+      />
 
-      {canAttemptSubmit ? (
+      {!me ? (
+        <section className="flex flex-col gap-4 rounded-2xl bg-card p-6 ring-1 ring-foreground/10 sm:p-8" aria-labelledby="submit-heading">
+          <div className="flex flex-col gap-1">
+            <h2 id="submit-heading" className="font-heading text-xl font-semibold text-foreground">
+              Submit for review
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              When everything is ready, submit your profile so the NeuroNest team can review it.
+            </p>
+          </div>
+          <p className="text-sm text-muted-foreground">{SAVE_FIRST}</p>
+          <button type="button" className={cn(primaryButtonClass, "self-start")} disabled>
+            <Send className="size-4" aria-hidden="true" />
+            Submit for review
+          </button>
+        </section>
+      ) : canAttemptSubmit ? (
         <section className="flex flex-col gap-4 rounded-2xl bg-card p-6 ring-1 ring-foreground/10 sm:p-8" aria-labelledby="submit-heading">
           <div className="flex flex-col gap-1">
             <h2 id="submit-heading" className="font-heading text-xl font-semibold text-foreground">

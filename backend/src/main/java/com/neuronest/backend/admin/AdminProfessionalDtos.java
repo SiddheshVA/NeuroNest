@@ -2,6 +2,8 @@ package com.neuronest.backend.admin;
 
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.neuronest.backend.professional.Professional;
+import com.neuronest.backend.professional.WeeklyHours;
+import tools.jackson.databind.JsonNode;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -18,7 +20,8 @@ public final class AdminProfessionalDtos {
     // Body of POST and PUT. Enums arrive as strings so unknown values get a readable 400 from the
     // service instead of a Jackson parse error. Verification fields, "active" and the professional's own
     // dateOfBirth, socialLinks and declarationAcceptedAt are deliberately absent: if a client sends them
-    // they are ignored.
+    // they are ignored. weeklyHours, sessionMinutes and bufferMinutes are optional: missing or null keeps
+    // the stored value, so a form that does not know them never clears them.
     public record ProfessionalRequest(
             String fullName,
             String credentialType,
@@ -40,7 +43,10 @@ public final class AdminProfessionalDtos {
             String contactPhone,
             String availabilityNote,
             String photoUrl,
-            Boolean isSampleData) {}
+            Boolean isSampleData,
+            JsonNode weeklyHours,
+            Integer sessionMinutes,
+            Integer bufferMinutes) {}
 
     public record ActiveRequest(Boolean active) {}
 
@@ -95,6 +101,9 @@ public final class AdminProfessionalDtos {
             String verificationNotes,
             LocalDate nextRecheckDate,
             Instant submittedAt,
+            Map<String, List<Map<String, String>>> weeklyHours,
+            Integer sessionMinutes,
+            int bufferMinutes,
             // Read-only here: set by the professional on their own profile.
             LocalDate dateOfBirth,
             Map<String, String> socialLinks,
@@ -112,6 +121,7 @@ public final class AdminProfessionalDtos {
                     p.getAvailabilityNote(), p.getPhotoUrl(), p.isSampleData(), p.isActive(),
                     p.getVerificationStatus().name(), p.isVerified(), p.getVerificationSource(), p.getVerifiedBy(),
                     p.getVerifiedAt(), p.getVerificationNotes(), p.getNextRecheckDate(), p.getSubmittedAt(),
+                    WeeklyHours.copy(p.getWeeklyHours()), p.getSessionMinutes(), p.getBufferMinutes(),
                     p.getDateOfBirth(), new LinkedHashMap<>(p.getSocialLinks()), p.getDeclarationAcceptedAt(),
                     p.getCreatedAt(), p.getUpdatedAt());
         }

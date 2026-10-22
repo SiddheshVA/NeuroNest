@@ -4,25 +4,29 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Container } from "@/components/layout/container";
 import { LikertQuestionnaire } from "@/components/assessment/likert-questionnaire";
+import { AssessmentSourceNote } from "@/components/assessment/assessment-source-note";
 import { saveAssessmentResult } from "@/lib/assessments/storage";
-import type { AnyAssessmentResult, AssessmentOption, AssessmentQuestion } from "@/lib/assessments/types";
+import type { AnyAssessmentResult, AssessmentOption, AssessmentQuestion, AssessmentType } from "@/lib/assessments/types";
 
 interface QuestionnairePageProps {
+  assessmentType: AssessmentType;
   eyebrow: string;
   description: string;
   questions: AssessmentQuestion[];
-  options: AssessmentOption[];
+  /** Omit when every question carries its own options (SCI). */
+  options?: AssessmentOption[];
   calculate: (answers: Record<number, number>) => AnyAssessmentResult;
   resultRoute: string;
 }
 
 /**
  * Full-page wrapper around the shared LikertQuestionnaire for the targeted
- * screenings (GAD-7, PHQ-9, PSS-10) reached from the WHO-5 "what's affecting
- * you" branch — same visual language as the WHO-5 modal, just laid out as a
+ * screenings (GAD-7, PHQ-9, PSS-10, K10, SCI) reached from the hub or the
+ * WHO-5 "what's affecting you" branch — same visual language as the WHO-5 modal, just laid out as a
  * standalone page instead of an overlay.
  */
 export function QuestionnairePage({
+  assessmentType,
   eyebrow,
   description,
   questions,
@@ -58,6 +62,8 @@ export function QuestionnairePage({
 
             <LikertQuestionnaire questions={questions} options={options} onComplete={handleComplete} />
           </div>
+
+          <AssessmentSourceNote type={assessmentType} className="mt-4" />
         </div>
       </Container>
     </div>

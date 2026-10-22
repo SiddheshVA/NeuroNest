@@ -1,29 +1,24 @@
 
-import { useState } from "react";
 import Link from "next/link";
 import { Compass, Heart, MessageCircle, RotateCcw, Sparkles } from "lucide-react";
 import { ScoreGauge } from "@/components/assessment/score-gauge";
 import { ScoreRangeCard } from "@/components/assessment/score-range-card";
 import { SafetyResultState } from "@/components/assessment/safety-result-state";
-import { ASSESSMENTS, EXPLORATION_OPTIONS, TARGETED_ASSESSMENT_TYPES } from "@/lib/assessments/registry";
+import { AssessmentSourceNote } from "@/components/assessment/assessment-source-note";
+import {
+  ASSESSMENTS,
+  EXPLORATION_OPTIONS,
+  GENERAL_CHECKIN_OPTION,
+  TARGETED_ASSESSMENT_TYPES,
+} from "@/lib/assessments/registry";
 import { getRecommendations, getResultActions } from "@/lib/assessments/recommendations";
 import { SCORE_RANGES } from "@/lib/assessments/ranges";
 import { isSafetyTriggered } from "@/lib/assessments/safety";
-import { isPsqiResult, type AnyAssessmentResult } from "@/lib/assessments/types";
+import type { AnyAssessmentResult, AssessmentType } from "@/lib/assessments/types";
 
 const ACTION_ICONS: Record<string, typeof MessageCircle> = {
   "talk-to-nuro": MessageCircle,
   "professional-support": Heart,
-};
-
-const PSQI_COMPONENT_LABELS: Record<string, string> = {
-  subjectiveSleepQuality: "Overall sleep quality",
-  sleepLatency: "Time to fall asleep",
-  sleepDuration: "Hours of sleep",
-  sleepEfficiency: "Restful sleep",
-  sleepDisturbances: "Sleep interruptions",
-  sleepMedication: "Use of sleep aids",
-  daytimeDysfunction: "Daytime tiredness",
 };
 
 interface AssessmentResultCardProps {
@@ -33,13 +28,11 @@ interface AssessmentResultCardProps {
 
 /**
  * Reusable NeuroNest assessment result presentation — same layout for every
- * screening (WHO-5, GAD-7, PHQ-9, PSS-10, PSQI). All interpretation copy and
+ * screening (WHO-5, GAD-7, PHQ-9, PSS-10, K10, SCI). All interpretation copy and
  * recommendation logic is computed elsewhere (scoring modules + the
  * centralized recommendation service); this component only renders it.
  */
 export function AssessmentResultCard({ result, onRetake }: AssessmentResultCardProps) {
-  const [showBrowseHint, setShowBrowseHint] = useState(false);
-
   // Safety takes over the entire result screen — ordinary wellness
   // recommendations, score details, and branching prompts never render
   // alongside it.
@@ -77,7 +70,7 @@ export function AssessmentResultCard({ result, onRetake }: AssessmentResultCardP
           <Sparkles className="size-6" />
         </div>
         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#5A6E5A]">
-          {meta.resultEyebrow}
+          {`${meta.label} • ${meta.resultEyebrow}`}
         </span>
         <h1 className="font-heading text-3xl font-normal leading-tight text-[#1C352D] sm:text-4xl">
           {result.snapshotTitle}
@@ -122,24 +115,6 @@ export function AssessmentResultCard({ result, onRetake }: AssessmentResultCardP
         </div>
       )}
 
-      {/* PSQI component breakdown — extra detail for anyone curious, kept brief */}
-      {isPsqiResult(result) && (
-        <div className="mb-8 rounded-[28px] border border-[#E5E8E1] bg-white p-6 shadow-xs sm:p-8">
-          <h2 className="font-heading text-lg font-normal text-[#1C352D] sm:text-xl mb-5">A closer look at your sleep</h2>
-          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {Object.entries(result.components).map(([key, value]) => (
-              <li
-                key={key}
-                className="flex items-center justify-between rounded-xl border border-[#E5E8E1] bg-[#FBF9F4] px-4 py-3 text-sm text-[#1C352D]"
-              >
-                <span>{PSQI_COMPONENT_LABELS[key] ?? key}</span>
-                <span className="font-semibold">{value} / 3</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       {/* WHO-5 branching: explore what's been affecting you */}
       {showExplorationPrompt && (
         <div className="mb-8 rounded-[28px] border border-[#E5E8E1] bg-white p-6 shadow-xs sm:p-8">
@@ -156,24 +131,22 @@ export function AssessmentResultCard({ result, onRetake }: AssessmentResultCardP
                 href={ASSESSMENTS[option.type].route}
                 className="flex flex-col gap-1 rounded-xl border border-[#E5E8E1] bg-[#FBF9F4] p-4 transition-colors hover:border-[#CBD4C5] hover:bg-[#F5F7F2]"
               >
+                <TestChip type={option.type} />
                 <span className="font-medium text-[#1C352D]">{option.label}</span>
                 <span className="text-sm text-[#5A6860]">{option.description}</span>
+                <TestLength type={option.type} />
               </Link>
             ))}
-            <button
-              type="button"
-              onClick={() => setShowBrowseHint(true)}
-              className="flex flex-col items-start gap-1 rounded-xl border border-dashed border-[#CBD4C5] bg-white p-4 text-left transition-colors hover:border-[#233E33] cursor-pointer"
+            <Link
+              href={ASSESSMENTS[GENERAL_CHECKIN_OPTION.type].route}
+              className="flex flex-col items-start gap-1 rounded-xl border border-dashed border-[#CBD4C5] bg-white p-4 text-left transition-colors hover:border-[#233E33]"
             >
-              <span className="font-medium text-[#1C352D]">I&apos;m not sure</span>
-              <span className="text-sm text-[#5A6860]">That&apos;s okay — no need to decide right now.</span>
-            </button>
+              <TestChip type={GENERAL_CHECKIN_OPTION.type} />
+              <span className="font-medium text-[#1C352D]">{GENERAL_CHECKIN_OPTION.label}</span>
+              <span className="text-sm text-[#5A6860]">{GENERAL_CHECKIN_OPTION.description}</span>
+              <TestLength type={GENERAL_CHECKIN_OPTION.type} />
+            </Link>
           </div>
-          {showBrowseHint && (
-            <p className="mt-4 text-sm leading-relaxed text-[#4A5750]">
-              No problem — the areas above are here whenever you feel ready.
-            </p>
-          )}
         </div>
       )}
 
@@ -238,10 +211,29 @@ export function AssessmentResultCard({ result, onRetake }: AssessmentResultCardP
         </Link>
       </div>
 
+      <AssessmentSourceNote type={result.assessmentType} className="mx-auto mb-4 max-w-xl text-center" />
+
       {/* Disclaimer — short and subtle */}
       <p className="mx-auto max-w-xl text-center text-xs leading-relaxed text-[#8A9690]">
         This result is only a snapshot of how you&apos;ve been feeling. It isn&apos;t a diagnosis.
       </p>
     </div>
+  );
+}
+
+function TestChip({ type }: { type: AssessmentType }) {
+  return (
+    <span className="mb-1 self-start rounded-full bg-[#ECEFE6] px-2.5 py-0.5 text-xs font-semibold text-[#233E33]">
+      {ASSESSMENTS[type].label}
+    </span>
+  );
+}
+
+function TestLength({ type }: { type: AssessmentType }) {
+  const meta = ASSESSMENTS[type];
+  return (
+    <span className="mt-1 text-xs text-[#8A9690]">
+      {meta.questionCount} questions • ~{meta.minutes} min
+    </span>
   );
 }

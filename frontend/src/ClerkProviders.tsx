@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { ClerkProvider, useAuth } from "@clerk/clerk-react";
-import { registerTokenGetter } from "@/lib/clerkAuthBridge";
+import { registerCurrentUserId, registerTokenGetter } from "@/lib/clerkAuthBridge";
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -33,6 +33,8 @@ export function ClerkProviderWithRoutes({ children }: { children: ReactNode }) {
       routerReplace={(to) => navigate(to, { replace: true })}
       signInUrl="/login"
       signUpUrl="/sign-up"
+      // Clerk refuses redirect URLs to any other site.
+      allowedRedirectOrigins={[window.location.origin]}
     >
       {children}
     </ClerkProvider>
@@ -42,7 +44,8 @@ export function ClerkProviderWithRoutes({ children }: { children: ReactNode }) {
 // Wires the api.ts client to Clerk's getToken() so it can attach a fresh
 // bearer token to every backend request without api.ts being a component.
 export function ClerkTokenBridge({ children }: { children: ReactNode }) {
-  const { getToken } = useAuth();
+  const { getToken, isLoaded, isSignedIn, userId } = useAuth();
   registerTokenGetter(getToken);
+  registerCurrentUserId(isLoaded && isSignedIn ? (userId ?? null) : null);
   return <>{children}</>;
 }

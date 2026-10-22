@@ -2,7 +2,7 @@ import Image from "next/image";
 
 /**
  * Shared decorative backdrop for every assessment result page (WHO-5, GAD-7,
- * PHQ-9, PSS-10, PSQI). Fixed to the viewport so it stays calm and in place
+ * PHQ-9, PSS-10, K10, SCI). Fixed to the viewport so it stays calm and in place
  * behind result cards no matter how tall a given result page scrolls.
  */
 export function AssessmentResultBackground() {

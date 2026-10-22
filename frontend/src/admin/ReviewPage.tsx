@@ -17,6 +17,7 @@ import { RegisterShortcutsCard } from "./RegisterShortcutsCard";
 import { ReviewDecisionPanel } from "./ReviewDecisionPanel";
 import { ReviewDocumentsPanel } from "./ReviewDocumentsPanel";
 import { SampleChip, VerificationStatusChip } from "./VerificationStatusChip";
+import { WeeklyHoursReadOnly } from "./WeeklyHoursReadOnly";
 import {
   CONSULTATION_MODE_LABELS,
   CREDENTIAL_TYPE_LABELS,
@@ -260,6 +261,16 @@ function ProfessionalDetails({ p }: { p: ProfessionalDetail }) {
           <Detail label="Languages" value={p.languages.length ? p.languages.join(", ") : null} />
           <Detail label="Specializations" value={p.specialties.length ? p.specialties.join(", ") : null} />
           <Detail label="Bio" value={p.bio} wide />
+        </DetailGroup>
+
+        <DetailGroup title="Weekly availability">
+          <Box sx={{ gridColumn: "1 / -1" }}>
+            <WeeklyHoursReadOnly
+              weeklyHours={p.weeklyHours}
+              sessionMinutes={p.sessionMinutes}
+              bufferMinutes={p.bufferMinutes}
+            />
+          </Box>
         </DetailGroup>
 
         <DetailGroup title="Contact">

@@ -8,6 +8,7 @@ import com.neuronest.backend.admin.AdminProfessionalDtos.ProfessionalUpdateResul
 import com.neuronest.backend.config.ApiValidationException;
 import com.neuronest.backend.config.ConflictException;
 import com.neuronest.backend.professional.ConsultationMode;
+import com.neuronest.backend.professional.ContactDetailsGuard;
 import com.neuronest.backend.professional.CredentialType;
 import com.neuronest.backend.professional.Professional;
 import com.neuronest.backend.professional.ProfessionalAccountRepository;
@@ -16,6 +17,7 @@ import com.neuronest.backend.professional.RegistrationBody;
 import com.neuronest.backend.professional.VerificationLogEntry;
 import com.neuronest.backend.professional.VerificationLogRepository;
 import com.neuronest.backend.professional.VerificationStatus;
+import com.neuronest.backend.professional.WeeklyHours;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -33,6 +35,7 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -207,31 +210,51 @@ public class AdminProfessionalService {
         }
         consultationFee(r.consultationFee());
         nonNegative("yearsExperience", r.yearsExperience());
+        String qualifications = noContactDetails("Qualifications", trimToNull(r.qualifications()));
+        String bio = noContactDetails("Bio", trimToNull(r.bio()));
+        String availabilityNote = noContactDetails("Availability note", trimToNull(r.availabilityNote()));
+        List<String> specialties = cleanList(r.specialties());
+        ContactDetailsGuard.checkAll("Specializations", specialties).ifPresent(error -> {
+            throw new ApiValidationException(error);
+        });
         String photoUrl = trimToNull(r.photoUrl());
         if (photoUrl != null && !photoUrl.toLowerCase(Locale.ROOT).matches("^https?://\\S+$")) {
             throw new ApiValidationException("photoUrl must be an http(s) URL.");
         }
+        // Weekly hours use the same rules as the professional's own form. Missing or null keeps what is
+        // stored; when either the hours or the session length changes, the resulting pair is checked.
+        boolean hoursGiven = r.weeklyHours() != null && !r.weeklyHours().isNull();
+        Integer sessionMinutes = r.sessionMinutes() != null
+                ? WeeklyHours.sessionMinutes(r.sessionMinutes()) : p.getSessionMinutes();
+        Map<String, List<Map<String, String>>> weeklyHours = hoursGiven || r.sessionMinutes() != null
+                ? WeeklyHours.validate(hoursGiven ? WeeklyHours.fromJson(r.weeklyHours()) : p.getWeeklyHours(),
+                        sessionMinutes)
+                : p.getWeeklyHours();
+        int bufferMinutes = r.bufferMinutes() != null ? WeeklyHours.bufferMinutes(r.bufferMinutes()) : p.getBufferMinutes();
 
         p.setFullName(fullName);
         p.setCredentialType(credentialType);
         p.setConsultationMode(consultationMode);
         p.setContactEmail(contactEmail);
         p.setRegistrationBody(registrationBody);
-        p.setQualifications(trimToNull(r.qualifications()));
+        p.setQualifications(qualifications);
         p.setRegistrationNumber(trimToNull(r.registrationNumber()));
         p.setRegistrationCouncil(trimToNull(r.registrationCouncil()));
         p.setRegistrationYear(r.registrationYear());
         p.setRegistrationExpiry(r.registrationExpiry());
-        p.setBio(trimToNull(r.bio()));
-        p.setSpecialties(cleanList(r.specialties()));
+        p.setBio(bio);
+        p.setSpecialties(specialties);
         p.setLanguages(cleanList(r.languages()));
         p.setCity(trimToNull(r.city()));
         p.setState(trimToNull(r.state()));
         p.setConsultationFee(r.consultationFee());
         p.setYearsExperience(r.yearsExperience());
         p.setContactPhone(trimToNull(r.contactPhone()));
-        p.setAvailabilityNote(trimToNull(r.availabilityNote()));
+        p.setAvailabilityNote(availabilityNote);
         p.setPhotoUrl(photoUrl);
+        p.setWeeklyHours(weeklyHours);
+        p.setSessionMinutes(sessionMinutes);
+        p.setBufferMinutes(bufferMinutes);
     }
 
     private static String required(String field, String value) {
@@ -267,6 +290,14 @@ public class AdminProfessionalService {
 
     private static String allowed(Class<? extends Enum<?>> type) {
         return Arrays.stream(type.getEnumConstants()).map(Enum::name).collect(Collectors.joining(", "));
+    }
+
+    // The professional's public text must not contain contact details (see ContactDetailsGuard).
+    private static String noContactDetails(String fieldName, String value) {
+        ContactDetailsGuard.check(fieldName, value).ifPresent(error -> {
+            throw new ApiValidationException(error);
+        });
+        return value;
     }
 
     private static void consultationFee(Integer value) {

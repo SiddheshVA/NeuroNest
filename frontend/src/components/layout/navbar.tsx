@@ -2,8 +2,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Search } from "lucide-react";
-import { Show, UserButton } from "@clerk/nextjs";
+import { Show } from "@clerk/nextjs";
 
+import { AccountMenu } from "@/components/layout/account-menu";
 import { Container } from "@/components/layout/container";
 import { Logo } from "@/components/layout/logo";
 import { MobileNav } from "@/components/layout/mobile-nav";
@@ -87,7 +88,7 @@ function Navbar() {
             >
               Dashboard
             </Button>
-            <UserButton />
+            <AccountMenu />
           </Show>
           <MobileNav />
         </div>

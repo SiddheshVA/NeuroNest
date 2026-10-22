@@ -1,20 +1,17 @@
 import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
 import { Container } from "@/components/layout/container";
 import { AssessmentHero } from "@/components/assessment/assessment-hero";
+import { AssessmentLibrary } from "@/components/assessment/assessment-library";
 import { WellbeingAreas } from "@/components/assessment/wellbeing-areas";
 import { ReminderCard } from "@/components/assessment/reminder-card";
 import { AssessmentModal } from "@/components/assessment/assessment-modal";
 import { QuestionnairePage } from "@/components/assessment/questionnaire-page";
-import { PsqiQuestionnaire } from "@/components/assessment/psqi-questionnaire";
 import { GAD7_OPTIONS, GAD7_QUESTIONS, calculateGAD7 } from "@/lib/assessments/gad7";
 import { PHQ9_OPTIONS, PHQ9_QUESTIONS, calculatePHQ9 } from "@/lib/assessments/phq9";
 import { PSS10_OPTIONS, PSS10_QUESTIONS, calculatePSS10 } from "@/lib/assessments/pss10";
-import { calculatePSQI, type PsqiAnswers } from "@/lib/assessments/psqi";
-import { saveAssessmentResult } from "@/lib/assessments/storage";
+import { K10_OPTIONS, K10_QUESTIONS, calculateK10 } from "@/lib/assessments/k10";
+import { SCI_QUESTIONS, calculateSCI } from "@/lib/assessments/sci";
 
 export function AssessmentPage() {
   // WHO-5 has no route of its own; links elsewhere (e.g. Wellness Resources
@@ -31,6 +28,7 @@ export function AssessmentPage() {
     <div className="min-h-screen bg-[#FBF9F4] text-[#1C352D] selection:bg-[#233E33]/15 selection:text-[#1C352D]">
       <Container className="py-2 sm:py-4">
         <AssessmentHero onBeginCheckIn={() => setIsModalOpen(true)} />
+        <AssessmentLibrary onStartWho5={() => setIsModalOpen(true)} />
         <WellbeingAreas />
         <ReminderCard />
       </Container>
@@ -43,6 +41,7 @@ export function AssessmentPage() {
 export function Gad7Page() {
   return (
     <QuestionnairePage
+      assessmentType="gad7"
       eyebrow="GAD-7 • Anxiety screening"
       description="Over the last 2 weeks, how often have you been bothered by any of the following problems?"
       questions={GAD7_QUESTIONS}
@@ -56,6 +55,7 @@ export function Gad7Page() {
 export function Phq9Page() {
   return (
     <QuestionnairePage
+      assessmentType="phq9"
       eyebrow="PHQ-9 • Mood screening"
       description="Over the last 2 weeks, how often have you been bothered by any of the following problems?"
       questions={PHQ9_QUESTIONS}
@@ -69,6 +69,7 @@ export function Phq9Page() {
 export function Pss10Page() {
   return (
     <QuestionnairePage
+      assessmentType="pss10"
       eyebrow="PSS-10 • Stress screening"
       description="In the last month, how often have you felt or experienced each of the following?"
       questions={PSS10_QUESTIONS}
@@ -79,40 +80,29 @@ export function Pss10Page() {
   );
 }
 
-export function PsqiPage() {
-  const router = useRouter();
-
-  const handleComplete = (answers: PsqiAnswers) => {
-    saveAssessmentResult(calculatePSQI(answers));
-    router.push("/assessment/result/psqi");
-  };
-
+export function K10Page() {
   return (
-    <div className="min-h-screen bg-[#FBF9F4] text-[#1C352D]">
-      <Container className="py-10 sm:py-14">
-        <div className="mx-auto max-w-xl">
-          <Link
-            href="/assessment"
-            className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-[#4A5750] hover:text-[#1C352D]"
-          >
-            <ArrowLeft className="size-4" />
-            Back to Assessment
-          </Link>
+    <QuestionnairePage
+      assessmentType="k10"
+      eyebrow="K10 • General distress check"
+      description="These questions are about how you have been feeling over the past 4 weeks."
+      questions={K10_QUESTIONS}
+      options={K10_OPTIONS}
+      calculate={calculateK10}
+      resultRoute="/assessment/result/k10"
+    />
+  );
+}
 
-          <div className="rounded-[28px] border border-[#E5E8E1] bg-white p-6 shadow-xs sm:p-8">
-            <div className="mb-6">
-              <h1 className="text-xs font-semibold uppercase tracking-[0.2em] text-[#5A6E5A]">
-                PSQI • Sleep quality screening
-              </h1>
-              <p className="mt-2 text-sm leading-relaxed text-[#4A5750]">
-                The following questions relate to your usual sleep habits during the past month only.
-              </p>
-            </div>
-
-            <PsqiQuestionnaire onComplete={handleComplete} />
-          </div>
-        </div>
-      </Container>
-    </div>
+export function SciPage() {
+  return (
+    <QuestionnairePage
+      assessmentType="sci"
+      eyebrow="SCI • Sleep check"
+      description="These questions are about your sleep over the last month."
+      questions={SCI_QUESTIONS}
+      calculate={calculateSCI}
+      resultRoute="/assessment/result/sci"
+    />
   );
 }

@@ -1,6 +1,9 @@
 package com.neuronest.backend.professional;
 
+import com.neuronest.backend.booking.SlotService;
 import com.neuronest.backend.config.ApiValidationException;
+import com.neuronest.backend.professional.PublicProfessionalDtos.AvailabilityDay;
+import com.neuronest.backend.professional.PublicProfessionalDtos.PublicAvailability;
 import com.neuronest.backend.professional.PublicProfessionalDtos.PublicPage;
 import com.neuronest.backend.professional.PublicProfessionalDtos.PublicProfessional;
 import com.neuronest.backend.professional.PublicProfessionalDtos.PublicProfessionalMeta;
@@ -13,7 +16,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 // Public, read-only directory. Visibility is enforced by PublicProfessionalRepository's queries;
@@ -26,17 +35,22 @@ public class PublicProfessionalService {
     // Registration expiry is a calendar date for Indian registrations, so "today" is taken in IST
     // rather than the server's (or the database's) timezone.
     static final ZoneId DIRECTORY_ZONE = ZoneId.of("Asia/Kolkata");
+    static final int DEFAULT_AVAILABILITY_DAYS = 14;
+    static final int MAX_AVAILABILITY_RANGE_DAYS = 31;
+    private static final DateTimeFormatter SLOT_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
     private final PublicProfessionalRepository repository;
+    private final SlotService slots;
     private final Clock clock;
 
     @Autowired
-    public PublicProfessionalService(PublicProfessionalRepository repository) {
-        this(repository, Clock.system(DIRECTORY_ZONE));
+    public PublicProfessionalService(PublicProfessionalRepository repository, SlotService slots) {
+        this(repository, slots, Clock.system(DIRECTORY_ZONE));
     }
 
-    PublicProfessionalService(PublicProfessionalRepository repository, Clock clock) {
+    public PublicProfessionalService(PublicProfessionalRepository repository, SlotService slots, Clock clock) {
         this.repository = repository;
+        this.slots = slots;
         this.clock = clock;
     }
 
@@ -64,15 +78,61 @@ public class PublicProfessionalService {
     // Missing and hidden listings give the same exception (and so the same 404).
     @Transactional(readOnly = true)
     public PublicProfessional get(String id) {
+        return findVisible(id).map(PublicProfessional::from).orElseThrow(PublicProfessionalNotFoundException::new);
+    }
+
+    // Free slots for a visible listing; the same 404 as get() for a missing or hidden one. The range
+    // defaults to today and the next 14 days, may span at most 31 days, and must lie within the 60-day
+    // booking window.
+    @Transactional(readOnly = true)
+    public PublicAvailability availability(String id, String fromParam, String toParam) {
+        LocalDate today = today();
+        LocalDate from = parseDate("from", fromParam, today);
+        LocalDate to = parseDate("to", toParam, from.plusDays(DEFAULT_AVAILABILITY_DAYS));
+        if (to.isBefore(from)) {
+            throw new ApiValidationException("to must be on or after from.");
+        }
+        if (ChronoUnit.DAYS.between(from, to) > MAX_AVAILABILITY_RANGE_DAYS) {
+            throw new ApiValidationException("The date range can be at most " + MAX_AVAILABILITY_RANGE_DAYS + " days long.");
+        }
+        LocalDate lastDate = today.plusDays(AvailabilityService.MAX_DAYS_AHEAD);
+        if (from.isBefore(today) || to.isAfter(lastDate)) {
+            throw new ApiValidationException("The dates must be between " + today + " and " + lastDate
+                    + " (today and the next " + AvailabilityService.MAX_DAYS_AHEAD + " days, India time).");
+        }
+        Professional p = findVisible(id).orElseThrow(PublicProfessionalNotFoundException::new);
+
+        // Slots that overlap a confirmed booking are left out (SlotService, shared with the booking check).
+        var free = slots.freeSlots(p, from, to, ZonedDateTime.now(clock));
+        List<AvailabilityDay> days = free.entrySet().stream()
+                .map(e -> new AvailabilityDay(e.getKey(), e.getValue().stream().map(SLOT_FORMAT::format).toList()))
+                .toList();
+        return new PublicAvailability(p.getSessionMinutes(), p.getBufferMinutes(), AvailabilityService.ZONE.getId(), days);
+    }
+
+    /**
+     * The listing if it is publicly visible, by the same rule as GET /api/professionals/{id}; empty for a
+     * missing, hidden or malformed id. Also used by bookings.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Professional> findVisible(String id) {
         UUID uuid;
         try {
             uuid = UUID.fromString(id);
         } catch (IllegalArgumentException e) {
-            throw new PublicProfessionalNotFoundException();
+            return Optional.empty();
         }
-        return repository.findVisibleById(uuid, today())
-                .map(PublicProfessional::from)
-                .orElseThrow(PublicProfessionalNotFoundException::new);
+        return repository.findVisibleById(uuid, today());
+    }
+
+    private static LocalDate parseDate(String field, String value, LocalDate fallback) {
+        String trimmed = trimToNull(value);
+        if (trimmed == null) return fallback;
+        try {
+            return LocalDate.parse(trimmed);
+        } catch (DateTimeParseException e) {
+            throw new ApiValidationException(field + " must be a date in YYYY-MM-DD format.");
+        }
     }
 
     @Transactional(readOnly = true)

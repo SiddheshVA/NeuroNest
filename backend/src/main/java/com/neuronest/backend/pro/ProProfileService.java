@@ -11,6 +11,7 @@ import com.neuronest.backend.pro.ProDtos.RegisterRequest;
 import com.neuronest.backend.pro.ProDtos.VerificationNoteView;
 import com.neuronest.backend.pro.ProExceptions.MissingItem;
 import com.neuronest.backend.professional.ConsultationMode;
+import com.neuronest.backend.professional.ContactDetailsGuard;
 import com.neuronest.backend.professional.CredentialType;
 import com.neuronest.backend.professional.DocumentType;
 import com.neuronest.backend.professional.Professional;
@@ -23,6 +24,7 @@ import com.neuronest.backend.professional.RegistrationBody;
 import com.neuronest.backend.professional.VerificationLogEntry;
 import com.neuronest.backend.professional.VerificationLogRepository;
 import com.neuronest.backend.professional.VerificationStatus;
+import com.neuronest.backend.professional.WeeklyHours;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -189,8 +191,13 @@ public class ProProfileService {
         CredentialType credentialType = lockedField(b, "credentialType",
                 () -> requiredEnum(CredentialType.class, "credentialType", b.text("credentialType")),
                 p.getCredentialType(), p::setCredentialType, changes, changedLocked);
-        lockedField(b, "qualifications", () -> limit("qualifications", b.text("qualifications"), MAX_TEXT),
-                p.getQualifications(), p::setQualifications, changes, changedLocked);
+        // Checked for contact details only when changed: once submitted, the professional cannot edit it, so
+        // an older value must not block unrelated edits. Submitting still reports it.
+        lockedField(b, "qualifications", () -> {
+                    String v = limit("qualifications", b.text("qualifications"), MAX_TEXT);
+                    if (!Objects.equals(v, p.getQualifications())) noContactDetails("Qualifications", v);
+                    return v;
+                }, p.getQualifications(), p::setQualifications, changes, changedLocked);
         RegistrationBody registrationBody = lockedField(b, "registrationBody",
                 () -> parseEnum(RegistrationBody.class, "registrationBody", b.text("registrationBody")),
                 p.getRegistrationBody(), p::setRegistrationBody, changes, changedLocked);
@@ -210,9 +217,15 @@ public class ProProfileService {
         }
 
         // Always editable (outside DISABLED, which the filter already refused).
-        if (b.has("bio")) { String v = limit("bio", b.text("bio"), MAX_LONG_TEXT); changes.add(() -> p.setBio(v)); }
+        if (b.has("bio")) {
+            String v = noContactDetails("Bio", limit("bio", b.text("bio"), MAX_LONG_TEXT));
+            changes.add(() -> p.setBio(v));
+        }
         if (b.has("specialties")) {
             List<String> v = b.list("specialties", MIN_SPECIALTY, MAX_SPECIALTIES);
+            ContactDetailsGuard.checkAll(SubmissionChecklist.SPECIALTIES_LABEL, v).ifPresent(error -> {
+                throw new ApiValidationException(error);
+            });
             changes.add(() -> p.setSpecialties(v));
         }
         if (b.has("languages")) { List<String> v = b.list("languages"); changes.add(() -> p.setLanguages(v)); }
@@ -236,6 +249,24 @@ public class ProProfileService {
         }
         if (b.has("photoUrl")) { String v = photoUrl(b.text("photoUrl")); changes.add(() -> p.setPhotoUrl(v)); }
         if (b.has("contactPhone")) { String v = phone(b.text("contactPhone")); changes.add(() -> p.setContactPhone(v)); }
+        // Weekly hours, session length and buffer are soft fields: editable in any status, and they never
+        // send a listing back for review. Hours are checked against the session length that will apply,
+        // so changing either one re-checks the pair.
+        if (b.has("weeklyHours") || b.has("sessionMinutes")) {
+            Map<String, List<Map<String, String>>> hours = b.has("weeklyHours")
+                    ? WeeklyHours.fromJson(b.raw("weeklyHours")) : p.getWeeklyHours();
+            Integer session = b.has("sessionMinutes")
+                    ? WeeklyHours.sessionMinutes(b.integer("sessionMinutes")) : p.getSessionMinutes();
+            Map<String, List<Map<String, String>>> normalized = WeeklyHours.validate(hours, session);
+            changes.add(() -> {
+                p.setWeeklyHours(normalized);
+                p.setSessionMinutes(session);
+            });
+        }
+        if (b.has("bufferMinutes")) {
+            int v = WeeklyHours.bufferMinutes(b.integer("bufferMinutes"));
+            changes.add(() -> p.setBufferMinutes(v));
+        }
         // Social links stay editable in every status; the object sent replaces the saved one.
         if (b.has("socialLinks")) {
             Map<String, String> v = SocialLinks.parse(b.raw("socialLinks"));
@@ -513,13 +544,16 @@ public class ProProfileService {
         return value;
     }
 
+    // Optional free text next to the weekly hours: up to 200 characters, no minimum.
     private static String availabilityNote(String value) {
-        String trimmed = limit("availabilityNote", value, MAX_TEXT);
-        if (trimmed != null && trimmed.length() < SubmissionChecklist.MIN_AVAILABILITY_NOTE) {
-            throw new ApiValidationException("availabilityNote must be between " + SubmissionChecklist.MIN_AVAILABILITY_NOTE
-                    + " and " + MAX_TEXT + " characters.");
-        }
-        return trimmed;
+        return noContactDetails("Availability note", limit("availabilityNote", value, MAX_TEXT));
+    }
+
+    private static String noContactDetails(String fieldName, String value) {
+        ContactDetailsGuard.check(fieldName, value).ifPresent(error -> {
+            throw new ApiValidationException(error);
+        });
+        return value;
     }
 
     private static String photoUrl(String value) {
