@@ -80,6 +80,34 @@ class ProProfileServiceTest {
 
     private static final String ACCEPTED = "{\"declarationAccepted\":true}";
 
+    // ---- status fields are the admin's ----
+
+    @Test
+    void theProfessionalsOwnUpdateNeverChangesTheStatusTheListingOrTheAccount() {
+        existing(VerificationStatus.SUSPENDED, CredentialType.PSYCHOLOGIST);
+        professional.setVerificationNotes("Complaint under investigation.");
+        ProfessionalAccount account = accounts.findByClerkUserId(CLERK_ID).orElseThrow();
+        account.setStatus(com.neuronest.backend.professional.ProfessionalAccountStatus.DISABLED);
+        String body = """
+                {"verificationStatus":"VERIFIED","verified":true,"active":true,"status":"ACTIVE",
+                 "verificationNotes":"cleared","verifiedBy":"me","verifiedAt":"2026-10-01T00:00:00Z",
+                 "isSampleData":true,"sampleData":true,"bio":"I help people manage stress and sleep better."}""";
+
+        try {
+            put(body);
+        } catch (RuntimeException refused) {
+            // Refusing the whole update is fine too; either way nothing below may change.
+        }
+
+        assertThat(professional.getVerificationStatus()).isEqualTo(VerificationStatus.SUSPENDED);
+        assertThat(professional.isVerified()).isFalse();
+        assertThat(professional.isActive()).isFalse();
+        assertThat(professional.isSampleData()).isFalse();
+        assertThat(professional.getVerificationNotes()).isEqualTo("Complaint under investigation.");
+        assertThat(professional.getVerifiedBy()).isNull();
+        assertThat(account.getStatus()).isEqualTo(com.neuronest.backend.professional.ProfessionalAccountStatus.DISABLED);
+    }
+
     // ---- register ----
 
     @Test

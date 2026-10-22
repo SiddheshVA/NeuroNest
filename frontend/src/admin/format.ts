@@ -1,5 +1,7 @@
 // Display helpers for the admin pages.
 
+import type { AdminBookingItem, BookingStatus } from "./types";
+
 // "2030-03-31" (a date with no time) shown in the admin's locale without a timezone shift.
 export function formatDate(isoDate: string | null | undefined): string | null {
   if (!isoDate) return null;
@@ -71,4 +73,64 @@ export function formatFileSize(bytes: number | null | undefined): string {
   if (bytes < 1024) return `${bytes} bytes`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// ---- Indian Standard Time, 12-hour (booking pages) ----
+
+const istDateTime = new Intl.DateTimeFormat("en-IN", {
+  timeZone: "Asia/Kolkata",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
+const istDate = new Intl.DateTimeFormat("en-IN", {
+  timeZone: "Asia/Kolkata",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+/** "14 Oct 2026, 6:00 pm IST", whatever the browser's own time zone is. */
+export function formatIstDateTime(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : `${istDateTime.format(date)} IST`;
+}
+
+/** "14 Oct 2026" in India. */
+export function formatIstDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : istDate.format(date);
+}
+
+/** "3 days 4 hours", "5 hours" or "Less than an hour" for a whole number of hours. */
+export function hoursAsText(hours: number): string {
+  if (hours < 1) return "Less than an hour";
+  const days = Math.floor(hours / 24);
+  const rest = hours % 24;
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  if (days === 0) return plural(hours, "hour");
+  return rest === 0 ? plural(days, "day") : `${plural(days, "day")} ${plural(rest, "hour")}`;
+}
+
+/** A median such as 5.5 hours: "5.5 hours". */
+export function medianHoursText(hours: number | null | undefined): string {
+  if (hours === null || hours === undefined) return "No replies yet.";
+  return `${hours.toLocaleString("en-IN", { maximumFractionDigits: 1 })} ${hours === 1 ? "hour" : "hours"}`;
+}
+
+/**
+ * The status to show. A PENDING or ALTERNATE_PROPOSED request whose expiresAt has passed is shown as
+ * EXPIRED (and has no actions), because the server only changes the stored status later.
+ */
+export function displayStatus(row: Pick<AdminBookingItem, "status" | "expiresAt">, now: number): BookingStatus {
+  if ((row.status === "PENDING" || row.status === "ALTERNATE_PROPOSED") && row.expiresAt && Date.parse(row.expiresAt) <= now) {
+    return "EXPIRED";
+  }
+  return row.status;
 }

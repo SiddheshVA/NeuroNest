@@ -141,6 +141,20 @@ public class PublicProfessionalService {
         return new PublicProfessionalMeta(repository.findVisibleCities(today), repository.findVisibleLanguages(today));
     }
 
+    /**
+     * Up to {@code limit} other listings someone could request instead of {@code p}: bookable under the
+     * public visibility rule, the same credential type, never {@code p} itself; the same city first, then
+     * the most recently verified.
+     */
+    @Transactional(readOnly = true)
+    public List<Professional> similarBookable(Professional p, int limit) {
+        if (p == null || p.getCredentialType() == null || limit <= 0) return List.of();
+        return repository.findSimilarCandidates(today(), p.getCredentialType().name(), p.getCity(), p.getId()).stream()
+                .filter(PublicProfessionalDtos.PublicProfessional::bookable)
+                .limit(limit)
+                .toList();
+    }
+
     private LocalDate today() {
         return LocalDate.now(clock);
     }

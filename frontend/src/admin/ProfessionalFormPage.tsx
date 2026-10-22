@@ -18,6 +18,7 @@ import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
 import { AdminApiError, createProfessional, getProfessional, updateProfessional } from "./admin-api";
 import { formatDate, formatDateTime } from "./format";
 import { SampleChip, VerificationStatusChip } from "./VerificationStatusChip";
+import { SuspensionActions } from "./SuspensionActions";
 import { WeeklyHoursReadOnly } from "./WeeklyHoursReadOnly";
 import {
   CONSULTATION_MODE_LABELS,
@@ -490,7 +491,7 @@ export function ProfessionalFormPage() {
           </Stack>
         </Paper>
 
-        <VerificationPanel record={record} />
+        <VerificationPanel record={record} onChanged={setRecord} />
       </Box>
     </Stack>
   );
@@ -567,7 +568,13 @@ function ChipListField({
   );
 }
 
-function VerificationPanel({ record }: { record: ProfessionalDetail | null }) {
+function VerificationPanel({
+  record,
+  onChanged,
+}: {
+  record: ProfessionalDetail | null;
+  onChanged: (detail: ProfessionalDetail) => void;
+}) {
   return (
     <Paper sx={{ p: 3, position: { md: "sticky" }, top: { md: 88 } }}>
       <Stack spacing={2}>
@@ -601,9 +608,7 @@ function VerificationPanel({ record }: { record: ProfessionalDetail | null }) {
             New listings start as inactive drafts.
           </Typography>
         )}
-        <Alert severity="info" variant="outlined">
-          Verification actions will be added in a later step.
-        </Alert>
+        {record && <SuspensionActions record={record} onChanged={onChanged} />}
       </Stack>
     </Paper>
   );

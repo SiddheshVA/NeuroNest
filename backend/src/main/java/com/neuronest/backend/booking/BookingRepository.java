@@ -5,8 +5,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.Collection;
@@ -77,4 +79,16 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                                         @Param("now") Instant now);
 
     long countByUserIdAndCreatedAtAfter(UUID userId, Instant since);
+
+    // Set once the professional's "new request" email has been sent. Only this column changes.
+    @Modifying
+    @Transactional
+    @Query("update Booking b set b.professionalNotifiedAt = :at where b.id = :id")
+    int markProfessionalNotified(@Param("id") UUID id, @Param("at") Instant at);
+
+    // Set once the user's "your request expired" email has been sent. Only this column changes.
+    @Modifying
+    @Transactional
+    @Query("update Booking b set b.expiryNotifiedAt = :at where b.id = :id")
+    int markExpiryNotified(@Param("id") UUID id, @Param("at") Instant at);
 }

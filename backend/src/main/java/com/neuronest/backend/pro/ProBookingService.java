@@ -17,7 +17,9 @@ import com.neuronest.backend.professional.ContactDetailsGuard;
 import com.neuronest.backend.professional.Professional;
 import com.neuronest.backend.professional.ProfessionalAccountRepository;
 import com.neuronest.backend.professional.ProfessionalRepository;
+import com.neuronest.backend.notification.BookingEvent;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -64,20 +66,22 @@ public class ProBookingService {
     private final SlotService slots;
     private final ProfessionalRepository professionals;
     private final ProfessionalAccountRepository accounts;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     @Autowired
     public ProBookingService(BookingRepository bookings, SlotService slots, ProfessionalRepository professionals,
-                             ProfessionalAccountRepository accounts) {
-        this(bookings, slots, professionals, accounts, Clock.system(AvailabilityService.ZONE));
+                             ProfessionalAccountRepository accounts, ApplicationEventPublisher events) {
+        this(bookings, slots, professionals, accounts, events, Clock.system(AvailabilityService.ZONE));
     }
 
     ProBookingService(BookingRepository bookings, SlotService slots, ProfessionalRepository professionals,
-                      ProfessionalAccountRepository accounts, Clock clock) {
+                      ProfessionalAccountRepository accounts, ApplicationEventPublisher events, Clock clock) {
         this.bookings = bookings;
         this.slots = slots;
         this.professionals = professionals;
         this.accounts = accounts;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -154,7 +158,7 @@ public class ProBookingService {
         // preferred_datetime is always the scheduled time of a confirmed booking.
         b.setPreferredDatetime(chosen);
         apply(b, meeting, note, now);
-        return ProBookingView.from(bookings.saveAndFlush(b), now);
+        return saved(b, BookingEvent.Type.CONFIRMED, now);
     }
 
     @Transactional
@@ -170,7 +174,7 @@ public class ProBookingService {
         b.setProfessionalNote(note);
         b.setRespondedBy("PROFESSIONAL");
         b.setRespondedAt(now);
-        return ProBookingView.from(bookings.saveAndFlush(b), now);
+        return saved(b, BookingEvent.Type.DECLINED, now);
     }
 
     @Transactional
@@ -192,7 +196,15 @@ public class ProBookingService {
         // The meeting details stay hidden from the user until the booking is CONFIRMED.
         apply(b, meeting, note, now.toInstant());
         b.setExpiresAt(now.toInstant().plus(USER_REPLY_WINDOW));
-        return ProBookingView.from(bookings.saveAndFlush(b), now.toInstant());
+        return saved(b, BookingEvent.Type.PROPOSED, now.toInstant());
+    }
+
+    // Saves the reply and publishes its event; emails go out only after the transaction commits
+    // (BookingNotificationListener).
+    private ProBookingView saved(Booking b, BookingEvent.Type type, Instant now) {
+        Booking saved = bookings.saveAndFlush(b);
+        events.publishEvent(new BookingEvent(type, saved.getId()));
+        return ProBookingView.from(saved, now);
     }
 
     // ---- Checks ----

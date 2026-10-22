@@ -16,7 +16,9 @@ import com.neuronest.backend.professional.ProfessionalAccountRepository;
 import com.neuronest.backend.professional.ProfessionalRepository;
 import com.neuronest.backend.professional.PublicProfessionalService;
 import com.neuronest.backend.professional.WeeklyHours;
+import com.neuronest.backend.notification.BookingEvent;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -68,19 +70,22 @@ public class BookingService {
     private final ProfessionalAccountRepository accounts;
     private final UserRepository users;
     private final AssessmentResultRepository assessments;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     @Autowired
     public BookingService(BookingRepository bookings, SlotService slots, PublicProfessionalService directory,
                           ProfessionalRepository professionals, ProfessionalAccountRepository accounts,
-                          UserRepository users, AssessmentResultRepository assessments) {
-        this(bookings, slots, directory, professionals, accounts, users, assessments,
+                          UserRepository users, AssessmentResultRepository assessments,
+                          ApplicationEventPublisher events) {
+        this(bookings, slots, directory, professionals, accounts, users, assessments, events,
                 Clock.system(AvailabilityService.ZONE));
     }
 
     BookingService(BookingRepository bookings, SlotService slots, PublicProfessionalService directory,
                    ProfessionalRepository professionals, ProfessionalAccountRepository accounts,
-                   UserRepository users, AssessmentResultRepository assessments, Clock clock) {
+                   UserRepository users, AssessmentResultRepository assessments, ApplicationEventPublisher events,
+                   Clock clock) {
         this.bookings = bookings;
         this.slots = slots;
         this.directory = directory;
@@ -88,6 +93,7 @@ public class BookingService {
         this.accounts = accounts;
         this.users = users;
         this.assessments = assessments;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -187,7 +193,10 @@ public class BookingService {
         b.setConsentGivenAt(nowInstant);
         b.setSharedAssessment(shared);
         b.setAssessmentSharedAt(shared == null ? null : nowInstant);
-        return BookingView.from(bookings.saveAndFlush(b), p);
+        Booking saved = bookings.saveAndFlush(b);
+        // Emails go out only after this transaction commits (BookingNotificationListener).
+        events.publishEvent(new BookingEvent(BookingEvent.Type.REQUEST_CREATED, saved.getId()));
+        return BookingView.from(saved, p);
     }
 
     // The start time must be exactly one of the professional's free slots.
@@ -250,6 +259,7 @@ public class BookingService {
         b.setRespondedBy("USER");
         b.setRespondedAt(clock.instant());
         Booking saved = bookings.saveAndFlush(b);
+        events.publishEvent(new BookingEvent(BookingEvent.Type.CANCELLED_BY_USER, saved.getId()));
         return BookingView.from(saved, professionals.findById(saved.getProfessionalId()).orElse(null));
     }
 
@@ -282,7 +292,9 @@ public class BookingService {
         b.setPreferredDatetime(proposed);
         b.setRespondedBy("USER");
         b.setRespondedAt(now);
-        return BookingView.from(bookings.saveAndFlush(b), p);
+        Booking saved = bookings.saveAndFlush(b);
+        events.publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, saved.getId()));
+        return BookingView.from(saved, p);
     }
 
     // ---- Parsing ----

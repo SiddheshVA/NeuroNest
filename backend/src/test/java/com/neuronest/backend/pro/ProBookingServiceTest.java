@@ -18,6 +18,7 @@ import com.neuronest.backend.pro.ProBookingDtos.ProposeRequest;
 import com.neuronest.backend.professional.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -56,9 +57,10 @@ class ProBookingServiceTest {
     private final ProfessionalRepository professionals = mock(ProfessionalRepository.class);
     private final ProfessionalAccountRepository accounts = mock(ProfessionalAccountRepository.class);
     private final SlotService slots = new SlotService(new AvailabilityService(), bookings);
-    private final ProBookingService service = new ProBookingService(bookings, slots, professionals, accounts, CLOCK);
+    private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
+    private final ProBookingService service = new ProBookingService(bookings, slots, professionals, accounts, events, CLOCK);
     private final BookingService userService = new BookingService(bookings, slots, mock(PublicProfessionalService.class),
-            professionals, accounts, mock(UserRepository.class), mock(AssessmentResultRepository.class));
+            professionals, accounts, mock(UserRepository.class), mock(AssessmentResultRepository.class), events);
 
     private final List<Booking> store = new ArrayList<>();
     private final UUID professionalId = UUID.randomUUID();

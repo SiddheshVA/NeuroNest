@@ -272,3 +272,85 @@ export interface VerifyRequest {
   activate: boolean;
   checklist: Record<string, boolean>;
 }
+
+// ---- Booking requests (AdminBookingDtos) ----
+
+export const BOOKING_STATUSES = ["PENDING", "CONFIRMED", "ALTERNATE_PROPOSED", "DECLINED", "CANCELLED", "EXPIRED"] as const;
+export type BookingStatus = (typeof BOOKING_STATUSES)[number];
+
+export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
+  PENDING: "Pending",
+  CONFIRMED: "Confirmed",
+  ALTERNATE_PROPOSED: "Waiting for the person",
+  DECLINED: "Declined",
+  CANCELLED: "Cancelled",
+  EXPIRED: "Expired",
+};
+
+export type RespondedBy = "PROFESSIONAL" | "ADMIN" | "USER";
+
+export const RESPONDED_BY_LABELS: Record<RespondedBy, string> = {
+  PROFESSIONAL: "Professional",
+  ADMIN: "Admin",
+  USER: "Person",
+};
+
+export interface DashboardSummary {
+  reviewQueue: number;
+  reviewQueueOver48h: number;
+  unansweredOver48h: number;
+  pendingTotal: number;
+  awaitingUserTotal: number;
+  upcomingConfirmed: number;
+  professionalsVerifiedActive: number;
+  professionalsNeedsInfo: number;
+  registrationsExpiringIn30Days: number;
+  last30Days: {
+    requestsCreated: number;
+    answered: number;
+    expired: number;
+    cancelledByUser: number;
+    responseRatePercent: number;
+    medianHoursToFirstResponse: number | null;
+  };
+}
+
+/** One booking request as the admin sees it: never the person's contact details, notes, assessment or meeting details. */
+export interface AdminBookingItem {
+  id: string;
+  status: BookingStatus;
+  createdAt: string;
+  expiresAt: string | null;
+  hoursWaiting: number;
+  professionalId: string;
+  professionalName: string;
+  contactName: string;
+  preferredMode: "ONLINE" | "IN_PERSON" | null;
+  preferredMethod: "PHONE" | "VIDEO" | null;
+  /** ISO date-time with the +05:30 offset. */
+  scheduledOrRequestedTime: string | null;
+  proposedDatetime: string | null;
+  respondedBy: RespondedBy | null;
+  respondedAt: string | null;
+  adminNudgedAt: string | null;
+  adminNote: string | null;
+}
+
+export interface BookingListFilters {
+  status: BookingStatus | "";
+  unansweredOver: number | null;
+  professionalId: string;
+  page: number;
+  size: number;
+}
+
+export interface ResponsivenessItem {
+  professionalId: string;
+  fullName: string;
+  received: number;
+  answered: number;
+  expired: number;
+  pendingNow: number;
+  medianHoursToFirstResponse: number | null;
+  lastAnsweredAt: string | null;
+}

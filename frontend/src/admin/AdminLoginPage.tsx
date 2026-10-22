@@ -98,5 +98,5 @@ export function AdminLoginPage() {
 
 // Only return to admin pages after login, never to an arbitrary path from navigation state.
 function safeAdminPath(path: string | undefined): string {
-  return path && path.startsWith("/admin/") && !path.startsWith("/admin/login") ? path : "/admin/professionals";
+  return path && path.startsWith("/admin/") && !path.startsWith("/admin/login") ? path : "/admin";
 }

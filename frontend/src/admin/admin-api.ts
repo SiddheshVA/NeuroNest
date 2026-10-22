@@ -1,6 +1,9 @@
 import { API_BASE } from "@/lib/api";
 import type {
+  AdminBookingItem,
   AdminDocument,
+  BookingListFilters,
+  DashboardSummary,
   LogEntry,
   PageResponse,
   ProfessionalDetail,
@@ -8,6 +11,7 @@ import type {
   ProfessionalRequest,
   ProfessionalSummary,
   ProfessionalUpdateResult,
+  ResponsivenessItem,
   ReviewQueueItem,
   VerifyRequest,
 } from "./types";
@@ -236,5 +240,52 @@ export function rejectProfessional(id: string, reason: string) {
   return adminRequest<ProfessionalDetail>(`${professionalPath(id)}/reject`, {
     method: "POST",
     body: JSON.stringify({ reason }),
+  });
+}
+
+// ---- Dashboard and booking requests ----
+
+export function getDashboardSummary() {
+  return adminRequest<DashboardSummary>("/admin/dashboard/summary");
+}
+
+export function listBookings(filters: BookingListFilters) {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.unansweredOver !== null) params.set("unansweredOver", String(filters.unansweredOver));
+  if (filters.professionalId) params.set("professionalId", filters.professionalId);
+  params.set("page", String(filters.page));
+  params.set("size", String(filters.size));
+  return adminRequest<PageResponse<AdminBookingItem>>(`/admin/bookings?${params}`);
+}
+
+export function nudgeBooking(id: string) {
+  return adminRequest<AdminBookingItem>(`/admin/bookings/${encodeURIComponent(id)}/nudge`, { method: "POST" });
+}
+
+export function closeBooking(id: string, note: string) {
+  return adminRequest<AdminBookingItem>(`/admin/bookings/${encodeURIComponent(id)}/close`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+}
+
+export function getResponsiveness(days: number, page: number, size: number) {
+  return adminRequest<PageResponse<ResponsivenessItem>>(
+    `/admin/professionals/responsiveness?days=${days}&page=${page}&size=${size}`,
+  );
+}
+
+export function suspendProfessional(id: string, note: string) {
+  return adminRequest<ProfessionalDetail>(`${professionalPath(id)}/suspend`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+}
+
+export function reinstateProfessional(id: string, note: string) {
+  return adminRequest<ProfessionalDetail>(`${professionalPath(id)}/reinstate`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
   });
 }

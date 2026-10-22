@@ -12,6 +12,7 @@ import com.neuronest.backend.professional.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -50,8 +51,9 @@ class BookingServiceTest {
     private final UserRepository users = mock(UserRepository.class);
     private final AssessmentResultRepository assessments = mock(AssessmentResultRepository.class);
     private final SlotService slots = new SlotService(new AvailabilityService(), bookings);
+    private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final PublicProfessionalService directory = new PublicProfessionalService(directoryRepository, slots, CLOCK);
-    private final BookingService service = new BookingService(bookings, slots, directory, professionals, accounts, users, assessments, CLOCK);
+    private final BookingService service = new BookingService(bookings, slots, directory, professionals, accounts, users, assessments, events, CLOCK);
 
     private final UUID userId = UUID.randomUUID();
     private final UUID professionalId = UUID.randomUUID();

@@ -9,6 +9,9 @@ import { ProfessionalsListPage } from "./ProfessionalsListPage";
 import { ProfessionalFormPage } from "./ProfessionalFormPage";
 import { ReviewQueuePage } from "./ReviewQueuePage";
 import { ReviewPage } from "./ReviewPage";
+import { DashboardPage } from "./DashboardPage";
+import { BookingRequestsPage } from "./BookingRequestsPage";
+import { ResponsivenessPage } from "./ResponsivenessPage";
 
 // Everything under /admin. Loaded lazily from App.tsx, so none of this code ships in the public
 // bundle, and rendered outside RootLayout, so the public navbar and footer never appear here.
@@ -26,13 +29,15 @@ export default function AdminRoutes() {
             </AdminGuard>
           }
         >
-          <Route index element={<Navigate to="professionals" replace />} />
+          <Route index element={<DashboardPage />} />
           <Route path="professionals" element={<ProfessionalsListPage />} />
           <Route path="professionals/new" element={<ProfessionalFormPage key="new" />} />
           <Route path="professionals/:id/edit" element={<EditProfessionalRoute />} />
           <Route path="review" element={<ReviewQueuePage />} />
           <Route path="review/:id" element={<ReviewRoute />} />
-          <Route path="*" element={<Navigate to="professionals" replace />} />
+          <Route path="bookings" element={<BookingRequestsPage />} />
+          <Route path="responsiveness" element={<ResponsivenessPage />} />
+          <Route path="*" element={<Navigate to="/admin" replace />} />
         </Route>
       </Routes>
     </ThemeProvider>

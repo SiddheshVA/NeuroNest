@@ -12,12 +12,13 @@ import {
   adminSessionRemainingMs,
   clearAdminSession,
   EXPIRED_LOGIN_PATH,
+  getDashboardSummary,
   getReviewQueue,
   setAdminUnauthorizedHandler,
 } from "./admin-api";
 
 // Admin chrome: a top bar with the title, the navigation (with the number of professionals waiting for
-// review) and a log out button. Also sends the admin back to the
+// review and of requests with no reply after 48 hours) and a log out button. Also sends the admin back to the
 // login page on any 401 from the API, and when the token's expiry time is reached.
 export function AdminLayout() {
   const navigate = useNavigate();
@@ -55,6 +56,20 @@ export function AdminLayout() {
     };
   }, [location.pathname]);
 
+  // Requests with no reply after 48 hours, refreshed the same way.
+  const [unansweredCount, setUnansweredCount] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getDashboardSummary()
+      .then((summary) => !cancelled && setUnansweredCount(summary.unansweredOver48h))
+      .catch((e) => {
+        if (!cancelled && !(e instanceof AdminApiError && e.status === 401)) setUnansweredCount(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname]);
+
   const logOut = () => {
     clearAdminSession();
     navigate("/admin/login", { replace: true });
@@ -68,6 +83,10 @@ export function AdminLayout() {
             NeuroNest Admin
           </Typography>
           <Box component="nav" aria-label="Admin" sx={{ display: "flex", gap: 1, flexGrow: 1, flexWrap: "wrap" }}>
+            {/* "end": only the dashboard itself, not every /admin page, marks this entry as current. */}
+            <Button color="inherit" component={NavLink} to="/admin" end sx={navLinkSx}>
+              Dashboard
+            </Button>
             <Button color="inherit" component={NavLink} to="/admin/professionals" sx={navLinkSx}>
               Professionals
             </Button>
@@ -92,6 +111,30 @@ export function AdminLayout() {
               >
                 Review queue
               </Badge>
+            </Button>
+            <Button
+              color="inherit"
+              component={NavLink}
+              to="/admin/bookings"
+              sx={{ ...navLinkSx, pr: unansweredCount ? 3.5 : 1.5 }}
+              aria-label={
+                unansweredCount
+                  ? `Booking requests, ${unansweredCount} with no reply after 48 hours`
+                  : "Booking requests"
+              }
+            >
+              <Badge
+                color="warning"
+                badgeContent={unansweredCount ?? 0}
+                max={99}
+                invisible={!unansweredCount}
+                sx={{ "& .MuiBadge-badge": { right: -12 } }}
+              >
+                Booking requests
+              </Badge>
+            </Button>
+            <Button color="inherit" component={NavLink} to="/admin/responsiveness" sx={navLinkSx}>
+              Professional responsiveness
             </Button>
           </Box>
           <Button color="inherit" variant="outlined" startIcon={<LogoutRounded />} onClick={logOut}>

@@ -23,6 +23,11 @@ public class AdminExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", ex.getMessage()));
     }
 
+    @ExceptionHandler(AdminBookingNotFoundException.class)
+    public ResponseEntity<?> handleBookingNotFound(AdminBookingNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", ex.getMessage()));
+    }
+
     @ExceptionHandler(AdminVerificationExceptions.DocumentNotFoundException.class)
     public ResponseEntity<?> handleDocumentNotFound(AdminVerificationExceptions.DocumentNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", ex.getMessage()));

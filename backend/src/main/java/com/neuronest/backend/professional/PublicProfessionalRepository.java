@@ -56,6 +56,20 @@ public interface PublicProfessionalRepository extends Repository<Professional, U
     @Query(value = "SELECT p.* FROM professionals p WHERE p.id = :id AND " + VISIBLE, nativeQuery = true)
     Optional<Professional> findVisibleById(@Param("id") UUID id, @Param("today") LocalDate today);
 
+    // Candidates for "similar professionals": visible, real (not sample), the same credential type and not
+    // the excluded one; the same city first, then the most recently verified. The caller keeps only the
+    // bookable ones, so a few more than needed are returned.
+    @Query(value = "SELECT p.* FROM professionals p WHERE " + VISIBLE
+            + " AND p.is_sample_data = false AND p.credential_type = :credentialType AND p.id <> :excludeId"
+            + " ORDER BY CASE WHEN CAST(:city AS text) IS NOT NULL"
+            + "   AND lower(trim(p.city)) = lower(trim(CAST(:city AS text))) THEN 0 ELSE 1 END,"
+            + " p.verified_at DESC NULLS LAST, p.id ASC LIMIT 20",
+            nativeQuery = true)
+    List<Professional> findSimilarCandidates(@Param("today") LocalDate today,
+                                             @Param("credentialType") String credentialType,
+                                             @Param("city") String city,
+                                             @Param("excludeId") UUID excludeId);
+
     // One entry per city regardless of case or surrounding spaces.
     @Query(value = "SELECT min(trim(p.city)) FROM professionals p WHERE " + VISIBLE
             + " AND p.city IS NOT NULL AND trim(p.city) <> '' GROUP BY lower(trim(p.city)) ORDER BY lower(trim(p.city))",

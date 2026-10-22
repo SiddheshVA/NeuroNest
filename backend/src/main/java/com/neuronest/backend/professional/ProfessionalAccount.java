@@ -72,6 +72,8 @@ public class ProfessionalAccount {
     public UUID getProfessionalId() { return professionalId; }
     public String getEmail() { return email; }
     public ProfessionalAccountStatus getStatus() { return status; }
+    /** Only the admin's suspend and reinstate change this. */
+    public void setStatus(ProfessionalAccountStatus status) { this.status = status; }
     public String getClerkUserId() { return clerkUserId; }
     public Instant getLastLoginAt() { return lastLoginAt; }
     public Instant getCreatedAt() { return createdAt; }

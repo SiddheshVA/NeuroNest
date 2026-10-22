@@ -109,6 +109,18 @@ public class Booking {
     @Column(name = "assessment_shared_at")
     private Instant assessmentSharedAt;
 
+    // Set by the background jobs (V7): when the 24-hour reminder went to the professional, and when the
+    // expiry email went to the user.
+    @Column(name = "reminder_sent_at")
+    private Instant reminderSentAt;
+
+    @Column(name = "expiry_notified_at")
+    private Instant expiryNotifiedAt;
+
+    // When an admin last reminded the professional about this request (V8).
+    @Column(name = "admin_nudged_at")
+    private Instant adminNudgedAt;
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
@@ -214,4 +226,13 @@ public class Booking {
 
     public Instant getAssessmentSharedAt() { return assessmentSharedAt; }
     public void setAssessmentSharedAt(Instant assessmentSharedAt) { this.assessmentSharedAt = assessmentSharedAt; }
+
+    public Instant getReminderSentAt() { return reminderSentAt; }
+    public void setReminderSentAt(Instant reminderSentAt) { this.reminderSentAt = reminderSentAt; }
+
+    public Instant getExpiryNotifiedAt() { return expiryNotifiedAt; }
+    public void setExpiryNotifiedAt(Instant expiryNotifiedAt) { this.expiryNotifiedAt = expiryNotifiedAt; }
+
+    public Instant getAdminNudgedAt() { return adminNudgedAt; }
+    public void setAdminNudgedAt(Instant adminNudgedAt) { this.adminNudgedAt = adminNudgedAt; }
 }
