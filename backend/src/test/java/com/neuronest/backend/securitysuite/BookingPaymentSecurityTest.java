@@ -111,6 +111,43 @@ class BookingPaymentSecurityTest extends SecuritySuiteBase {
     }
 
     @Test
+    void theAmountShownBeforePayingIsTheAmountTheOrderCharges() throws Exception {
+        configured();
+        var get = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/bookings/" + ofOwner.getId());
+        var summary = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/bookings/summary");
+
+        var shown = JSON.readTree(as(ownerToken, get).getResponse().getContentAsString());
+        var listed = JSON.readTree(as(ownerToken, summary).getResponse().getContentAsString()).get("awaitingPayment").get(0);
+        var order = JSON.readTree(as(ownerToken, order(ofOwner.getId())).getResponse().getContentAsString());
+
+        assertThat(order.get("amount").asLong()).isEqualTo(120_000);
+        assertThat(shown.get("amount").asLong()).isEqualTo(order.get("amount").asLong());
+        assertThat(listed.get("amount").asLong()).isEqualTo(order.get("amount").asLong());
+        assertThat(shown.get("currency").asString()).isEqualTo(order.get("currency").asString()).isEqualTo("INR");
+        assertThat(listed.get("currency").asString()).isEqualTo("INR");
+
+        // After a fee change the existing order is reused, and what is shown still matches it.
+        asha.setConsultationFee(3000);
+        professionals.saveAndFlush(asha);
+        var again = JSON.readTree(as(ownerToken, get).getResponse().getContentAsString());
+        var reordered = JSON.readTree(as(ownerToken, order(ofOwner.getId())).getResponse().getContentAsString());
+        assertThat(again.get("amount").asLong()).isEqualTo(reordered.get("amount").asLong()).isEqualTo(120_000);
+    }
+
+    @Test
+    void anExpiredUnpaidBookingStillShowsItsPaymentDeadline() throws Exception {
+        ofOwner.setStatus(BookingStatus.EXPIRED);
+        ofOwner = bookings.saveAndFlush(ofOwner);
+
+        var view = JSON.readTree(as(ownerToken, org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .get("/api/bookings/" + ofOwner.getId())).getResponse().getContentAsString());
+
+        assertThat(view.get("status").asString()).isEqualTo("EXPIRED");
+        assertThat(view.get("paymentDueAt").isNull()).isFalse();
+        assertThat(view.get("amount").isNull()).isTrue();
+    }
+
+    @Test
     void anotherUserGetsTheSame404AsAMissingBooking() throws Exception {
         configured();
         String missing = as(otherToken, order(UUID.randomUUID())).getResponse().getContentAsString();

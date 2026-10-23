@@ -9,6 +9,9 @@ import com.neuronest.backend.booking.BookingDtos.CreateBookingRequest;
 import com.neuronest.backend.config.ApiValidationException;
 import com.neuronest.backend.config.ConflictException;
 import com.neuronest.backend.notification.BookingEvent;
+import com.neuronest.backend.payment.Payment;
+import com.neuronest.backend.payment.PaymentRepository;
+import com.neuronest.backend.payment.PaymentStatus;
 import com.neuronest.backend.professional.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,7 +58,9 @@ class BookingServiceTest {
     private final SlotService slots = new SlotService(new AvailabilityService(), bookings, daysOff);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final PublicProfessionalService directory = new PublicProfessionalService(directoryRepository, slots, CLOCK);
-    private final BookingService service = new BookingService(bookings, slots, directory, professionals, accounts, users, assessments, events, CLOCK);
+    private final PaymentRepository paymentRepository = mock(PaymentRepository.class);
+    private final BookingService service = new BookingService(bookings, slots, directory, professionals, accounts, users,
+            assessments, events, new PaymentAmounts(paymentRepository), CLOCK);
 
     private final UUID userId = UUID.randomUUID();
     private final UUID professionalId = UUID.randomUUID();
@@ -449,6 +454,50 @@ class BookingServiceTest {
         verify(bookings).findFirstByUserIdAndStatusAndPreferredDatetimeGreaterThanEqualOrderByPreferredDatetimeAscIdAsc(
                 userId, BookingStatus.CONFIRMED, NOW);
         assertThat(summary.toString()).doesNotContain("PRIVATE-LINK", "asha@example.com");
+    }
+
+    @Test
+    void aBookingAwaitingPaymentShowsTheAmountTheOrderWouldCharge() {
+        professional.setConsultationFee(1500);
+        when(professionals.findById(professionalId)).thenReturn(Optional.of(professional));
+        when(professionals.findAllById(List.of(professionalId))).thenReturn(List.of(professional));
+        Booking unpaid = existing(BookingStatus.AWAITING_PAYMENT, WED_19, null, userId);
+        UUID id = UUID.randomUUID();
+        ReflectionTestUtils.setField(unpaid, "id", id);
+        unpaid.setPaymentDueAt(NOW.plusSeconds(3600));
+        doReturn(Optional.of(unpaid)).when(bookings).findByIdAndUserId(id, userId);
+        doReturn(List.of(unpaid)).when(bookings).findByUserIdAndStatusAndPaymentDueAtAfterOrderByPaymentDueAtAscIdAsc(
+                userId, BookingStatus.AWAITING_PAYMENT, NOW);
+
+        BookingView view = service.get(userId, id.toString());
+        assertThat(view.amount()).isEqualTo(150_000);
+        assertThat(view.currency()).isEqualTo("INR");
+        assertThat(service.summary(userId).awaitingPayment()).singleElement()
+                .satisfies(a -> assertThat(a.amount()).isEqualTo(150_000));
+
+        // Once an order exists, its amount is shown even if the fee changed since.
+        Payment order = new Payment(id, "order_1", 120_000, "INR", NOW);
+        when(paymentRepository.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(id, PaymentStatus.CREATED))
+                .thenReturn(Optional.of(order));
+        assertThat(service.get(userId, id.toString()).amount()).isEqualTo(120_000);
+        assertThat(service.summary(userId).awaitingPayment().get(0).amount()).isEqualTo(120_000);
+
+        // No amount once it is no longer waiting for payment.
+        unpaid.setStatus(BookingStatus.CONFIRMED);
+        assertThat(service.get(userId, id.toString()).amount()).isNull();
+    }
+
+    @Test
+    void anExpiredUnpaidBookingKeepsItsPaymentDeadlineAndAnUnansweredOneHasNone() {
+        Booking unpaid = existing(BookingStatus.EXPIRED, WED_19, null, userId);
+        unpaid.setPaymentDueAt(NOW.minusSeconds(3600));
+        Booking unanswered = existing(BookingStatus.EXPIRED, WED_18, null, userId);
+
+        assertThat(BookingView.from(unpaid, professional).paymentDueAt()).isEqualTo(NOW.minusSeconds(3600));
+        assertThat(BookingView.from(unanswered, professional).paymentDueAt()).isNull();
+        // Paid or cancelled bookings do not carry it.
+        unpaid.setStatus(BookingStatus.CANCELLED);
+        assertThat(BookingView.from(unpaid, professional).paymentDueAt()).isNull();
     }
 
     @Test

@@ -1,5 +1,7 @@
 package com.neuronest.backend.pro;
 
+import com.neuronest.backend.booking.PaymentAmounts;
+import com.neuronest.backend.payment.PaymentRepository;
 import com.neuronest.backend.assessment.AssessmentResultRepository;
 import com.neuronest.backend.auth.UserRepository;
 import com.neuronest.backend.booking.Booking;
@@ -63,7 +65,8 @@ class ProBookingServiceTest {
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final ProBookingService service = new ProBookingService(bookings, slots, professionals, accounts, events, CLOCK);
     private final BookingService userService = new BookingService(bookings, slots, mock(PublicProfessionalService.class),
-            professionals, accounts, mock(UserRepository.class), mock(AssessmentResultRepository.class), events);
+            professionals, accounts, mock(UserRepository.class), mock(AssessmentResultRepository.class), events,
+            new PaymentAmounts(mock(PaymentRepository.class)));
 
     private final List<Booking> store = new ArrayList<>();
     private final UUID professionalId = UUID.randomUUID();

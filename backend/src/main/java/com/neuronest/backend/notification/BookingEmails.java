@@ -1,6 +1,7 @@
 package com.neuronest.backend.notification;
 
 import com.neuronest.backend.booking.Booking;
+import com.neuronest.backend.booking.PaymentAmounts;
 import com.neuronest.backend.professional.AvailabilityService;
 import com.neuronest.backend.professional.Professional;
 import com.neuronest.backend.safety.CrisisResource;
@@ -74,8 +75,8 @@ public class BookingEmails {
                         .paragraph(p.getFullName() + " accepted your request for " + time(at) + ".")
                         .paragraph("Please pay by " + time(b.getPaymentDueAt()) + " to confirm your slot. If the payment "
                                 + "is not made by then, the time is released.");
-                Integer fee = p.getConsultationFee();
-                if (fee != null && fee > 0) user.paragraph("Amount to pay: " + rupees(fee * 100L) + ".");
+                PaymentAmounts.fromFee(p).ifPresent(amount ->
+                        user.paragraph("Amount to pay: " + rupees(amount.paise()) + "."));
                 user.link("Pay now", settings.link("/appointments"));
                 yield List.of(
                         toUser(b, user),

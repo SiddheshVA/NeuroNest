@@ -32,7 +32,6 @@ import java.util.UUID;
 @Service
 public class BookingPaymentService {
 
-    static final String CURRENCY = "INR";
     static final String NOT_AWAITING_MESSAGE = "This booking is not waiting for payment.";
     static final String PAST_DUE_MESSAGE = "The time to pay for this booking has passed.";
     static final String NO_FEE_MESSAGE = "This professional has not set a consultation fee, so this booking cannot "
@@ -46,7 +45,7 @@ public class BookingPaymentService {
      * session); then an agreed time goes straight to CONFIRMED.
      */
     public static boolean requiresPayment(Professional p) {
-        return p.getConsultationFee() != null && p.getConsultationFee() > 0;
+        return PaymentAmounts.fromFee(p).isPresent();
     }
 
     private final BookingRepository bookings;
@@ -54,22 +53,25 @@ public class BookingPaymentService {
     private final ProfessionalRepository professionals;
     private final RazorpayGateway gateway;
     private final ApplicationEventPublisher events;
+    private final PaymentAmounts amounts;
     private final Clock clock;
 
     @Autowired
     public BookingPaymentService(BookingRepository bookings, PaymentRepository payments,
                                  ProfessionalRepository professionals, RazorpayGateway gateway,
-                                 ApplicationEventPublisher events) {
-        this(bookings, payments, professionals, gateway, events, Clock.system(AvailabilityService.ZONE));
+                                 ApplicationEventPublisher events, PaymentAmounts amounts) {
+        this(bookings, payments, professionals, gateway, events, amounts, Clock.system(AvailabilityService.ZONE));
     }
 
     BookingPaymentService(BookingRepository bookings, PaymentRepository payments, ProfessionalRepository professionals,
-                          RazorpayGateway gateway, ApplicationEventPublisher events, Clock clock) {
+                          RazorpayGateway gateway, ApplicationEventPublisher events, PaymentAmounts amounts,
+                          Clock clock) {
         this.bookings = bookings;
         this.payments = payments;
         this.professionals = professionals;
         this.gateway = gateway;
         this.events = events;
+        this.amounts = amounts;
         this.clock = clock;
     }
 
@@ -86,17 +88,14 @@ public class BookingPaymentService {
             throw new ConflictException(PAST_DUE_MESSAGE);
         }
 
-        Optional<Payment> unpaid = payments.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(b.getId(),
-                PaymentStatus.CREATED);
+        // The same rule the booking view and the summary use to show the amount (PaymentAmounts).
+        Optional<Payment> unpaid = amounts.unpaidOrder(b);
         if (unpaid.isPresent()) return order(unpaid.get());
 
-        // consultation_fee is whole rupees per session.
-        Integer fee = professionals.findById(b.getProfessionalId()).map(Professional::getConsultationFee).orElse(null);
-        if (fee == null || fee <= 0) throw new ConflictException(NO_FEE_MESSAGE);
-        long amountPaise = fee * 100L;
-
-        String orderId = gateway.createOrder(amountPaise, CURRENCY, b.getId().toString());
-        return order(payments.saveAndFlush(new Payment(b.getId(), orderId, amountPaise, CURRENCY, now)));
+        PaymentAmounts.Amount amount = PaymentAmounts.fromFee(professionals.findById(b.getProfessionalId()).orElse(null))
+                .orElseThrow(() -> new ConflictException(NO_FEE_MESSAGE));
+        String orderId = gateway.createOrder(amount.paise(), amount.currency(), b.getId().toString());
+        return order(payments.saveAndFlush(new Payment(b.getId(), orderId, amount.paise(), amount.currency(), now)));
     }
 
     private PaymentOrder order(Payment p) {

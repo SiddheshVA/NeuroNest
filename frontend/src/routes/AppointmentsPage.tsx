@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, CheckCircle2, CreditCard, Info } from "lucide-react";
 
 import { BookingStatusChip } from "@/components/bookings/booking-status-chip";
 import { Container } from "@/components/layout/container";
@@ -13,13 +13,17 @@ import {
   BookingApiError,
   cancelBooking,
   displayStatus,
+  formatAmount,
+  getBookingSummary,
   getMyBookings,
   requestedMethodLabel,
   STATUS_LABELS,
+  type AwaitingPaymentBooking,
   type BookingPage,
   type BookingStatus,
   type BookingView,
 } from "@/lib/bookings-client";
+import { payForBooking } from "@/lib/razorpay-checkout";
 import { formatIstDate, formatIstDateTime } from "@/lib/ist-time";
 import { CREDENTIAL_TYPE_LABELS, type CredentialType } from "@/lib/professionals-client";
 import { loginHref } from "@/lib/safe-redirect";
@@ -27,7 +31,32 @@ import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 10;
-const CANCELLABLE: BookingStatus[] = ["PENDING", "ALTERNATE_PROPOSED"];
+const CANCELLABLE: BookingStatus[] = ["PENDING", "ALTERNATE_PROPOSED", "AWAITING_PAYMENT"];
+
+/** What is being paid for or cancelled: from the list or from the "Awaiting payment" section. */
+type Target = { id: string; professionalName: string; awaitingPayment: boolean };
+
+type Notice = { kind: "success" | "info"; message: string };
+
+function NoticeBox({ notice }: { notice: Notice }) {
+  const Icon = notice.kind === "success" ? CheckCircle2 : Info;
+  return (
+    <div
+      role="status"
+      className={cn(
+        "flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm",
+        notice.kind === "success"
+          ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+          : "border-sky-200 bg-sky-50 text-sky-900",
+      )}
+    >
+      <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      <span>{notice.message}</span>
+    </div>
+  );
+}
+
+const MODE_LABELS = { ONLINE: "Online", IN_PERSON: "In person" } as const;
 
 function FindAnother({ children }: { children: string }) {
   return (
@@ -58,6 +87,18 @@ function StatusText({ booking: b, status }: { booking: BookingView; status: Book
           Waiting for the professional to respond.
           {b.expiresAt ? ` This request expires on ${formatIstDateTime(b.expiresAt)}.` : ""}
         </p>
+      );
+    case "AWAITING_PAYMENT":
+      return (
+        <div className="flex flex-col gap-1.5 text-sm text-foreground">
+          <p className="font-medium">The professional accepted your request.</p>
+          <p>
+            {b.paymentDueAt
+              ? `Please pay by ${formatIstDateTime(b.paymentDueAt)} to confirm your slot.`
+              : "Please pay to confirm your slot."}{" "}
+            The meeting details are shown here once the payment is done.
+          </p>
+        </div>
       );
     case "CONFIRMED":
       return (
@@ -102,6 +143,18 @@ function StatusText({ booking: b, status }: { booking: BookingView; status: Book
     case "CANCELLED":
       return <p className="text-sm text-foreground">You cancelled this request.</p>;
     case "EXPIRED":
+      // Agreed but not paid in time (paymentDueAt is only set once a time was agreed).
+      if (b.status === "AWAITING_PAYMENT" || b.paymentDueAt) {
+        return (
+          <FindAnother>
+            {`${
+              b.paymentDueAt
+                ? `The payment window ended on ${formatIstDateTime(b.paymentDueAt)}, so this slot was released.`
+                : "The payment window ended, so this slot was released."
+            } You can book again with this or another professional.`}
+          </FindAnother>
+        );
+      }
       if (b.status === "ALTERNATE_PROPOSED") {
         return <FindAnother>This suggestion expired. You can request another appointment.</FindAnother>;
       }
@@ -116,13 +169,18 @@ function StatusText({ booking: b, status }: { booking: BookingView; status: Book
 function BookingItem({
   booking: b,
   now,
+  paying,
   onCancel,
   onAccept,
+  onPay,
 }: {
   booking: BookingView;
   now: number;
-  onCancel: (b: BookingView) => void;
+  /** The id of the booking being paid for, if any: every Pay now is disabled meanwhile. */
+  paying: string | null;
+  onCancel: (target: Target) => void;
   onAccept: (b: BookingView) => void;
+  onPay: (target: Target) => void;
 }) {
   const status = displayStatus(b, now);
   const confirmed = b.status === "CONFIRMED";
@@ -131,6 +189,11 @@ function BookingItem({
     ? (CREDENTIAL_TYPE_LABELS[professional.credentialType as CredentialType] ?? professional.credentialType)
     : null;
   const method = requestedMethodLabel(b);
+  const target: Target = {
+    id: b.id,
+    professionalName: professional?.fullName ?? "your professional",
+    awaitingPayment: status === "AWAITING_PAYMENT",
+  };
 
   return (
     <li className="flex flex-col gap-4 rounded-2xl bg-card p-6 ring-1 ring-foreground/10">
@@ -162,6 +225,9 @@ function BookingItem({
         ) : null}
         {b.alternateDatetime && !confirmed ? <Detail label="Second choice" value={formatIstDateTime(b.alternateDatetime)} /> : null}
         {method ? <Detail label="How you asked to meet" value={method} /> : null}
+        {status === "AWAITING_PAYMENT" && formatAmount(b.amount, b.currency) ? (
+          <Detail label="Fee" value={formatAmount(b.amount, b.currency) ?? ""} />
+        ) : null}
         {b.proposedDatetime && !confirmed && status !== "ALTERNATE_PROPOSED" ? (
           <Detail label="Proposed time" value={formatIstDateTime(b.proposedDatetime)} />
         ) : null}
@@ -190,12 +256,110 @@ function BookingItem({
               Accept this time
             </button>
           ) : null}
-          <button type="button" className={cn(secondaryButtonClass, "w-fit")} onClick={() => onCancel(b)}>
-            Cancel request
+          {status === "AWAITING_PAYMENT" ? (
+            <PayButton paying={paying} id={b.id} amount={formatAmount(b.amount, b.currency)} onPay={() => onPay(target)} />
+          ) : null}
+          <button
+            type="button"
+            className={cn(secondaryButtonClass, "w-fit")}
+            disabled={paying === b.id}
+            onClick={() => onCancel(target)}
+          >
+            {status === "AWAITING_PAYMENT" ? "Cancel booking" : "Cancel request"}
           </button>
         </div>
       ) : null}
     </li>
+  );
+}
+
+/** "Pay ₹1,500" when the amount is known (from the server, the same amount the order charges), else "Pay now". */
+function PayButton({
+  paying,
+  id,
+  amount,
+  onPay,
+}: {
+  paying: string | null;
+  id: string;
+  amount: string | null;
+  onPay: () => void;
+}) {
+  return (
+    <button type="button" className={primaryButtonClass} disabled={paying !== null} onClick={onPay}>
+      <CreditCard className="size-4" aria-hidden="true" />
+      {paying === id ? "Payment in progress..." : amount ? `Pay ${amount}` : "Pay now"}
+    </button>
+  );
+}
+
+/** The bookings a professional accepted that are waiting for the user's payment (from the summary). */
+function AwaitingPaymentSection({
+  items,
+  paying,
+  onPay,
+  onCancel,
+}: {
+  items: AwaitingPaymentBooking[];
+  paying: string | null;
+  onPay: (target: Target) => void;
+  onCancel: (target: Target) => void;
+}) {
+  return (
+    <section className="flex flex-col gap-3" aria-labelledby="awaiting-payment">
+      <h2 id="awaiting-payment" className="font-heading text-xl font-semibold text-foreground">
+        Awaiting payment
+      </h2>
+      <ul className="flex flex-col gap-4">
+        {items.map((a) => {
+          const p = a.professional;
+          const type = p ? (CREDENTIAL_TYPE_LABELS[p.credentialType as CredentialType] ?? p.credentialType) : null;
+          const target: Target = { id: a.id, professionalName: p?.fullName ?? "your professional", awaitingPayment: true };
+          const fee = formatAmount(a.amount, a.currency);
+          return (
+            <li key={a.id} className="flex flex-col gap-4 rounded-2xl bg-card p-6 ring-2 ring-violet-200">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex flex-col gap-0.5">
+                  {p ? (
+                    <Link
+                      href={`/professionals/${p.id}`}
+                      className="font-heading text-lg font-semibold text-foreground underline-offset-4 hover:underline"
+                    >
+                      {p.fullName}
+                    </Link>
+                  ) : (
+                    <span className="font-heading text-lg font-semibold text-foreground">This professional is no longer listed.</span>
+                  )}
+                  {p ? (
+                    <span className="text-sm text-muted-foreground">{[type, p.city].filter(Boolean).join(", ")}</span>
+                  ) : null}
+                </div>
+                <BookingStatusChip status="AWAITING_PAYMENT" label={STATUS_LABELS.AWAITING_PAYMENT} />
+              </div>
+              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Detail label="Date and time" value={formatIstDateTime(a.scheduledTime)} />
+                {a.preferredMode ? <Detail label="Meeting" value={MODE_LABELS[a.preferredMode]} /> : null}
+                {fee ? <Detail label="Fee" value={fee} /> : null}
+              </dl>
+              <p className="text-sm font-medium text-foreground">
+                Pay by {formatIstDateTime(a.paymentDueAt)} to confirm your slot.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <PayButton paying={paying} id={a.id} amount={fee} onPay={() => onPay(target)} />
+                <button
+                  type="button"
+                  className={cn(secondaryButtonClass, "w-fit")}
+                  disabled={paying === a.id}
+                  onClick={() => onCancel(target)}
+                >
+                  Cancel booking
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -206,7 +370,11 @@ export default function AppointmentsPage() {
   const [page, setPage] = useState(0);
   const [state, setState] = useState<State>({ status: "loading" });
   const [reloadCount, setReloadCount] = useState(0);
-  const [toCancel, setToCancel] = useState<BookingView | null>(null);
+  const [toCancel, setToCancel] = useState<Target | null>(null);
+  // The summary only feeds the "Awaiting payment" section; if it fails, the list below still offers Pay now.
+  const [awaiting, setAwaiting] = useState<AwaitingPaymentBooking[]>([]);
+  const [paying, setPaying] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [toAccept, setToAccept] = useState<BookingView | null>(null);
@@ -233,10 +401,16 @@ export default function AppointmentsPage() {
           message: error instanceof Error ? error.message : "Your requests could not be loaded. Please try again.",
         });
       });
+    getBookingSummary()
+      .then((summary) => !cancelled && setAwaiting(summary.awaitingPayment ?? []))
+      .catch(() => !cancelled && setAwaiting([]));
     return () => {
       cancelled = true;
     };
   }, [page, reloadCount, navigate]);
+
+  // Only bookings whose deadline has not passed can still be paid.
+  const payable = awaiting.filter((a) => Date.parse(a.paymentDueAt) > now);
 
   const reload = () => {
     setState({ status: "loading" });
@@ -261,6 +435,44 @@ export default function AppointmentsPage() {
       reload();
     } finally {
       setCancelling(false);
+    }
+  };
+
+  // One payment at a time. The amount, currency and key id come from the server's order; nothing about
+  // the payment is logged. After a verified payment the list is reloaded so the booking shows as confirmed.
+  const pay = async (target: Target) => {
+    if (paying) return;
+    setPaying(target.id);
+    setNotice(null);
+    setCancelError(null);
+    try {
+      const result = await payForBooking(target.id, target.professionalName);
+      switch (result.outcome) {
+        case "paid":
+          setNotice({ kind: "success", message: "Payment received. Your appointment is confirmed and the meeting details are below." });
+          reload();
+          break;
+        case "dismissed":
+          setNotice({ kind: "info", message: "The payment was not completed. You can pay whenever you are ready, before the deadline." });
+          break;
+        case "failed":
+          setNotice({ kind: "info", message: "The payment did not go through. Nothing has changed, and you can try again before the deadline." });
+          break;
+        case "unverified":
+          setNotice({ kind: "info", message: result.message });
+          reload();
+          break;
+      }
+    } catch (error) {
+      if (error instanceof BookingApiError && error.status === 401) {
+        navigate(loginHref("/appointments"));
+        return;
+      }
+      setCancelError(error instanceof Error ? error.message : "The payment could not be started. Please try again.");
+      // For example the deadline passed or the booking changed: show its current state.
+      if (error instanceof BookingApiError && error.status === 409) reload();
+    } finally {
+      setPaying(null);
     }
   };
 
@@ -299,6 +511,16 @@ export default function AppointmentsPage() {
         </header>
 
         {cancelError ? <ErrorNotice message={cancelError} /> : null}
+        {notice ? <NoticeBox notice={notice} /> : null}
+
+        {state.status === "ready" && payable.length > 0 ? (
+          <AwaitingPaymentSection
+            items={payable}
+            paying={paying}
+            onPay={(target) => void pay(target)}
+            onCancel={setToCancel}
+          />
+        ) : null}
 
         {state.status === "loading" ? (
           <LoadingBlock label="Loading your appointment requests." />
@@ -315,7 +537,15 @@ export default function AppointmentsPage() {
           <>
             <ul className="flex flex-col gap-4">
               {state.data.items.map((booking) => (
-                <BookingItem key={booking.id} booking={booking} now={now} onCancel={setToCancel} onAccept={setToAccept} />
+                <BookingItem
+                  key={booking.id}
+                  booking={booking}
+                  now={now}
+                  paying={paying}
+                  onCancel={setToCancel}
+                  onAccept={setToAccept}
+                  onPay={(target) => void pay(target)}
+                />
               ))}
             </ul>
             {state.data.totalPages > 1 ? (
@@ -353,10 +583,14 @@ export default function AppointmentsPage() {
 
       <ConfirmDialog
         open={toCancel !== null}
-        title="Cancel this request?"
-        description="The professional will no longer see this request. You can send a new request at any time."
-        confirmLabel="Cancel request"
-        cancelLabel="Keep request"
+        title={toCancel?.awaitingPayment ? "Cancel this booking?" : "Cancel this request?"}
+        description={
+          toCancel?.awaitingPayment
+            ? "Nothing has been paid, so nothing will be charged. The time will be released and the professional will be told."
+            : "The professional will no longer see this request. You can send a new request at any time."
+        }
+        confirmLabel={toCancel?.awaitingPayment ? "Cancel booking" : "Cancel request"}
+        cancelLabel={toCancel?.awaitingPayment ? "Keep booking" : "Keep request"}
         busy={cancelling}
         onConfirm={() => void confirmCancel()}
         onOpenChange={(open) => {
@@ -368,9 +602,9 @@ export default function AppointmentsPage() {
         open={toAccept !== null}
         title="Accept this time?"
         description={
-          toAccept?.proposedDatetime
-            ? `Your appointment will be confirmed for ${formatIstDateTime(toAccept.proposedDatetime)}. The meeting details will then be shown on this page.`
-            : "Your appointment will be confirmed for the suggested time. The meeting details will then be shown on this page."
+          `The professional will hold ${toAccept?.proposedDatetime ? formatIstDateTime(toAccept.proposedDatetime) : "the suggested time"} for you. ` +
+          "If they charge a fee, you then pay on this page to confirm it; a free session is confirmed straight away. " +
+          "The meeting details are shown here once it is confirmed."
         }
         confirmLabel="Accept this time"
         cancelLabel="Go back"

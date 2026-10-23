@@ -58,10 +58,19 @@ public final class BookingDtos {
             // Exactly what the user chose to share with the professional, or null.
             SharedAssessment sharedAssessment,
             Instant assessmentSharedAt,
-            // The deadline to pay while the status is AWAITING_PAYMENT; null otherwise.
-            Instant paymentDueAt) {
+            // The deadline to pay while AWAITING_PAYMENT, and still sent once EXPIRED (it then means the
+            // payment window ended unpaid); null for every other status and for an unanswered request.
+            Instant paymentDueAt,
+            // What paying would charge, in paise, while AWAITING_PAYMENT (PaymentAmounts, the same amount
+            // the order endpoint charges); null otherwise.
+            Long amount,
+            String currency) {
 
         static BookingView from(Booking b, Professional p) {
+            return from(b, p, null);
+        }
+
+        static BookingView from(Booking b, Professional p, PaymentAmounts.Amount due) {
             boolean confirmed = b.getStatus() == BookingStatus.CONFIRMED;
             return new BookingView(b.getId(), b.getStatus().name(), b.getCreatedAt(), b.getExpiresAt(),
                     b.getPreferredMode(), inIndia(b.getPreferredDatetime()), inIndia(b.getAlternateDatetime()),
@@ -71,7 +80,9 @@ public final class BookingDtos {
                     confirmed ? b.getMeetingLink() : null,
                     confirmed ? b.getMeetingAddress() : null,
                     b.getSharedAssessment(), b.getAssessmentSharedAt(),
-                    b.getStatus() == BookingStatus.AWAITING_PAYMENT ? b.getPaymentDueAt() : null);
+                    b.getStatus() == BookingStatus.AWAITING_PAYMENT || b.getStatus() == BookingStatus.EXPIRED
+                            ? b.getPaymentDueAt() : null,
+                    due == null ? null : due.paise(), due == null ? null : due.currency());
         }
 
         static OffsetDateTime inIndia(Instant instant) {
@@ -111,11 +122,16 @@ public final class BookingDtos {
             OffsetDateTime scheduledTime,
             Instant paymentDueAt,
             String preferredMode,
-            ProfessionalSummary professional) {
+            ProfessionalSummary professional,
+            // What paying would charge, in paise (PaymentAmounts, the same amount the order endpoint
+            // charges); null if it cannot be worked out.
+            Long amount,
+            String currency) {
 
-        static AwaitingPayment from(Booking b, Professional p) {
+        static AwaitingPayment from(Booking b, Professional p, PaymentAmounts.Amount due) {
             return new AwaitingPayment(b.getId(), BookingView.inIndia(b.getPreferredDatetime()), b.getPaymentDueAt(),
-                    b.getPreferredMode(), ProfessionalSummary.from(p));
+                    b.getPreferredMode(), ProfessionalSummary.from(p), due == null ? null : due.paise(),
+                    due == null ? null : due.currency());
         }
     }
 

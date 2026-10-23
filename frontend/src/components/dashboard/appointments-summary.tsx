@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/clerk-react";
-import { CalendarClock, Hourglass, MessageSquareReply } from "lucide-react";
+import { CalendarClock, CreditCard, Hourglass, MessageSquareReply } from "lucide-react";
 
 import { getBookingSummary, METHOD_LABELS, type BookingSummary } from "@/lib/bookings-client";
 import { formatIstDateTime, todayInIndia } from "@/lib/ist-time";
@@ -13,7 +13,8 @@ type State = { status: "loading" } | { status: "error" } | { status: "ready"; su
 const indiaDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" });
 
 /**
- * "Your appointments" on the user's dashboard: the next confirmed appointment and the open requests, from
+ * "Your appointments" on the user's dashboard: the next confirmed appointment, the bookings waiting for
+ * payment and the open requests, from
  * GET /api/bookings/summary. Shows only what that endpoint returns, and never a professional's contact
  * details. Loaded again whenever the window gets focus.
  */
@@ -74,6 +75,15 @@ export function AppointmentsSummary() {
         <div className="grid gap-4 md:grid-cols-[3fr_2fr]">
           <NextAppointmentCard next={state.summary.nextAppointment} />
           <div className="flex flex-col gap-4">
+            {(state.summary.awaitingPayment ?? []).length > 0 ? (
+              <Counter
+                icon={CreditCard}
+                value={(state.summary.awaitingPayment ?? []).length}
+                label="Awaiting payment"
+                highlight
+                sentence="A professional accepted your request. Open your appointments to pay and confirm your slot."
+              />
+            ) : null}
             <Counter
               icon={Hourglass}
               value={state.summary.waitingForProfessional}

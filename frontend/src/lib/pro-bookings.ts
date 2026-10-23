@@ -67,6 +67,7 @@ export interface DeclineBookingBody {
 /** Status names from the professional's point of view. */
 export const PRO_STATUS_LABELS: Record<BookingStatus, string> = {
   PENDING: "Waiting for me",
+  AWAITING_PAYMENT: "Waiting for payment",
   CONFIRMED: "Confirmed",
   ALTERNATE_PROPOSED: "Waiting for the person",
   DECLINED: "Declined",

@@ -8,6 +8,7 @@ import HomePage from "@/routes/HomePage";
 import DashboardPage from "@/routes/DashboardPage";
 import MemoryPage from "@/routes/MemoryPage";
 import AppointmentsPage from "@/routes/AppointmentsPage";
+import { PageErrorBoundary } from "@/components/shared/page-error-boundary";
 import AssessmentResultPage from "@/routes/AssessmentResultPage";
 import { AssessmentPage, Gad7Page, K10Page, Phq9Page, Pss10Page, SciPage } from "@/routes/AssessmentPages";
 import { ArticleRoute, GuideRoute, ResourcesPage, VideoRoute } from "@/routes/ResourcesPages";
@@ -102,7 +103,9 @@ export default function App() {
           path="/appointments"
           element={
             <RequireAuth>
-              <AppointmentsPage />
+              <PageErrorBoundary>
+                <AppointmentsPage />
+              </PageErrorBoundary>
             </RequireAuth>
           }
         />

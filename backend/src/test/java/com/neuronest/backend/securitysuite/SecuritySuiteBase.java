@@ -17,6 +17,7 @@ import com.neuronest.backend.auth.User;
 import com.neuronest.backend.auth.UserRepository;
 import com.neuronest.backend.booking.Booking;
 import com.neuronest.backend.booking.BookingPaymentService;
+import com.neuronest.backend.booking.PaymentAmounts;
 import com.neuronest.backend.booking.BookingRepository;
 import com.neuronest.backend.booking.BookingService;
 import com.neuronest.backend.booking.BookingStatus;
@@ -84,7 +85,7 @@ import java.util.UUID;
 @Import({SecurityConfig.class, AdminConfig.class, AdminJwtService.class, AdminLoginRateLimiter.class,
         ClerkTokenVerifier.class, ClerkUserService.class, JwtService.class,
         AvailabilityService.class, SlotService.class, PublicProfessionalService.class, BookingService.class,
-        BookingPaymentService.class,
+        BookingPaymentService.class, PaymentAmounts.class,
         ProBookingService.class, ProHomeService.class, ProProfileService.class, ProDocumentService.class,
         ProDocumentStorage.class, ProRegistrationRateLimiter.class,
         AdminProfessionalService.class, AdminVerificationService.class, AdminBookingService.class,

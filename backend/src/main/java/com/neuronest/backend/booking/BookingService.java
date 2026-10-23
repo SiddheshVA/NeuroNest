@@ -77,6 +77,7 @@ public class BookingService {
     private final UserRepository users;
     private final AssessmentResultRepository assessments;
     private final ApplicationEventPublisher events;
+    private final PaymentAmounts amounts;
     private final Clock clock;
     private Duration paymentWindow = DEFAULT_PAYMENT_WINDOW;
 
@@ -84,15 +85,15 @@ public class BookingService {
     public BookingService(BookingRepository bookings, SlotService slots, PublicProfessionalService directory,
                           ProfessionalRepository professionals, ProfessionalAccountRepository accounts,
                           UserRepository users, AssessmentResultRepository assessments,
-                          ApplicationEventPublisher events) {
-        this(bookings, slots, directory, professionals, accounts, users, assessments, events,
+                          ApplicationEventPublisher events, PaymentAmounts amounts) {
+        this(bookings, slots, directory, professionals, accounts, users, assessments, events, amounts,
                 Clock.system(AvailabilityService.ZONE));
     }
 
     BookingService(BookingRepository bookings, SlotService slots, PublicProfessionalService directory,
                    ProfessionalRepository professionals, ProfessionalAccountRepository accounts,
                    UserRepository users, AssessmentResultRepository assessments, ApplicationEventPublisher events,
-                   Clock clock) {
+                   PaymentAmounts amounts, Clock clock) {
         this.bookings = bookings;
         this.slots = slots;
         this.directory = directory;
@@ -101,6 +102,7 @@ public class BookingService {
         this.users = users;
         this.assessments = assessments;
         this.events = events;
+        this.amounts = amounts;
         this.clock = clock;
     }
 
@@ -244,7 +246,7 @@ public class BookingService {
                         result.getContent().stream().map(Booking::getProfessionalId).distinct().toList())
                 .stream().collect(Collectors.toMap(Professional::getId, Function.identity()));
         return new BookingPage(result.getContent().stream()
-                .map(b -> BookingView.from(b, byId.get(b.getProfessionalId()))).toList(),
+                .map(b -> view(b, byId.get(b.getProfessionalId()))).toList(),
                 page, size, result.getTotalElements(), result.getTotalPages());
     }
 
@@ -264,7 +266,10 @@ public class BookingService {
                         unpaid.stream().map(Booking::getProfessionalId).distinct().toList())
                 .stream().collect(Collectors.toMap(Professional::getId, Function.identity()));
         return new BookingSummary(next,
-                unpaid.stream().map(b -> AwaitingPayment.from(b, byId.get(b.getProfessionalId()))).toList(),
+                unpaid.stream().map(b -> {
+                    Professional p = byId.get(b.getProfessionalId());
+                    return AwaitingPayment.from(b, p, amounts.due(b, p).orElse(null));
+                }).toList(),
                 bookings.countByUserIdAndStatusAndExpiresAtAfter(userId, BookingStatus.PENDING, now),
                 bookings.countByUserIdAndStatusAndExpiresAtAfter(userId, BookingStatus.ALTERNATE_PROPOSED, now));
     }
@@ -273,7 +278,13 @@ public class BookingService {
     @Transactional(readOnly = true)
     public BookingView get(UUID userId, String id) {
         Booking b = parseId(id).flatMap(uuid -> bookings.findByIdAndUserId(uuid, userId)).orElseThrow(BookingService::notFound);
-        return BookingView.from(b, professionals.findById(b.getProfessionalId()).orElse(null));
+        return view(b, professionals.findById(b.getProfessionalId()).orElse(null));
+    }
+
+    // While AWAITING_PAYMENT, with the amount paying would charge (PaymentAmounts).
+    private BookingView view(Booking b, Professional p) {
+        PaymentAmounts.Amount due = b.getStatus() == BookingStatus.AWAITING_PAYMENT ? amounts.due(b, p).orElse(null) : null;
+        return BookingView.from(b, p, due);
     }
 
     // ---- Cancelling ----
@@ -335,7 +346,7 @@ public class BookingService {
         Booking saved = bookings.saveAndFlush(b);
         events.publishEvent(new BookingEvent(paid ? BookingEvent.Type.AWAITING_PAYMENT : BookingEvent.Type.CONFIRMED,
                 saved.getId()));
-        return BookingView.from(saved, p);
+        return view(saved, p);
     }
 
     // ---- Parsing ----

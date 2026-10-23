@@ -277,6 +277,8 @@ function statusSentence(b: ProBooking, status: BookingStatus): string {
       return b.expiresAt ? `Please reply before ${formatIstDateTime(b.expiresAt)}.` : "Please reply to this request.";
     case "ALTERNATE_PROPOSED":
       return "You suggested another time. Waiting for the person to accept or cancel.";
+    case "AWAITING_PAYMENT":
+      return "You accepted this request. Waiting for the person's payment.";
     case "CONFIRMED":
       return "This appointment is confirmed.";
     case "DECLINED":

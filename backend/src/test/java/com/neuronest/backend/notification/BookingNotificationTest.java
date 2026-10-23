@@ -7,6 +7,7 @@ import com.neuronest.backend.booking.BookingDtos.BookingView;
 import com.neuronest.backend.booking.BookingRepository;
 import com.neuronest.backend.booking.BookingService;
 import com.neuronest.backend.booking.BookingStatus;
+import com.neuronest.backend.booking.PaymentAmounts;
 import com.neuronest.backend.booking.SharedAssessment;
 import com.neuronest.backend.booking.SlotService;
 import com.neuronest.backend.notification.BookingEvent.Type;
@@ -487,7 +488,8 @@ class BookingNotificationTest {
         ApplicationEventPublisher publisher = event -> l.handle((BookingEvent) event);
         BookingService service = new BookingService(bookings, new SlotService(new AvailabilityService(), bookings, mock(ProfessionalDayOffRepository.class)),
                 mock(PublicProfessionalService.class), professionals, mock(ProfessionalAccountRepository.class),
-                mock(UserRepository.class), mock(AssessmentResultRepository.class), publisher);
+                mock(UserRepository.class), mock(AssessmentResultRepository.class), publisher,
+                new PaymentAmounts(payments));
         ReflectionTestUtils.setField(service, "clock", CLOCK);
         return service;
     }

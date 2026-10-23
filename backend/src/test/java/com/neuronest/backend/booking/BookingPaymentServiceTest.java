@@ -51,8 +51,9 @@ class BookingPaymentServiceTest {
     // The real signature check with a test secret; only the Razorpay API call (createOrder) is stubbed.
     private final RazorpayGateway gateway = spy(new RazorpayGateway(KEY_ID, SECRET));
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
+    private final PaymentAmounts amounts = new PaymentAmounts(paymentRepository);
     private final BookingPaymentService service = new BookingPaymentService(bookings, paymentRepository, professionals,
-            gateway, events, CLOCK);
+            gateway, events, amounts, CLOCK);
 
     private final List<Booking> bookingStore = new ArrayList<>();
     private final List<Payment> paymentStore = new ArrayList<>();
@@ -133,6 +134,28 @@ class BookingPaymentServiceTest {
     }
 
     @Test
+    void theShownAmountIsAlwaysTheAmountTheOrderCharges() {
+        Booking b = awaiting();
+        // Before any order: the fee in paise.
+        assertThat(amounts.due(b, professional)).contains(new PaymentAmounts.Amount(150_000, "INR"));
+
+        PaymentOrder order = service.createOrder(userId, b.getId().toString());
+        assertThat(amounts.due(b, professional)).contains(new PaymentAmounts.Amount(order.amount(), order.currency()));
+
+        // The fee changes after the order was made: the order is reused, and the shown amount follows it.
+        professional.setConsultationFee(2000);
+        assertThat(service.createOrder(userId, b.getId().toString()).amount()).isEqualTo(150_000);
+        assertThat(amounts.due(b, professional)).contains(new PaymentAmounts.Amount(150_000, "INR"));
+
+        // A free session shows no amount, and no order can be made for it.
+        Booking free = awaiting();
+        professional.setConsultationFee(0);
+        assertThat(amounts.due(free, professional)).isEmpty();
+        assertThatThrownBy(() -> service.createOrder(userId, free.getId().toString()))
+                .hasMessage(BookingPaymentService.NO_FEE_MESSAGE);
+    }
+
+    @Test
     void anUnpaidOrderIsReusedInsteadOfCreatingAnother() {
         Booking b = awaiting();
         PaymentOrder first = service.createOrder(userId, b.getId().toString());
@@ -196,7 +219,7 @@ class BookingPaymentServiceTest {
     @Test
     void withoutKeysThePaymentEndpointsSayPaymentsAreNotConfigured() {
         BookingPaymentService unconfigured = new BookingPaymentService(bookings, paymentRepository, professionals,
-                new RazorpayGateway(" ", null), events, CLOCK);
+                new RazorpayGateway(" ", null), events, amounts, CLOCK);
         Booking b = awaiting();
 
         assertThatThrownBy(() -> unconfigured.createOrder(userId, b.getId().toString()))
