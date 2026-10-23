@@ -1,7 +1,9 @@
 package com.neuronest.backend.pro;
 
 import com.neuronest.backend.booking.Booking;
+import com.neuronest.backend.booking.BookingPaymentService;
 import com.neuronest.backend.booking.BookingRepository;
+import com.neuronest.backend.booking.BookingService;
 import com.neuronest.backend.booking.BookingStatus;
 import com.neuronest.backend.booking.SlotService;
 import com.neuronest.backend.config.ApiValidationException;
@@ -19,6 +21,7 @@ import com.neuronest.backend.professional.ProfessionalAccountRepository;
 import com.neuronest.backend.professional.ProfessionalRepository;
 import com.neuronest.backend.notification.BookingEvent;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -69,6 +72,7 @@ public class ProBookingService {
     private final ProfessionalAccountRepository accounts;
     private final ApplicationEventPublisher events;
     private final Clock clock;
+    private Duration paymentWindow = BookingService.DEFAULT_PAYMENT_WINDOW;
 
     @Autowired
     public ProBookingService(BookingRepository bookings, SlotService slots, ProfessionalRepository professionals,
@@ -84,6 +88,11 @@ public class ProBookingService {
         this.accounts = accounts;
         this.events = events;
         this.clock = clock;
+    }
+
+    @Autowired
+    void setPaymentWindowHours(@Value("${bookings.payment-window-hours:24}") long hours) {
+        this.paymentWindow = Duration.ofHours(hours);
     }
 
     // ---- Reading ----
@@ -153,13 +162,17 @@ public class ProBookingService {
             throw new ApiValidationException("The chosen time has already passed. Propose another time instead.");
         }
         requireFitsRequest(b, meeting);
-        if (slots.overlapsConfirmed(p, chosen)) throw new ConflictException(OVERLAP_MESSAGE);
+        if (slots.overlapsBooked(p, chosen)) throw new ConflictException(OVERLAP_MESSAGE);
 
-        b.setStatus(BookingStatus.CONFIRMED);
-        // preferred_datetime is always the scheduled time of a confirmed booking.
+        // The user pays next; the booking becomes CONFIRMED once the payment is verified. A free session
+        // (no fee) needs no payment and is CONFIRMED now. Either way the slot is blocked from now on.
+        boolean paid = BookingPaymentService.requiresPayment(p);
+        b.setStatus(paid ? BookingStatus.AWAITING_PAYMENT : BookingStatus.CONFIRMED);
+        b.setPaymentDueAt(paid ? now.plus(paymentWindow) : null);
+        // preferred_datetime is always the scheduled time of an agreed booking.
         b.setPreferredDatetime(chosen);
         apply(b, meeting, note, now);
-        return saved(b, BookingEvent.Type.CONFIRMED, now);
+        return saved(b, paid ? BookingEvent.Type.AWAITING_PAYMENT : BookingEvent.Type.CONFIRMED, now);
     }
 
     @Transactional
@@ -230,7 +243,7 @@ public class ProBookingService {
     }
 
     // The same rules as a user's booking: one of the professional's own slots, 24 hours to 60 days ahead,
-    // not taken by a confirmed booking.
+    // not taken by an AWAITING_PAYMENT or CONFIRMED booking.
     private void requireFreeSlot(Professional p, Instant start, ZonedDateTime now) {
         if (start.isBefore(now.plusHours(AvailabilityService.MIN_NOTICE_HOURS).toInstant())) {
             throw new ApiValidationException("proposedSlot must be at least " + AvailabilityService.MIN_NOTICE_HOURS

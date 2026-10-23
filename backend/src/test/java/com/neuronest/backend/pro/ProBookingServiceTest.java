@@ -15,6 +15,7 @@ import com.neuronest.backend.pro.ProBookingDtos.ConfirmRequest;
 import com.neuronest.backend.pro.ProBookingDtos.DeclineRequest;
 import com.neuronest.backend.pro.ProBookingDtos.ProBookingView;
 import com.neuronest.backend.pro.ProBookingDtos.ProposeRequest;
+import com.neuronest.backend.notification.BookingEvent;
 import com.neuronest.backend.professional.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -97,7 +98,7 @@ class ProBookingServiceTest {
                         && b.getUserId().equals(inv.getArgument(1))).findFirst())
                 .when(bookings).findByIdAndUserId(any(), any());
         doAnswer(inv -> store.stream().filter(b -> b.getProfessionalId().equals(inv.getArgument(0))
-                        && b.getStatus() == inv.getArgument(1)).toList())
+                        && inv.<java.util.Collection<BookingStatus>>getArgument(1).contains(b.getStatus())).toList())
                 .when(bookings).findInWindow(any(), any(), any(), any());
     }
 
@@ -109,6 +110,8 @@ class ProBookingServiceTest {
         p.setConsultationMode(ConsultationMode.BOTH);
         p.setSessionMinutes(60);
         p.setBufferMinutes(0);
+        // A paid professional; the free-session tests clear it.
+        p.setConsultationFee(1500);
         p.setWeeklyHours(Map.of(
                 "WED", List.of(Map.of("start", "18:00", "end", "20:00")),
                 "THU", List.of(Map.of("start", "18:00", "end", "20:00"))));
@@ -167,7 +170,8 @@ class ProBookingServiceTest {
         ProBookingView view = service.confirm(me, b.getId().toString(),
                 confirmBody("preferred", " phone ", LINK, "ignored address", "  See you then. "));
 
-        assertThat(b.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.AWAITING_PAYMENT);
+        assertThat(b.getPaymentDueAt()).isEqualTo(NOW.plus(Duration.ofHours(24)));
         assertThat(b.getPreferredDatetime()).isEqualTo(at(WED_18));
         assertThat(b.getMeetingMethod()).isEqualTo("PHONE");
         assertThat(b.getMeetingLink()).isNull();
@@ -175,9 +179,12 @@ class ProBookingServiceTest {
         assertThat(b.getProfessionalNote()).isEqualTo("See you then.");
         assertThat(b.getRespondedBy()).isEqualTo("PROFESSIONAL");
         assertThat(b.getRespondedAt()).isEqualTo(NOW);
-        assertThat(view.status()).isEqualTo("CONFIRMED");
-        assertThat(view.contactPhone()).isEqualTo("+919876543210");
-        assertThat(view.contactEmail()).isEqualTo("user@example.com");
+        assertThat(view.status()).isEqualTo("AWAITING_PAYMENT");
+        // The contact details are shown once the booking is paid and CONFIRMED.
+        assertThat(view.contactPhone()).isNull();
+        assertThat(view.contactEmail()).isNull();
+        b.setStatus(BookingStatus.CONFIRMED);
+        assertThat(service.get(me, b.getId().toString()).contactPhone()).isEqualTo("+919876543210");
         verify(professionals).findByIdForUpdate(professionalId);
     }
 
@@ -188,7 +195,7 @@ class ProBookingServiceTest {
         ProBookingView view = service.confirm(me, b.getId().toString(),
                 confirmBody("ALTERNATE", "VIDEO", "  " + LINK + " ", "ignored address", null));
 
-        assertThat(b.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.AWAITING_PAYMENT);
         assertThat(b.getPreferredDatetime()).isEqualTo(at(WED_19));
         assertThat(b.scheduledTime()).isEqualTo(at(WED_19));
         assertThat(b.getMeetingMethod()).isEqualTo("VIDEO");
@@ -196,9 +203,66 @@ class ProBookingServiceTest {
         assertThat(b.getMeetingAddress()).isNull();
         assertThat(b.getProfessionalNote()).isNull();
         assertThat(view.preferredDatetime()).isEqualTo(OffsetDateTime.parse(WED_19));
-        // The confirmed time now blocks the slot everywhere.
+        // The agreed time blocks the slot everywhere while it waits for payment.
         assertThat(slots.check(professional(professionalId), at(WED_19), ZonedDateTime.now(CLOCK)))
                 .isEqualTo(SlotService.SlotCheck.TAKEN);
+    }
+
+    @Test
+    void confirmingAndAcceptingPublishTheAwaitingPaymentEventNotConfirmed() {
+        Booking confirmed = online();
+        service.confirm(me, confirmed.getId().toString(), confirmBody("PREFERRED", "VIDEO", LINK, null, null));
+        Booking accepted = online();
+        accepted.setUserId(userId);
+        service.propose(me, accepted.getId().toString(), new ProposeRequest(THU_18, "VIDEO", LINK, null, null));
+        userService.acceptProposal(userId, accepted.getId().toString());
+
+        verify(events).publishEvent(new BookingEvent(BookingEvent.Type.AWAITING_PAYMENT, confirmed.getId()));
+        verify(events).publishEvent(new BookingEvent(BookingEvent.Type.AWAITING_PAYMENT, accepted.getId()));
+        verify(events, never()).publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, confirmed.getId()));
+        verify(events, never()).publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, accepted.getId()));
+    }
+
+    @Test
+    void aFreeSessionIsConfirmedAtOnceWithoutAPaymentDeadline() {
+        for (Integer fee : new Integer[] {null, 0}) {
+            Professional free = professional(professionalId);
+            free.setConsultationFee(fee);
+            when(professionals.findByIdForUpdate(professionalId)).thenReturn(Optional.of(free));
+
+            Booking confirmed = online();
+            ProBookingView view = service.confirm(me, confirmed.getId().toString(),
+                    confirmBody("PREFERRED", "VIDEO", LINK, null, null));
+            assertThat(view.status()).as("fee " + fee).isEqualTo("CONFIRMED");
+            assertThat(confirmed.getPaymentDueAt()).isNull();
+            // Paid and confirmed, so the professional sees the contact details as for any confirmed booking.
+            assertThat(view.contactPhone()).isEqualTo("+919876543210");
+
+            Booking accepted = online();
+            service.propose(me, accepted.getId().toString(), new ProposeRequest(THU_18, "VIDEO", LINK, null, null));
+            BookingView acceptedView = userService.acceptProposal(userId, accepted.getId().toString());
+            assertThat(acceptedView.status()).isEqualTo("CONFIRMED");
+            assertThat(acceptedView.meetingLink()).isEqualTo(LINK);
+            assertThat(accepted.getPaymentDueAt()).isNull();
+
+            verify(events).publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, confirmed.getId()));
+            verify(events).publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, accepted.getId()));
+            verify(events, never()).publishEvent(new BookingEvent(BookingEvent.Type.AWAITING_PAYMENT, confirmed.getId()));
+            verify(events, never()).publishEvent(new BookingEvent(BookingEvent.Type.AWAITING_PAYMENT, accepted.getId()));
+            // Both times are booked now.
+            assertThat(slots.check(free, at(WED_18), ZonedDateTime.now(CLOCK))).isEqualTo(SlotService.SlotCheck.TAKEN);
+            store.clear();
+        }
+    }
+
+    @Test
+    void thePaymentWindowComesFromTheSetting() {
+        service.setPaymentWindowHours(48);
+        Booking b = online();
+
+        service.confirm(me, b.getId().toString(), confirmBody("PREFERRED", "VIDEO", LINK, null, null));
+
+        assertThat(b.getPaymentDueAt()).isEqualTo(NOW.plus(Duration.ofHours(48)));
     }
 
     @Test
@@ -208,7 +272,7 @@ class ProBookingServiceTest {
 
         service.confirm(me, b.getId().toString(), confirmBody("PREFERRED", "IN_PERSON", LINK, " " + address + " ", null));
 
-        assertThat(b.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.AWAITING_PAYMENT);
         assertThat(b.getMeetingMethod()).isEqualTo("IN_PERSON");
         assertThat(b.getMeetingAddress()).isEqualTo(address);
         assertThat(b.getMeetingLink()).isNull();
@@ -396,7 +460,7 @@ class ProBookingServiceTest {
 
         service.confirm(me, b.getId().toString(), confirmBody("PREFERRED", "VIDEO", LINK, null, null));
 
-        assertThat(b.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.AWAITING_PAYMENT);
     }
 
     @Test
@@ -417,7 +481,7 @@ class ProBookingServiceTest {
     }
 
     @Test
-    void proposeThenAcceptConfirmsTheProposedTime() {
+    void proposeThenAcceptAgreesTheProposedTimeAndWaitsForPayment() {
         Booking b = online();
 
         ProBookingView proposed = service.propose(me, b.getId().toString(),
@@ -439,10 +503,13 @@ class ProBookingServiceTest {
 
         BookingView accepted = userService.acceptProposal(userId, b.getId().toString());
 
-        assertThat(accepted.status()).isEqualTo("CONFIRMED");
+        assertThat(accepted.status()).isEqualTo("AWAITING_PAYMENT");
+        assertThat(accepted.paymentDueAt()).isEqualTo(NOW.plus(Duration.ofHours(24)));
         assertThat(accepted.preferredDatetime()).isEqualTo(OffsetDateTime.parse(THU_18));
-        assertThat(accepted.meetingLink()).isEqualTo(LINK);
-        assertThat(b.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        // The meeting details stay hidden until the booking is paid and CONFIRMED.
+        assertThat(accepted.meetingLink()).isNull();
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.AWAITING_PAYMENT);
+        assertThat(b.getPaymentDueAt()).isEqualTo(NOW.plus(Duration.ofHours(24)));
         assertThat(b.getPreferredDatetime()).isEqualTo(at(THU_18));
         assertThat(b.scheduledTime()).isEqualTo(at(THU_18));
         assertThat(b.getRespondedBy()).isEqualTo("USER");

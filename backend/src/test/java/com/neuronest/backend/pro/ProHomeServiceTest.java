@@ -315,7 +315,8 @@ class ProHomeServiceTest {
         professional.setActive(true);
         when(daysOff.findByProfessionalIdAndDateToGreaterThanEqualOrderByDateFromAscIdAsc(professionalId, TODAY))
                 .thenReturn(List.of(new ProfessionalDayOff(professionalId, TODAY.plusDays(2), TODAY.plusDays(2), null)));
-        when(bookings.countScheduledBetween(eq(professionalId), any(), any(), any())).thenReturn(1L);
+        when(bookings.countScheduledBetween(eq(professionalId), eq(java.util.Set.of(BookingStatus.CONFIRMED)), any(), any()))
+                .thenReturn(1L);
         ProDashboard conflict = service.dashboard(me);
         assertThat(codes(conflict)).containsExactly("DAY_OFF_CONFLICTS");
         assertThat(conflict.warnings().get(0).message())
@@ -325,6 +326,60 @@ class ProHomeServiceTest {
                 eq(Instant.parse("2026-10-14T18:30:00Z")));
         verify(bookings, never()).countOpenRequestedBetween(any(), any(), any(), any(), any());
         verifyNoMoreInteractionsOnWrites();
+    }
+
+    // ---- bookings waiting for payment ----
+
+    @Test
+    void theDashboardShowsBookingsWaitingForPaymentApartFromConfirmedOnes() {
+        Booking unpaid = confirmed(Instant.parse("2026-10-15T12:30:00Z"));
+        unpaid.setStatus(BookingStatus.AWAITING_PAYMENT);
+        unpaid.setPaymentDueAt(NOW.plus(java.time.Duration.ofHours(20)));
+        when(bookings.countByProfessionalIdAndStatusAndPaymentDueAtAfter(professionalId, BookingStatus.AWAITING_PAYMENT, NOW))
+                .thenReturn(1L);
+        when(bookings.findTop20ByProfessionalIdAndStatusAndPaymentDueAtAfterOrderByPaymentDueAtAscIdAsc(professionalId,
+                BookingStatus.AWAITING_PAYMENT, NOW)).thenReturn(List.of(unpaid));
+        when(bookings.countByProfessionalIdAndStatusAndPreferredDatetimeGreaterThanEqual(professionalId, BookingStatus.CONFIRMED, NOW))
+                .thenReturn(0L);
+
+        ProDashboard d = service.dashboard(me);
+
+        assertThat(d.awaitingPayment()).isEqualTo(1);
+        assertThat(d.awaitingPaymentBookings()).singleElement().satisfies(item -> {
+            assertThat(item.id()).isEqualTo(unpaid.getId());
+            assertThat(item.contactName()).isEqualTo("Ravi Kumar");
+            assertThat(item.paymentDueAt()).isEqualTo(NOW.plus(java.time.Duration.ofHours(20)));
+            assertThat(item.scheduledTime().toString()).isEqualTo("2026-10-15T18:00+05:30");
+        });
+        // Paid bookings only: an unpaid one is never the next appointment or counted as upcoming.
+        assertThat(d.upcomingConfirmed()).isZero();
+        assertThat(d.nextAppointment()).isNull();
+        verify(bookings).findFirstByProfessionalIdAndStatusAndPreferredDatetimeGreaterThanEqualOrderByPreferredDatetimeAscIdAsc(
+                professionalId, BookingStatus.CONFIRMED, NOW);
+        // No contact details before payment.
+        assertThat(java.util.Arrays.stream(ProHomeDtos.AwaitingPaymentItem.class.getRecordComponents()).map(c -> c.getName()))
+                .doesNotContain("contactPhone", "contactEmail", "meetingLink", "meetingAddress");
+        assertThat(d.toString()).doesNotContain("9876543210", unpaid.getContactEmail());
+    }
+
+    @Test
+    void aDayOffOverABookingWaitingForPaymentIsCountedAndWarned() {
+        when(bookings.countScheduledBetween(eq(professionalId), eq(java.util.Set.of(BookingStatus.AWAITING_PAYMENT)), any(),
+                any())).thenReturn(1L);
+
+        DayOffCreated created = service.addDayOff(me, days("2026-10-14", "2026-10-16", null));
+
+        assertThat(created.affectedAwaitingPayment()).isEqualTo(1);
+        assertThat(created.affectedConfirmed()).isZero();
+        verify(bookings).countScheduledBetween(professionalId, java.util.Set.of(BookingStatus.AWAITING_PAYMENT),
+                Instant.parse("2026-10-13T18:30:00Z"), Instant.parse("2026-10-16T18:30:00Z"));
+
+        when(daysOff.findByProfessionalIdAndDateToGreaterThanEqualOrderByDateFromAscIdAsc(professionalId, TODAY))
+                .thenReturn(List.of(new ProfessionalDayOff(professionalId, TODAY.plusDays(2), TODAY.plusDays(4), null)));
+        professional.setRegistrationExpiry(TODAY.plusDays(200));
+        ProDashboard d = service.dashboard(me);
+        assertThat(codes(d)).containsExactly("DAY_OFF_AWAITING_PAYMENT");
+        assertThat(d.warnings().get(0).message()).doesNotContain("confirmed");
     }
 
     private void verifyNoMoreInteractionsOnWrites() {

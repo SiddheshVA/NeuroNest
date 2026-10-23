@@ -17,7 +17,10 @@ public final class AdminBookingDtos {
             long unansweredOver48h,
             long pendingTotal,
             long awaitingUserTotal,
+            // Paid and confirmed, still to come.
             long upcomingConfirmed,
+            // Accepted by the professional, waiting for the user's payment (deadline not passed).
+            long awaitingPaymentTotal,
             long professionalsVerifiedActive,
             long professionalsNeedsInfo,
             long registrationsExpiringIn30Days,
@@ -61,6 +64,23 @@ public final class AdminBookingDtos {
             long pendingNow,
             Double medianHoursToFirstResponse,
             Instant lastAnsweredAt) {}
+
+    /**
+     * A payment that was taken (PAID) for a booking that is not CONFIRMED, so it needs a manual refund.
+     * amountPaise is in paise. No contact details beyond the name the admin list already shows.
+     */
+    public record RefundNeededItem(
+            UUID paymentId,
+            UUID bookingId,
+            String bookingStatus,
+            String razorpayOrderId,
+            String razorpayPaymentId,
+            long amountPaise,
+            String currency,
+            Instant paidAt,
+            UUID professionalId,
+            String professionalName,
+            String contactName) {}
 
     public record CloseRequest(String note) {}
 

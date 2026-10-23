@@ -4,6 +4,7 @@ import com.neuronest.backend.assessment.AssessmentResult;
 import com.neuronest.backend.assessment.AssessmentResultRepository;
 import com.neuronest.backend.auth.User;
 import com.neuronest.backend.auth.UserRepository;
+import com.neuronest.backend.booking.BookingDtos.AwaitingPayment;
 import com.neuronest.backend.booking.BookingDtos.BookingPage;
 import com.neuronest.backend.booking.BookingDtos.BookingSummary;
 import com.neuronest.backend.booking.BookingDtos.NextAppointment;
@@ -20,6 +21,7 @@ import com.neuronest.backend.professional.PublicProfessionalService;
 import com.neuronest.backend.professional.WeeklyHours;
 import com.neuronest.backend.notification.BookingEvent;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -61,6 +63,8 @@ public class BookingService {
     static final Duration EXPIRES_AFTER = Duration.ofHours(72);
     static final String TAKEN_MESSAGE = "This time is no longer available. Please choose another time.";
     static final String PROPOSAL_TAKEN_MESSAGE = "This time is no longer available.";
+    /** The user's time to pay once a time is agreed (bookings.payment-window-hours). */
+    public static final Duration DEFAULT_PAYMENT_WINDOW = Duration.ofHours(24);
 
     // A 10-digit Indian mobile number starting 6 to 9, optionally written with +91 or a leading 0.
     private static final Pattern INDIAN_MOBILE = Pattern.compile("^(?:\\+91|0)?([6-9][0-9]{9})$");
@@ -74,6 +78,7 @@ public class BookingService {
     private final AssessmentResultRepository assessments;
     private final ApplicationEventPublisher events;
     private final Clock clock;
+    private Duration paymentWindow = DEFAULT_PAYMENT_WINDOW;
 
     @Autowired
     public BookingService(BookingRepository bookings, SlotService slots, PublicProfessionalService directory,
@@ -97,6 +102,11 @@ public class BookingService {
         this.assessments = assessments;
         this.events = events;
         this.clock = clock;
+    }
+
+    @Autowired
+    void setPaymentWindowHours(@Value("${bookings.payment-window-hours:24}") long hours) {
+        this.paymentWindow = Duration.ofHours(hours);
     }
 
     // ---- Creating ----
@@ -238,7 +248,8 @@ public class BookingService {
                 page, size, result.getTotalElements(), result.getTotalPages());
     }
 
-    // Only the user's own bookings: the next confirmed appointment and the open requests that have not expired.
+    // Only the user's own bookings: the next confirmed (paid) appointment, the agreed bookings still waiting
+    // for payment whose deadline has not passed, and the open requests that have not expired.
     @Transactional(readOnly = true)
     public BookingSummary summary(UUID userId) {
         Instant now = clock.instant();
@@ -247,7 +258,13 @@ public class BookingService {
                         userId, BookingStatus.CONFIRMED, now)
                 .map(b -> NextAppointment.from(b, professionals.findById(b.getProfessionalId()).orElse(null)))
                 .orElse(null);
+        List<Booking> unpaid = bookings.findByUserIdAndStatusAndPaymentDueAtAfterOrderByPaymentDueAtAscIdAsc(
+                userId, BookingStatus.AWAITING_PAYMENT, now);
+        Map<UUID, Professional> byId = professionals.findAllById(
+                        unpaid.stream().map(Booking::getProfessionalId).distinct().toList())
+                .stream().collect(Collectors.toMap(Professional::getId, Function.identity()));
         return new BookingSummary(next,
+                unpaid.stream().map(b -> AwaitingPayment.from(b, byId.get(b.getProfessionalId()))).toList(),
                 bookings.countByUserIdAndStatusAndExpiresAtAfter(userId, BookingStatus.PENDING, now),
                 bookings.countByUserIdAndStatusAndExpiresAtAfter(userId, BookingStatus.ALTERNATE_PROPOSED, now));
     }
@@ -261,13 +278,15 @@ public class BookingService {
 
     // ---- Cancelling ----
 
-    // The row is locked and its status re-checked inside the transaction, so two quick clicks cannot both cancel.
+    // The row is locked and its status re-checked inside the transaction, so two quick clicks cannot both
+    // cancel. An AWAITING_PAYMENT booking can be cancelled too: nothing has been paid (a verified payment
+    // makes it CONFIRMED in the same locked transaction), so there is nothing to refund.
     @Transactional
     public BookingView cancel(UUID userId, String id) {
         Booking b = parseId(id).flatMap(bookings::findByIdForUpdate)
                 .filter(found -> userId.equals(found.getUserId()))
                 .orElseThrow(BookingService::notFound);
-        if (!BookingStatus.OPEN.contains(b.getStatus())) {
+        if (!BookingStatus.OPEN.contains(b.getStatus()) && b.getStatus() != BookingStatus.AWAITING_PAYMENT) {
             throw new ConflictException("This booking request can no longer be cancelled. Its status is "
                     + b.getStatus().name() + ".");
         }
@@ -283,7 +302,8 @@ public class BookingService {
 
     // The professional row is locked first (the same lock the professional's confirm takes), then the
     // booking, and both the status and the time are re-checked inside the transaction, so two quick
-    // requests cannot both succeed or double-book.
+    // requests cannot both succeed or double-book. The booking then waits for payment (AWAITING_PAYMENT,
+    // which already blocks the slot) and becomes CONFIRMED once BookingPaymentService verifies it.
     @Transactional
     public BookingView acceptProposal(UUID userId, String id) {
         UUID professionalId = parseId(id).flatMap(uuid -> bookings.findProfessionalIdByIdAndUserId(uuid, userId))
@@ -302,15 +322,19 @@ public class BookingService {
         }
         Instant proposed = b.getProposedDatetime();
         if (proposed == null || !proposed.isAfter(now) || slots.isDayOff(p, proposed)
-                || slots.overlapsConfirmed(p, proposed)) {
+                || slots.overlapsBooked(p, proposed)) {
             throw new ConflictException(PROPOSAL_TAKEN_MESSAGE);
         }
-        b.setStatus(BookingStatus.CONFIRMED);
+        // A free session (no fee) needs no payment: it is CONFIRMED now and payment_due_at stays empty.
+        boolean paid = BookingPaymentService.requiresPayment(p);
+        b.setStatus(paid ? BookingStatus.AWAITING_PAYMENT : BookingStatus.CONFIRMED);
+        b.setPaymentDueAt(paid ? now.plus(paymentWindow) : null);
         b.setPreferredDatetime(proposed);
         b.setRespondedBy("USER");
         b.setRespondedAt(now);
         Booking saved = bookings.saveAndFlush(b);
-        events.publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, saved.getId()));
+        events.publishEvent(new BookingEvent(paid ? BookingEvent.Type.AWAITING_PAYMENT : BookingEvent.Type.CONFIRMED,
+                saved.getId()));
         return BookingView.from(saved, p);
     }
 

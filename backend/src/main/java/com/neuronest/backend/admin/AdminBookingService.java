@@ -3,6 +3,7 @@ package com.neuronest.backend.admin;
 import com.neuronest.backend.admin.AdminBookingDtos.AdminBookingItem;
 import com.neuronest.backend.admin.AdminBookingDtos.CloseRequest;
 import com.neuronest.backend.admin.AdminBookingDtos.DashboardSummary;
+import com.neuronest.backend.admin.AdminBookingDtos.RefundNeededItem;
 import com.neuronest.backend.admin.AdminBookingDtos.ResponsivenessItem;
 import com.neuronest.backend.admin.AdminProfessionalDtos.PageResponse;
 import com.neuronest.backend.booking.BookingStatus;
@@ -70,6 +71,14 @@ public class AdminBookingService {
         Instant now = clock.instant();
         Instant waitingSince = unansweredOver == null ? null : now.minus(Duration.ofHours(unansweredOver));
         var result = queries.list(statusFilter, waitingSince, professionalId, now, page, size);
+        return new PageResponse<>(result.items(), page, size, result.total(), totalPages(result.total(), size));
+    }
+
+    // Read-only: refunds are made by hand in the Razorpay dashboard.
+    @Transactional(readOnly = true)
+    public PageResponse<RefundNeededItem> refundsNeeded(int page, int size) {
+        checkPage(page, size);
+        var result = queries.refundsNeeded(page, size);
         return new PageResponse<>(result.items(), page, size, result.total(), totalPages(result.total(), size));
     }
 

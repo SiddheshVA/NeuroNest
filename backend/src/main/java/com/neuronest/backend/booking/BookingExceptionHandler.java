@@ -1,5 +1,6 @@
 package com.neuronest.backend.booking;
 
+import com.neuronest.backend.payment.RazorpayGateway;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -30,6 +31,21 @@ public class BookingExceptionHandler {
     @ExceptionHandler(BookingExceptions.NotSignedInException.class)
     public ResponseEntity<?> handleNotSignedIn(BookingExceptions.NotSignedInException ex) {
         return error(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
+    @ExceptionHandler(BookingExceptions.PaidButNotConfirmedException.class)
+    public ResponseEntity<?> handlePaidButNotConfirmed(BookingExceptions.PaidButNotConfirmedException ex) {
+        return error(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(RazorpayGateway.NotConfiguredException.class)
+    public ResponseEntity<?> handlePaymentsNotConfigured(RazorpayGateway.NotConfiguredException ex) {
+        return error(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+    }
+
+    @ExceptionHandler(RazorpayGateway.GatewayException.class)
+    public ResponseEntity<?> handleGateway(RazorpayGateway.GatewayException ex) {
+        return error(HttpStatus.BAD_GATEWAY, ex.getMessage());
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

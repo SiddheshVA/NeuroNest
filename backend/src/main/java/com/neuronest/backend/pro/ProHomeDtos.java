@@ -22,9 +22,16 @@ public final class ProHomeDtos {
      * the professional decides what to do with them.
      */
     public record DayOffCreated(UUID id, LocalDate dateFrom, LocalDate dateTo, String reason, Instant createdAt,
-                                long affectedConfirmed, long affectedPending) {}
+                                long affectedConfirmed, long affectedAwaitingPayment, long affectedPending) {}
 
     public record NextAppointment(UUID id, String contactName, OffsetDateTime scheduledTime, String meetingMethod) {}
+
+    /**
+     * A booking the professional accepted that is waiting for the user's payment. No contact details:
+     * those follow ProBookingView.contactVisible (CONFIRMED only).
+     */
+    public record AwaitingPaymentItem(UUID id, String contactName, OffsetDateTime scheduledTime, String meetingMethod,
+                                      Instant paymentDueAt) {}
 
     public record Warning(String code, String message) {}
 
@@ -35,6 +42,10 @@ public final class ProHomeDtos {
             long pendingRequests,
             long awaitingUser,
             long upcomingConfirmed,
+            // Accepted, waiting for the user's payment (deadline not passed). Not in upcomingConfirmed or
+            // nextAppointment, which are paid bookings only.
+            long awaitingPayment,
+            List<AwaitingPaymentItem> awaitingPaymentBookings,
             NextAppointment nextAppointment,
             LocalDate registrationExpiry,
             Long registrationDaysLeft,

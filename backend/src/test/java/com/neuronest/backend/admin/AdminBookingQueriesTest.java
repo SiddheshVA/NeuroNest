@@ -85,11 +85,12 @@ class AdminBookingQueriesTest {
                   contact_name text not null, contact_email text not null, contact_phone text,
                   preferred_mode text, preferred_method text, preferred_datetime timestamptz, alternate_datetime timestamptz,
                   proposed_datetime timestamptz, note text, professional_note text, admin_note text,
-                  status text not null check (status in ('PENDING','CONFIRMED','DECLINED','ALTERNATE_PROPOSED','CANCELLED','EXPIRED')),
+                  status text not null check (status in
+                    ('PENDING','AWAITING_PAYMENT','CONFIRMED','DECLINED','ALTERNATE_PROPOSED','CANCELLED','EXPIRED')),
                   responded_at timestamptz, responded_by text check (responded_by in ('PROFESSIONAL','ADMIN','USER')),
                   expires_at timestamptz, created_at timestamptz not null, updated_at timestamptz not null default now(),
                   meeting_link text, meeting_address text, shared_assessment jsonb,
-                  admin_nudged_at timestamptz)""");
+                  admin_nudged_at timestamptz, payment_due_at timestamptz, payment_expired_at timestamptz)""");
     }
 
     @BeforeEach

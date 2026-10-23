@@ -7,6 +7,7 @@ import com.neuronest.backend.config.ApiValidationException;
 import com.neuronest.backend.config.ConflictException;
 import com.neuronest.backend.pro.ProBookingDtos.ProAppointmentPage;
 import com.neuronest.backend.pro.ProBookingDtos.ProAppointmentView;
+import com.neuronest.backend.pro.ProHomeDtos.AwaitingPaymentItem;
 import com.neuronest.backend.pro.ProHomeDtos.DayOffCreated;
 import com.neuronest.backend.pro.ProHomeDtos.DayOffRequest;
 import com.neuronest.backend.pro.ProHomeDtos.DayOffView;
@@ -42,7 +43,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-// The professional's own home summary, confirmed appointments and days off. The professional is always
+// The professional's own home summary (including bookings waiting for payment), confirmed appointments and
+// days off. The professional is always
 // the one linked to the verified token; a valid sign-in without a professional account gets 401 here.
 // Nothing here logs reasons, names or contact details.
 @Service
@@ -125,9 +127,11 @@ public class ProHomeService {
         Instant start = from.atStartOfDay(AvailabilityService.ZONE).toInstant();
         Instant end = to.plusDays(1).atStartOfDay(AvailabilityService.ZONE).toInstant();
         long confirmed = bookings.countScheduledBetween(professionalId, Set.of(BookingStatus.CONFIRMED), start, end);
+        long awaitingPayment = bookings.countScheduledBetween(professionalId, Set.of(BookingStatus.AWAITING_PAYMENT),
+                start, end);
         long pending = bookings.countOpenRequestedBetween(professionalId, OPEN, clock.instant(), start, end);
         return new DayOffCreated(saved.getId(), saved.getDateFrom(), saved.getDateTo(), saved.getReason(),
-                saved.getCreatedAt(), confirmed, pending);
+                saved.getCreatedAt(), confirmed, awaitingPayment, pending);
     }
 
     // Someone else's entry gets the same 404 as a missing one.
@@ -177,6 +181,15 @@ public class ProHomeService {
         long pending = bookings.countByProfessionalIdAndStatusAndExpiresAtAfter(id, BookingStatus.PENDING, now);
         long awaitingUser = bookings.countByProfessionalIdAndStatusAndExpiresAtAfter(id, BookingStatus.ALTERNATE_PROPOSED, now);
         long upcoming = bookings.countByProfessionalIdAndStatusAndPreferredDatetimeGreaterThanEqual(id, BookingStatus.CONFIRMED, now);
+        long awaitingPayment = bookings.countByProfessionalIdAndStatusAndPaymentDueAtAfter(id,
+                BookingStatus.AWAITING_PAYMENT, now);
+        List<AwaitingPaymentItem> awaitingPaymentBookings = bookings
+                .findTop20ByProfessionalIdAndStatusAndPaymentDueAtAfterOrderByPaymentDueAtAscIdAsc(id,
+                        BookingStatus.AWAITING_PAYMENT, now).stream()
+                .map(b -> new AwaitingPaymentItem(b.getId(), b.getContactName(),
+                        b.getPreferredDatetime().atZone(AvailabilityService.ZONE).toOffsetDateTime(), b.getMeetingMethod(),
+                        b.getPaymentDueAt()))
+                .toList();
         NextAppointment next = bookings
                 .findFirstByProfessionalIdAndStatusAndPreferredDatetimeGreaterThanEqualOrderByPreferredDatetimeAscIdAsc(
                         id, BookingStatus.CONFIRMED, now)
@@ -209,22 +222,28 @@ public class ProHomeService {
         if (p.getVerificationStatus() == VerificationStatus.SUSPENDED) {
             warnings.add(new Warning("SUSPENDED", "Your listing has been suspended. Please contact NeuroNest support."));
         }
-        if (confirmedOnDaysOff(id, activeDaysOff, now)) {
+        if (bookedOnDaysOff(id, activeDaysOff, BookingStatus.CONFIRMED, now)) {
             warnings.add(new Warning("DAY_OFF_CONFLICTS", "You have a confirmed appointment on a day you marked as off."));
+        }
+        if (bookedOnDaysOff(id, activeDaysOff, BookingStatus.AWAITING_PAYMENT, now)) {
+            warnings.add(new Warning("DAY_OFF_AWAITING_PAYMENT", "A booking you accepted is waiting for payment on a day "
+                    + "you marked as off. If it is paid, it becomes an appointment on that day."));
         }
 
         return new ProDashboard(p.getVerificationStatus().name(), p.isActive(), account.getStatus().name(), pending,
-                awaitingUser, upcoming, next, expiry, daysLeft, hasWeeklyHours, activeDaysOff.size(), List.copyOf(warnings));
+                awaitingUser, upcoming, awaitingPayment, awaitingPaymentBookings, next, expiry, daysLeft, hasWeeklyHours,
+                activeDaysOff.size(), List.copyOf(warnings));
     }
 
-    // Only appointments still to come count.
-    private boolean confirmedOnDaysOff(UUID professionalId, List<ProfessionalDayOff> entries, Instant now) {
+    // Only bookings still to come count.
+    private boolean bookedOnDaysOff(UUID professionalId, List<ProfessionalDayOff> entries, BookingStatus status,
+                                    Instant now) {
         for (ProfessionalDayOff entry : entries) {
             Instant start = entry.getDateFrom().atStartOfDay(AvailabilityService.ZONE).toInstant();
             Instant end = entry.getDateTo().plusDays(1).atStartOfDay(AvailabilityService.ZONE).toInstant();
             Instant from = start.isAfter(now) ? start : now;
             if (from.isBefore(end)
-                    && bookings.countScheduledBetween(professionalId, Set.of(BookingStatus.CONFIRMED), from, end) > 0) {
+                    && bookings.countScheduledBetween(professionalId, Set.of(status), from, end) > 0) {
                 return true;
             }
         }

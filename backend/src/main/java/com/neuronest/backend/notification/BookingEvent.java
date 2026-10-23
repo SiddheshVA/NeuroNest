@@ -9,9 +9,12 @@ import java.util.UUID;
 public record BookingEvent(Type type, UUID bookingId) {
 
     public enum Type {
-        REQUEST_CREATED, CONFIRMED, PROPOSED, DECLINED, CANCELLED_BY_USER,
-        // From the background jobs: a request expired (user and professional), the one retry of the
-        // user's expiry email on the next run, and the 24-hour reminder to the professional.
+        // AWAITING_PAYMENT: the time is agreed (the professional confirmed, or the user accepted a suggested
+        // time) and the user has to pay. CONFIRMED: the payment was verified.
+        REQUEST_CREATED, AWAITING_PAYMENT, CONFIRMED, PROPOSED, DECLINED, CANCELLED_BY_USER,
+        // From the background jobs: a request expired, or an agreed booking was not paid in time (user and
+        // professional), the one retry of the user's expiry email on the next run, and the 24-hour
+        // reminder to the professional.
         EXPIRED, EXPIRY_RETRY, REMINDER,
         // An admin closed a request: the user gets the same email as a normal expiry.
         CLOSED_BY_ADMIN

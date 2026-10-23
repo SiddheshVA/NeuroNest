@@ -22,25 +22,27 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     /**
      * THE taken-slot query, used by the public availability endpoint, the booking check and the
      * professional's confirm, propose and accept checks (all through SlotService): the
-     * scheduled times (see {@link Booking#scheduledTime()}) of this professional's CONFIRMED bookings in
-     * [from, to). PENDING and ALTERNATE_PROPOSED requests never block a slot. The database narrows the
-     * rows to the window; which rows count is decided here, in one place.
+     * scheduled times (see {@link Booking#scheduledTime()}) of this professional's AWAITING_PAYMENT and
+     * CONFIRMED bookings ({@link BookingStatus#BLOCKS_SLOT}) in [from, to). PENDING and ALTERNATE_PROPOSED
+     * requests never block a slot. The database narrows the rows to the window; which rows count is
+     * decided here, in one place.
      */
-    default List<Instant> findConfirmedScheduledTimes(UUID professionalId, Instant from, Instant to) {
-        return findInWindow(professionalId, BookingStatus.CONFIRMED, from, to).stream()
+    default List<Instant> findBookedScheduledTimes(UUID professionalId, Instant from, Instant to) {
+        return findInWindow(professionalId, BookingStatus.BLOCKS_SLOT, from, to).stream()
                 .map(Booking::scheduledTime)
                 .filter(Objects::nonNull)
                 .filter(time -> !time.isBefore(from) && time.isBefore(to))
                 .toList();
     }
 
-    // Candidates for findConfirmedScheduledTimes only; use that method instead.
+    // Candidates for findBookedScheduledTimes only; use that method instead.
     @Query("""
             select b from Booking b
-            where b.professionalId = :professionalId and b.status = :status
+            where b.professionalId = :professionalId and b.status in :statuses
               and ((b.proposedDatetime >= :fromTime and b.proposedDatetime < :toTime)
                 or (b.preferredDatetime >= :fromTime and b.preferredDatetime < :toTime))""")
-    List<Booking> findInWindow(@Param("professionalId") UUID professionalId, @Param("status") BookingStatus status,
+    List<Booking> findInWindow(@Param("professionalId") UUID professionalId,
+                               @Param("statuses") Collection<BookingStatus> statuses,
                                @Param("fromTime") Instant from, @Param("toTime") Instant to);
 
     Optional<Booking> findByIdAndUserId(UUID id, UUID userId);
@@ -92,9 +94,22 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                                    @Param("statuses") Collection<BookingStatus> statuses, @Param("now") Instant now,
                                    @Param("fromTime") Instant from, @Param("toTime") Instant to);
 
+    // ---- A professional's agreed bookings waiting for the user's payment ----
+
+    long countByProfessionalIdAndStatusAndPaymentDueAtAfter(UUID professionalId, BookingStatus status, Instant now);
+
+    /** Earliest payment deadline first. */
+    List<Booking> findTop20ByProfessionalIdAndStatusAndPaymentDueAtAfterOrderByPaymentDueAtAscIdAsc(UUID professionalId,
+                                                                                                   BookingStatus status,
+                                                                                                   Instant now);
+
     Page<Booking> findByUserId(UUID userId, Pageable pageable);
 
     // ---- The user's own summary ----
+
+    /** Agreed bookings still waiting for payment whose deadline is after {@code now}, earliest deadline first. */
+    List<Booking> findByUserIdAndStatusAndPaymentDueAtAfterOrderByPaymentDueAtAscIdAsc(UUID userId, BookingStatus status,
+                                                                                    Instant now);
 
     long countByUserIdAndStatusAndExpiresAtAfter(UUID userId, BookingStatus status, Instant now);
 

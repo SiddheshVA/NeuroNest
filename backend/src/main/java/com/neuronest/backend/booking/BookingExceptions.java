@@ -20,6 +20,17 @@ public final class BookingExceptions {
         }
     }
 
+    /**
+     * 409 that must not roll back: the payment was genuine and is saved as PAID, but the booking was no
+     * longer waiting for payment, so it was not confirmed and the payment needs a manual refund.
+     */
+    public static class PaidButNotConfirmedException extends RuntimeException {
+        public PaidButNotConfirmedException() {
+            super("Your payment was received, but this booking is no longer waiting for payment, so it was not "
+                    + "confirmed. Your payment will be refunded.");
+        }
+    }
+
     /** 401: the signed-in Clerk user has no users row (should not happen once the filter has run). */
     public static class NotSignedInException extends RuntimeException {
         public NotSignedInException() {

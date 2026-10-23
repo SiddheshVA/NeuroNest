@@ -3,6 +3,7 @@ package com.neuronest.backend.admin;
 import com.neuronest.backend.admin.AdminBookingDtos.AdminBookingItem;
 import com.neuronest.backend.admin.AdminBookingDtos.DashboardSummary;
 import com.neuronest.backend.admin.AdminBookingDtos.Last30Days;
+import com.neuronest.backend.admin.AdminBookingDtos.RefundNeededItem;
 import com.neuronest.backend.admin.AdminBookingDtos.ResponsivenessItem;
 import com.neuronest.backend.professional.AvailabilityService;
 import org.springframework.jdbc.core.RowMapper;
@@ -29,10 +30,24 @@ import java.util.UUID;
 @Repository
 public class AdminBookingQueries {
 
-    /** A request the professional answered: confirmed, declined or another time suggested by them, or confirmed by the user accepting a suggestion. */
+    /**
+     * Agreed, whatever happened to the payment: waiting for it, paid, or expired unpaid (payment_due_at is
+     * only ever set when a time was agreed). A free session is CONFIRMED with no payment_due_at.
+     */
+    static final String AGREED = """
+            (b.status IN ('AWAITING_PAYMENT', 'CONFIRMED') OR (b.status = 'EXPIRED' AND b.payment_due_at IS NOT NULL))""";
+
+    /**
+     * A request the professional answered: accepted (see AGREED), declined or another time suggested by
+     * them, or agreed by the user accepting a suggestion. responded_at stays the acceptance time even when
+     * the payment later expires.
+     */
     static final String ANSWERED = """
-            ((b.responded_by = 'PROFESSIONAL' AND b.status IN ('CONFIRMED', 'DECLINED', 'ALTERNATE_PROPOSED'))
-             OR (b.responded_by = 'USER' AND b.status = 'CONFIRMED'))""";
+            ((b.responded_by = 'PROFESSIONAL' AND (b.status IN ('DECLINED', 'ALTERNATE_PROPOSED') OR %1$s))
+             OR (b.responded_by = 'USER' AND %1$s))""".formatted(AGREED);
+
+    /** Expired with no response (by the jobs or closed by an admin); an agreed booking that expired unpaid is not. */
+    static final String EXPIRED_UNANSWERED = "(b.status = 'EXPIRED' AND b.payment_due_at IS NULL)";
 
     static final String HOURS_TO_RESPONSE = "extract(epoch FROM (b.responded_at - b.created_at)) / 3600.0";
 
@@ -47,6 +62,7 @@ public class AdminBookingQueries {
               (SELECT count(*) FROM %1$s WHERE b.status = 'PENDING' AND b.expires_at > :now) AS pending_total,
               (SELECT count(*) FROM %1$s WHERE b.status = 'ALTERNATE_PROPOSED' AND b.expires_at > :now) AS awaiting_user_total,
               (SELECT count(*) FROM %1$s WHERE b.status = 'CONFIRMED' AND b.preferred_datetime > :now) AS upcoming_confirmed,
+              (SELECT count(*) FROM %1$s WHERE b.status = 'AWAITING_PAYMENT' AND b.payment_due_at > :now) AS awaiting_payment_total,
               (SELECT count(*) FROM professionals p WHERE p.is_sample_data = false AND p.verification_status = 'VERIFIED'
                   AND p.active = true) AS professionals_verified_active,
               (SELECT count(*) FROM professionals p WHERE p.is_sample_data = false AND p.verification_status = 'NEEDS_INFO') AS professionals_needs_info,
@@ -57,13 +73,13 @@ public class AdminBookingQueries {
     static final String LAST_30_DAYS = """
             SELECT count(*) AS created,
                    count(*) FILTER (WHERE %2$s) AS answered,
-                   count(*) FILTER (WHERE b.status = 'EXPIRED') AS expired,
+                   count(*) FILTER (WHERE %4$s) AS expired,
                    count(*) FILTER (WHERE b.status = 'CANCELLED' AND b.responded_by = 'USER') AS cancelled_by_user,
                    percentile_cont(0.5) WITHIN GROUP (ORDER BY %3$s)
                        FILTER (WHERE %2$s AND b.responded_at IS NOT NULL) AS median_hours
               FROM %1$s
              WHERE b.created_at >= :since
-            """.formatted(REAL_BOOKINGS, ANSWERED, HOURS_TO_RESPONSE);
+            """.formatted(REAL_BOOKINGS, ANSWERED, HOURS_TO_RESPONSE, EXPIRED_UNANSWERED);
 
     static final String ITEM_COLUMNS = """
             b.id, b.status, b.created_at, b.expires_at, b.professional_id, p.full_name AS professional_name,
@@ -89,7 +105,7 @@ public class AdminBookingQueries {
             SELECT p.id, p.full_name,
                    count(*) AS received,
                    count(*) FILTER (WHERE %2$s) AS answered,
-                   count(*) FILTER (WHERE b.status = 'EXPIRED') AS expired,
+                   count(*) FILTER (WHERE %4$s) AS expired,
                    count(*) FILTER (WHERE b.status = 'PENDING' AND b.expires_at > :now) AS pending_now,
                    percentile_cont(0.5) WITHIN GROUP (ORDER BY %3$s)
                        FILTER (WHERE %2$s AND b.responded_at IS NOT NULL) AS median_hours,
@@ -98,10 +114,26 @@ public class AdminBookingQueries {
              WHERE b.created_at >= :since
              GROUP BY p.id, p.full_name
              ORDER BY count(*) FILTER (WHERE %2$s)::numeric / count(*) ASC,
-                      count(*) FILTER (WHERE b.status = 'EXPIRED') DESC,
+                      count(*) FILTER (WHERE %4$s) DESC,
                       p.id
              LIMIT :size OFFSET :offset
-            """.formatted(REAL_BOOKINGS, ANSWERED, HOURS_TO_RESPONSE);
+            """.formatted(REAL_BOOKINGS, ANSWERED, HOURS_TO_RESPONSE, EXPIRED_UNANSWERED);
+
+    // Money taken for a booking that is not CONFIRMED (it expired or was cancelled while the user paid):
+    // each needs a manual refund. Sample listings are not left out here: a payment is never hidden.
+    static final String REFUNDS_NEEDED_FROM = """
+              FROM payments pm
+              JOIN booking_requests b ON b.id = pm.booking_id
+              JOIN professionals p ON p.id = b.professional_id
+             WHERE pm.status = 'PAID' AND b.status <> 'CONFIRMED'""";
+
+    static final String REFUNDS_NEEDED = """
+            SELECT pm.id AS payment_id, pm.booking_id, pm.razorpay_order_id, pm.razorpay_payment_id, pm.amount_paise,
+                   pm.currency, pm.paid_at, b.status AS booking_status, b.professional_id,
+                   p.full_name AS professional_name, b.contact_name
+            """ + REFUNDS_NEEDED_FROM + " ORDER BY pm.paid_at, pm.id LIMIT :size OFFSET :offset";
+
+    static final String REFUNDS_NEEDED_COUNT = "SELECT count(*)" + REFUNDS_NEEDED_FROM;
 
     static final String RESPONSIVENESS_COUNT = "SELECT count(DISTINCT p.id) FROM " + REAL_BOOKINGS + " WHERE b.created_at >= :since";
 
@@ -149,6 +181,7 @@ public class AdminBookingQueries {
         return jdbc.queryForObject(SUMMARY, params, (rs, i) -> new DashboardSummary(
                 rs.getLong("review_queue"), rs.getLong("review_queue_over_48h"), rs.getLong("unanswered_over_48h"),
                 rs.getLong("pending_total"), rs.getLong("awaiting_user_total"), rs.getLong("upcoming_confirmed"),
+                rs.getLong("awaiting_payment_total"),
                 rs.getLong("professionals_verified_active"), rs.getLong("professionals_needs_info"),
                 rs.getLong("registrations_expiring"), last30));
     }
@@ -181,6 +214,20 @@ public class AdminBookingQueries {
                 rs.getLong("answered"), rs.getLong("expired"), rs.getLong("pending_now"), hours(rs, "median_hours"),
                 instant(rs, "last_answered_at")));
         Long total = jdbc.queryForObject(RESPONSIVENESS_COUNT, params, Long.class);
+        return new Page<>(items, total == null ? 0 : total);
+    }
+
+    /** Oldest payment first. */
+    public Page<RefundNeededItem> refundsNeeded(int page, int size) {
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("size", size).addValue("offset", (long) page * size);
+        List<RefundNeededItem> items = jdbc.query(REFUNDS_NEEDED, params, (rs, i) -> new RefundNeededItem(
+                rs.getObject("payment_id", UUID.class), rs.getObject("booking_id", UUID.class),
+                rs.getString("booking_status"), rs.getString("razorpay_order_id"), rs.getString("razorpay_payment_id"),
+                rs.getLong("amount_paise"), rs.getString("currency"), instant(rs, "paid_at"),
+                rs.getObject("professional_id", UUID.class), rs.getString("professional_name"),
+                rs.getString("contact_name")));
+        Long total = jdbc.queryForObject(REFUNDS_NEEDED_COUNT, params, Long.class);
         return new Page<>(items, total == null ? 0 : total);
     }
 

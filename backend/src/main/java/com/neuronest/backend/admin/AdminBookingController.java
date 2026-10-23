@@ -3,6 +3,7 @@ package com.neuronest.backend.admin;
 import com.neuronest.backend.admin.AdminBookingDtos.AdminBookingItem;
 import com.neuronest.backend.admin.AdminBookingDtos.CloseRequest;
 import com.neuronest.backend.admin.AdminBookingDtos.DashboardSummary;
+import com.neuronest.backend.admin.AdminBookingDtos.RefundNeededItem;
 import com.neuronest.backend.admin.AdminBookingDtos.ResponsivenessItem;
 import com.neuronest.backend.admin.AdminBookingDtos.StatusNoteRequest;
 import com.neuronest.backend.admin.AdminProfessionalDtos.PageResponse;
@@ -53,6 +54,14 @@ public class AdminBookingController {
     @PostMapping("/bookings/{id}/close")
     public AdminBookingItem close(@PathVariable UUID id, @RequestBody(required = false) CloseRequest request) {
         return bookings.close(id, request);
+    }
+
+    // Payments taken for bookings that are not CONFIRMED (expired or cancelled while paying): to refund by hand.
+    @GetMapping("/payments/refunds-needed")
+    public PageResponse<RefundNeededItem> refundsNeeded(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "" + AdminProfessionalService.DEFAULT_PAGE_SIZE) int size) {
+        return bookings.refundsNeeded(page, size);
     }
 
     @GetMapping("/professionals/responsiveness")

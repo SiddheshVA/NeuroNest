@@ -16,6 +16,13 @@ public interface BookingJobStore {
     List<UUID> expireOverdueRequests(Instant now, int limit);
 
     /**
+     * AWAITING_PAYMENT bookings whose payment_due_at is before {@code cutoff} (now minus the grace period):
+     * set EXPIRED and payment_expired_at = now, which releases their slot. responded_at and responded_by
+     * keep the acceptance.
+     */
+    List<UUID> expireUnpaidBookings(Instant now, Instant cutoff, int limit);
+
+    /**
      * Requests the jobs expired between {@code since} and {@code before} whose user email was not sent
      * (expiry_notified_at NULL). Sets expiry_notified_at = now as the claim, so this retry happens once.
      */

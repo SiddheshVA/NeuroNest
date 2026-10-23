@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Set;
 
 // A professional's bookable slots: AvailabilityService's slots for their weekly hours, minus their days
-// off and every slot that overlaps a CONFIRMED booking. Shared by the public availability endpoint, the booking check and the
+// off and every slot that overlaps an AWAITING_PAYMENT or CONFIRMED booking. Shared by the public availability endpoint, the booking check and the
 // professional's confirm, propose and accept checks, so all of them always agree.
 @Service
 public class SlotService {
@@ -70,14 +70,15 @@ public class SlotService {
     }
 
     /**
-     * Whether a session starting at {@code start} would overlap the scheduled time of any CONFIRMED booking
-     * of this professional, using their session length and buffer. Used when a professional confirms or
-     * proposes a time and when a user accepts a proposal; callers lock the professional row first.
+     * Whether a session starting at {@code start} would overlap the scheduled time of any AWAITING_PAYMENT
+     * or CONFIRMED booking of this professional, using their session length and buffer. Used when a
+     * professional confirms or proposes a time and when a user accepts a proposal; callers lock the
+     * professional row first.
      */
-    public boolean overlapsConfirmed(Professional p, Instant start) {
+    public boolean overlapsBooked(Professional p, Instant start) {
         int session = p.getSessionMinutes() == null ? 0 : p.getSessionMinutes();
         int occupied = session + Math.max(0, p.getBufferMinutes());
-        List<Instant> scheduled = bookings.findConfirmedScheduledTimes(p.getId(),
+        List<Instant> scheduled = bookings.findBookedScheduledTimes(p.getId(),
                 start.minusSeconds(occupied * 60L), start.plusSeconds(occupied * 60L));
         if (scheduled.isEmpty()) return false;
         ZonedDateTime slot = start.atZone(AvailabilityService.ZONE);
@@ -85,14 +86,14 @@ public class SlotService {
                 p.getBufferMinutes()).isEmpty();
     }
 
-    // The slots in `slots` that overlap a confirmed booking. Each session occupies its length plus the
+    // The slots in `slots` that overlap an AWAITING_PAYMENT or CONFIRMED booking. Each session occupies its length plus the
     // buffer, so the query window is widened by that much on both sides.
     private Set<ZonedDateTime> takenSlots(Professional p, LocalDate from, LocalDate to,
                                           Map<LocalDate, List<ZonedDateTime>> slots) {
         int occupied = p.getSessionMinutes() + p.getBufferMinutes();
         Instant windowStart = from.atStartOfDay(AvailabilityService.ZONE).minusMinutes(occupied).toInstant();
         Instant windowEnd = to.plusDays(1).atStartOfDay(AvailabilityService.ZONE).plusMinutes(occupied).toInstant();
-        List<Instant> scheduled = bookings.findConfirmedScheduledTimes(p.getId(), windowStart, windowEnd);
+        List<Instant> scheduled = bookings.findBookedScheduledTimes(p.getId(), windowStart, windowEnd);
         if (scheduled.isEmpty()) return Set.of();
         return availability.overlapping(slots, scheduled, p.getSessionMinutes(), p.getBufferMinutes());
     }

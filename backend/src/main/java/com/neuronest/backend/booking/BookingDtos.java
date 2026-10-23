@@ -1,5 +1,6 @@
 package com.neuronest.backend.booking;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.neuronest.backend.professional.AvailabilityService;
 import com.neuronest.backend.professional.Professional;
 
@@ -56,7 +57,9 @@ public final class BookingDtos {
             String meetingAddress,
             // Exactly what the user chose to share with the professional, or null.
             SharedAssessment sharedAssessment,
-            Instant assessmentSharedAt) {
+            Instant assessmentSharedAt,
+            // The deadline to pay while the status is AWAITING_PAYMENT; null otherwise.
+            Instant paymentDueAt) {
 
         static BookingView from(Booking b, Professional p) {
             boolean confirmed = b.getStatus() == BookingStatus.CONFIRMED;
@@ -67,7 +70,8 @@ public final class BookingDtos {
                     confirmed ? b.getMeetingMethod() : null,
                     confirmed ? b.getMeetingLink() : null,
                     confirmed ? b.getMeetingAddress() : null,
-                    b.getSharedAssessment(), b.getAssessmentSharedAt());
+                    b.getSharedAssessment(), b.getAssessmentSharedAt(),
+                    b.getStatus() == BookingStatus.AWAITING_PAYMENT ? b.getPaymentDueAt() : null);
         }
 
         static OffsetDateTime inIndia(Instant instant) {
@@ -97,6 +101,40 @@ public final class BookingDtos {
         }
     }
 
-    /** GET /api/bookings/summary: counts of open requests that have not expired, and the next appointment. */
-    public record BookingSummary(NextAppointment nextAppointment, long waitingForProfessional, long needsYourAnswer) {}
+    /**
+     * An agreed booking the user still has to pay for, so the dashboard can show "Pay now". No meeting
+     * details: those are only shown once it is paid and CONFIRMED.
+     */
+    public record AwaitingPayment(
+            UUID id,
+            // Shown in Indian Standard Time, for example 2026-10-20T18:00+05:30.
+            OffsetDateTime scheduledTime,
+            Instant paymentDueAt,
+            String preferredMode,
+            ProfessionalSummary professional) {
+
+        static AwaitingPayment from(Booking b, Professional p) {
+            return new AwaitingPayment(b.getId(), BookingView.inIndia(b.getPreferredDatetime()), b.getPaymentDueAt(),
+                    b.getPreferredMode(), ProfessionalSummary.from(p));
+        }
+    }
+
+    /**
+     * GET /api/bookings/summary: the next (paid) appointment, the bookings waiting for payment, and counts
+     * of open requests that have not expired.
+     */
+    public record BookingSummary(NextAppointment nextAppointment, List<AwaitingPayment> awaitingPayment,
+                                 long waitingForProfessional, long needsYourAnswer) {}
+
+    /**
+     * POST /api/bookings/{id}/payment/order: what the Razorpay checkout needs. amount is in paise and
+     * always comes from the professional's fee in the database. keyId is the public key, never the secret.
+     */
+    public record PaymentOrder(String razorpayOrderId, long amount, String currency, String keyId) {}
+
+    /** POST /api/bookings/{id}/payment/verify: the three values the Razorpay checkout hands back, as it names them. */
+    public record VerifyPaymentRequest(
+            @JsonProperty("razorpay_order_id") String razorpayOrderId,
+            @JsonProperty("razorpay_payment_id") String razorpayPaymentId,
+            @JsonProperty("razorpay_signature") String razorpaySignature) {}
 }
