@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { CalendarCheck, ClipboardList, Clock, ExternalLink, HeartHandshake, Hourglass, TriangleAlert } from "lucide-react";
+import { CalendarCheck, ClipboardList, Clock, ExternalLink, HeartHandshake, TriangleAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { CrisisResourcesBox } from "@/components/shared/crisis-resources-box";
@@ -21,7 +21,16 @@ const ASSESSMENT_LINKS: Record<RelatedAssessment, { label: string; href: string 
 // Currently a PlaceholderPage route in App.tsx until the directory is built.
 const FIND_PROFESSIONAL_HREF = "/find-professional";
 
+// The old placeholder text; never shown as a reviewer's name.
 const PENDING_REVIEW_LABEL = "Pending clinical review";
+
+/** The reviewer's name when the article has really been reviewed; null while review is pending. */
+function reviewerName(article: Article): string | null {
+  if (article.reviewStatus !== "reviewed") return null;
+  const name = article.reviewedBy?.trim();
+  if (!name || name.toLowerCase() === PENDING_REVIEW_LABEL.toLowerCase()) return null;
+  return name;
+}
 
 const primaryButton =
   "inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:w-auto";
@@ -68,6 +77,7 @@ function LeadIn({ title, text, separator = " " }: { title: string; text: string;
 function ArticleDetail({ article }: { article: Article }) {
   const { sections } = article;
   const isPendingReview = article.reviewStatus === "pending";
+  const reviewer = reviewerName(article);
   const assessment = article.relatedAssessment ? ASSESSMENT_LINKS[article.relatedAssessment] : null;
 
   return (
@@ -84,12 +94,7 @@ function ArticleDetail({ article }: { article: Article }) {
             <Clock className="size-4" aria-hidden="true" />
             {article.readingTimeMinutes} min read
           </span>
-          {isPendingReview ? (
-            <Badge variant="outline" className="text-muted-foreground">
-              <Hourglass aria-hidden="true" />
-              {PENDING_REVIEW_LABEL}
-            </Badge>
-          ) : article.lastReviewedDate ? (
+          {!isPendingReview && article.lastReviewedDate ? (
             <span className="flex items-center gap-1">
               <CalendarCheck className="size-4" aria-hidden="true" />
               Last reviewed {formatDate(article.lastReviewedDate)}
@@ -180,11 +185,9 @@ function ArticleDetail({ article }: { article: Article }) {
         </ul>
       </ArticleSection>
 
-      {isPendingReview || article.reviewedBy ? (
+      {reviewer ? (
         <ArticleSection title="Reviewed by">
-          <p className="text-sm text-muted-foreground">
-            {isPendingReview ? PENDING_REVIEW_LABEL : article.reviewedBy}
-          </p>
+          <p className="text-sm text-muted-foreground">{reviewer}</p>
         </ArticleSection>
       ) : null}
     </article>
