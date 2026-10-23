@@ -79,10 +79,24 @@ public class RazorpayGateway {
             Order order = client().orders.create(body);
             return order.get("id");
         } catch (RazorpayException | RuntimeException e) {
-            // The class only: a Razorpay message can echo request details.
-            log.warn("Razorpay order creation failed ({})", e.getClass().getSimpleName());
+            // Razorpay's own error (for example "BAD_REQUEST_ERROR:Authentication failed"), with the keys
+            // scrubbed out. The request only carries the amount, currency and booking id as receipt.
+            String message = safeMessage(e);
+            log.warn("Razorpay order creation failed ({}): {}{}", e.getClass().getSimpleName(), message,
+                    message.contains("Authentication failed")
+                            ? " - check that RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are a matching test-mode pair"
+                            : "");
             throw new GatewayException();
         }
+    }
+
+    // One line, at most 300 characters, never containing the key id or the secret.
+    String safeMessage(Throwable e) {
+        String message = e.getMessage() == null ? "(no message)" : e.getMessage();
+        if (keySecret != null) message = message.replace(keySecret, "[secret]");
+        if (keyId != null) message = message.replace(keyId, "[key id]");
+        message = message.replaceAll("[\\r\\n\\t]+", " ").trim();
+        return message.length() > 300 ? message.substring(0, 300) + "..." : message;
     }
 
     /**
