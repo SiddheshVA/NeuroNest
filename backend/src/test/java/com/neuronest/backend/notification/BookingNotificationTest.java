@@ -424,7 +424,7 @@ class BookingNotificationTest {
     void theConfirmationAfterPaymentHasTheMeetingDetailsAndTheAmountPaid() {
         confirmedWith("VIDEO", VIDEO_LINK, null);
         Payment paid = new Payment(booking.getId(), "order_1", 150_000, "INR", NOW);
-        paid.setStatus(PaymentStatus.PAID);
+        paid.markPaid("pay_1", NOW, 10, 15_000, 135_000);
         when(payments.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(booking.getId(), PaymentStatus.PAID))
                 .thenReturn(Optional.of(paid));
 

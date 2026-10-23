@@ -1,5 +1,7 @@
 package com.neuronest.backend.admin;
 
+import com.neuronest.backend.payment.PaymentReportQueries;
+
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -81,6 +83,12 @@ public final class AdminBookingDtos {
             UUID professionalId,
             String professionalName,
             String contactName) {}
+
+    /**
+     * GET /api/admin/payments/summary. Amounts in paise; only PAID payments whose booking is CONFIRMED.
+     * month is the current month in India (YYYY-MM); thisMonth counts payments made in it.
+     */
+    public record PaymentSummary(String month, PaymentReportQueries.Totals allTime, PaymentReportQueries.Totals thisMonth) {}
 
     public record CloseRequest(String note) {}
 

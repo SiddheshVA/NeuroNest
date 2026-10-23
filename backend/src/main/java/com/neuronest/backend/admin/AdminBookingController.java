@@ -3,11 +3,13 @@ package com.neuronest.backend.admin;
 import com.neuronest.backend.admin.AdminBookingDtos.AdminBookingItem;
 import com.neuronest.backend.admin.AdminBookingDtos.CloseRequest;
 import com.neuronest.backend.admin.AdminBookingDtos.DashboardSummary;
+import com.neuronest.backend.admin.AdminBookingDtos.PaymentSummary;
 import com.neuronest.backend.admin.AdminBookingDtos.RefundNeededItem;
 import com.neuronest.backend.admin.AdminBookingDtos.ResponsivenessItem;
 import com.neuronest.backend.admin.AdminBookingDtos.StatusNoteRequest;
 import com.neuronest.backend.admin.AdminProfessionalDtos.PageResponse;
 import com.neuronest.backend.admin.AdminProfessionalDtos.ProfessionalDetail;
+import com.neuronest.backend.payment.PaymentReportQueries.AdminPaymentRow;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -54,6 +56,20 @@ public class AdminBookingController {
     @PostMapping("/bookings/{id}/close")
     public AdminBookingItem close(@PathVariable UUID id, @RequestBody(required = false) CloseRequest request) {
         return bookings.close(id, request);
+    }
+
+    // Gross collected, commission and the professionals' share: all time and this month (India).
+    @GetMapping("/payments/summary")
+    public PaymentSummary paymentSummary() {
+        return bookings.paymentSummary();
+    }
+
+    // Every PAID payment, newest first, with its booking's status.
+    @GetMapping("/payments")
+    public PageResponse<AdminPaymentRow> payments(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "" + AdminProfessionalService.DEFAULT_PAGE_SIZE) int size) {
+        return bookings.payments(page, size);
     }
 
     // Payments taken for bookings that are not CONFIRMED (expired or cancelled while paying): to refund by hand.

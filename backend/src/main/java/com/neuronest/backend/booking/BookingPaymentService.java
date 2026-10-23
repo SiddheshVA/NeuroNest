@@ -54,24 +54,27 @@ public class BookingPaymentService {
     private final RazorpayGateway gateway;
     private final ApplicationEventPublisher events;
     private final PaymentAmounts amounts;
+    private final CommissionSplit commission;
     private final Clock clock;
 
     @Autowired
     public BookingPaymentService(BookingRepository bookings, PaymentRepository payments,
                                  ProfessionalRepository professionals, RazorpayGateway gateway,
-                                 ApplicationEventPublisher events, PaymentAmounts amounts) {
-        this(bookings, payments, professionals, gateway, events, amounts, Clock.system(AvailabilityService.ZONE));
+                                 ApplicationEventPublisher events, PaymentAmounts amounts, CommissionSplit commission) {
+        this(bookings, payments, professionals, gateway, events, amounts, commission,
+                Clock.system(AvailabilityService.ZONE));
     }
 
     BookingPaymentService(BookingRepository bookings, PaymentRepository payments, ProfessionalRepository professionals,
                           RazorpayGateway gateway, ApplicationEventPublisher events, PaymentAmounts amounts,
-                          Clock clock) {
+                          CommissionSplit commission, Clock clock) {
         this.bookings = bookings;
         this.payments = payments;
         this.professionals = professionals;
         this.gateway = gateway;
         this.events = events;
         this.amounts = amounts;
+        this.commission = commission;
         this.clock = clock;
     }
 
@@ -137,9 +140,9 @@ public class BookingPaymentService {
         }
 
         Instant now = clock.instant();
-        payment.setStatus(PaymentStatus.PAID);
-        payment.setRazorpayPaymentId(paymentId);
-        payment.setPaidAt(now);
+        // The commission is fixed now, at the configured percent, and stored with the payment.
+        CommissionSplit.Split split = commission.split(payment.getAmountPaise());
+        payment.markPaid(paymentId, now, split.percent(), split.commissionPaise(), split.professionalSharePaise());
         payments.saveAndFlush(payment);
 
         if (b.getStatus() != BookingStatus.AWAITING_PAYMENT) {

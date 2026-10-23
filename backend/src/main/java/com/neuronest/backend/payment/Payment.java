@@ -41,6 +41,17 @@ public class Payment {
     @Column(name = "paid_at")
     private Instant paidAt;
 
+    // Set when it is marked PAID (V13): the percent used, NeuroNest's commission and the professional's
+    // share, which add up exactly to amount_paise.
+    @Column(name = "commission_percent")
+    private Integer commissionPercent;
+
+    @Column(name = "commission_paise")
+    private Long commissionPaise;
+
+    @Column(name = "professional_share_paise")
+    private Long professionalSharePaise;
+
     protected Payment() {}
 
     public Payment(UUID bookingId, String razorpayOrderId, long amountPaise, String currency, Instant createdAt) {
@@ -58,17 +69,41 @@ public class Payment {
     public String getRazorpayOrderId() { return razorpayOrderId; }
 
     public String getRazorpayPaymentId() { return razorpayPaymentId; }
-    public void setRazorpayPaymentId(String razorpayPaymentId) { this.razorpayPaymentId = razorpayPaymentId; }
 
     public long getAmountPaise() { return amountPaise; }
 
     public String getCurrency() { return currency; }
 
     public PaymentStatus getStatus() { return status; }
-    public void setStatus(PaymentStatus status) { this.status = status; }
+
+    /** CREATED or FAILED only: a payment becomes PAID through markPaid, which also stores the commission. */
+    public void setStatus(PaymentStatus status) {
+        if (status == PaymentStatus.PAID) throw new IllegalStateException("Use markPaid to mark a payment PAID.");
+        this.status = status;
+    }
 
     public Instant getCreatedAt() { return createdAt; }
 
     public Instant getPaidAt() { return paidAt; }
-    public void setPaidAt(Instant paidAt) { this.paidAt = paidAt; }
+
+    public Integer getCommissionPercent() { return commissionPercent; }
+    public Long getCommissionPaise() { return commissionPaise; }
+    public Long getProfessionalSharePaise() { return professionalSharePaise; }
+
+    /**
+     * The only way a payment becomes PAID: with Razorpay's payment id, the time, and the commission split
+     * (from CommissionSplit), which is stored and never recomputed.
+     */
+    public void markPaid(String razorpayPaymentId, Instant paidAt, int commissionPercent, long commissionPaise,
+                         long professionalSharePaise) {
+        if (commissionPaise + professionalSharePaise != amountPaise) {
+            throw new IllegalStateException("The commission and the professional's share must add up to the amount.");
+        }
+        this.status = PaymentStatus.PAID;
+        this.razorpayPaymentId = razorpayPaymentId;
+        this.paidAt = paidAt;
+        this.commissionPercent = commissionPercent;
+        this.commissionPaise = commissionPaise;
+        this.professionalSharePaise = professionalSharePaise;
+    }
 }

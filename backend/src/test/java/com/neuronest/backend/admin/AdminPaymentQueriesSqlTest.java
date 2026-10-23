@@ -3,6 +3,7 @@ package com.neuronest.backend.admin;
 import com.neuronest.backend.admin.AdminBookingDtos.DashboardSummary;
 import com.neuronest.backend.admin.AdminBookingDtos.RefundNeededItem;
 import com.neuronest.backend.config.ApiValidationException;
+import com.neuronest.backend.payment.PaymentReportQueries;
 import com.neuronest.backend.professional.AvailabilityService;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import org.junit.jupiter.api.AfterAll;
@@ -172,6 +173,7 @@ class AdminPaymentQueriesSqlTest {
     @Test
     void theServicePagesTheRefundsListLikeTheOtherAdminLists() {
         AdminBookingService service = new AdminBookingService(queries, event -> { },
+                new PaymentReportQueries(new NamedParameterJdbcTemplate(postgres.getPostgresDatabase())),
                 Clock.fixed(NOW, AvailabilityService.ZONE));
         UUID asha = professional("Dr. Asha Rao");
         payment(booking(asha, "EXPIRED", "PROFESSIONAL", 2, Duration.ofHours(-2)), "order_1", "PAID", NOW);

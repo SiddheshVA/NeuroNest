@@ -53,7 +53,7 @@ class BookingPaymentServiceTest {
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final PaymentAmounts amounts = new PaymentAmounts(paymentRepository);
     private final BookingPaymentService service = new BookingPaymentService(bookings, paymentRepository, professionals,
-            gateway, events, amounts, CLOCK);
+            gateway, events, amounts, new CommissionSplit(10), CLOCK);
 
     private final List<Booking> bookingStore = new ArrayList<>();
     private final List<Payment> paymentStore = new ArrayList<>();
@@ -219,7 +219,7 @@ class BookingPaymentServiceTest {
     @Test
     void withoutKeysThePaymentEndpointsSayPaymentsAreNotConfigured() {
         BookingPaymentService unconfigured = new BookingPaymentService(bookings, paymentRepository, professionals,
-                new RazorpayGateway(" ", null), events, amounts, CLOCK);
+                new RazorpayGateway(" ", null), events, amounts, new CommissionSplit(10), CLOCK);
         Booking b = awaiting();
 
         assertThatThrownBy(() -> unconfigured.createOrder(userId, b.getId().toString()))
@@ -245,6 +245,43 @@ class BookingPaymentServiceTest {
         assertThat(p.getStatus()).isEqualTo(PaymentStatus.PAID);
         assertThat(p.getRazorpayPaymentId()).isEqualTo("pay_ABC");
         assertThat(p.getPaidAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void verifyStoresTheCommissionAndAChangedSettingNeverAltersAnOldPayment() throws Exception {
+        Booking first = awaiting();
+        service.createOrder(userId, first.getId().toString());
+        service.verify(userId, first.getId().toString(), signed("order_TEST123", "pay_FIRST"));
+        Payment firstPayment = paymentStore.get(0);
+        assertThat(firstPayment.getCommissionPercent()).isEqualTo(10);
+        assertThat(firstPayment.getCommissionPaise()).isEqualTo(15_000);
+        assertThat(firstPayment.getProfessionalSharePaise()).isEqualTo(135_000);
+
+        // The setting changes to 15%: only later payments use it.
+        BookingPaymentService at15 = new BookingPaymentService(bookings, paymentRepository, professionals, gateway,
+                events, amounts, new CommissionSplit(15), CLOCK);
+        Booking second = awaiting();
+        doReturn("order_SECOND").when(gateway).createOrder(anyLong(), anyString(), anyString());
+        at15.createOrder(userId, second.getId().toString());
+        at15.verify(userId, second.getId().toString(), signed("order_SECOND", "pay_SECOND"));
+
+        Payment secondPayment = paymentStore.get(1);
+        assertThat(secondPayment.getCommissionPercent()).isEqualTo(15);
+        assertThat(secondPayment.getCommissionPaise()).isEqualTo(22_500);
+        assertThat(secondPayment.getProfessionalSharePaise()).isEqualTo(127_500);
+        assertThat(firstPayment.getCommissionPercent()).isEqualTo(10);
+        assertThat(firstPayment.getCommissionPaise()).isEqualTo(15_000);
+        // Verifying the first again does not recompute it either.
+        at15.verify(userId, first.getId().toString(), signed("order_TEST123", "pay_FIRST"));
+        assertThat(firstPayment.getCommissionPaise()).isEqualTo(15_000);
+    }
+
+    @Test
+    void aPaymentCanOnlyBecomePaidWithItsCommission() {
+        Payment p = new Payment(UUID.randomUUID(), "order_X", 100, "INR", NOW);
+        assertThatThrownBy(() -> p.setStatus(PaymentStatus.PAID)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> p.markPaid("pay_X", NOW, 10, 10, 80)).isInstanceOf(IllegalStateException.class);
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.CREATED);
     }
 
     @Test
