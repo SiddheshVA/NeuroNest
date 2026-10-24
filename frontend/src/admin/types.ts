@@ -413,3 +413,18 @@ export interface RefundNeededItem {
   professionalName: string;
   contactName: string;
 }
+
+/** GET /api/admin/professionals/{id}/reviews: every review, hidden ones included, never who wrote it. */
+export interface AdminReview {
+  id: string;
+  bookingId: string;
+  rating: number;
+  comment: string | null;
+  status: "VISIBLE" | "HIDDEN";
+  /** The latest hide or unhide: why, when and by which admin. */
+  moderationReason: string | null;
+  moderatedAt: string | null;
+  moderatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

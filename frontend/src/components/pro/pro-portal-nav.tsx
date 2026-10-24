@@ -72,6 +72,7 @@ export function ProPortalNav() {
       { href: "/pro/appointments", label: "Appointments" },
       { href: "/pro/days-off", label: "Days off" },
       { href: "/pro/earnings", label: "Earnings" },
+      { href: "/pro/reviews", label: "Reviews" },
     );
   }
 

@@ -10,6 +10,7 @@ import MemoryPage from "@/routes/MemoryPage";
 import AppointmentsPage from "@/routes/AppointmentsPage";
 import { PageErrorBoundary } from "@/components/shared/page-error-boundary";
 import AssessmentResultPage from "@/routes/AssessmentResultPage";
+import CheckInResultPage from "@/routes/CheckInResultPage";
 import { AssessmentPage, Gad7Page, K10Page, Phq9Page, Pss10Page, SciPage } from "@/routes/AssessmentPages";
 import { ArticleRoute, GuideRoute, ResourcesPage, VideoRoute } from "@/routes/ResourcesPages";
 import { LoginPage, RequireAuth, SignUpPage } from "@/routes/AuthPages";
@@ -19,6 +20,7 @@ import {
   ProDashboardRoute,
   ProDaysOffRoute,
   ProEarningsRoute,
+  ProReviewsRoute,
   ProJoinPage,
   ProProfileRoute,
   ProRequestRoute,
@@ -92,6 +94,14 @@ export default function App() {
           }
         />
         <Route
+          path="/dashboard/check-ins/:id"
+          element={
+            <RequireAuth>
+              <CheckInResultPage />
+            </RequireAuth>
+          }
+        />
+        <Route
           path="/settings/memory"
           element={
             <RequireAuth>
@@ -126,6 +136,7 @@ export default function App() {
         <Route path="/pro/appointments" element={<ProAppointmentsRoute />} />
         <Route path="/pro/days-off" element={<ProDaysOffRoute />} />
         <Route path="/pro/earnings" element={<ProEarningsRoute />} />
+        <Route path="/pro/reviews" element={<ProReviewsRoute />} />
         <Route path="/pro/requests" element={<ProRequestsRoute />} />
         <Route path="/pro/requests/:id" element={<ProRequestRoute />} />
 

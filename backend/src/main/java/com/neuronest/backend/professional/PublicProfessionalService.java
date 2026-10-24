@@ -57,6 +57,11 @@ public class PublicProfessionalService {
     @Transactional(readOnly = true)
     public PublicPage<PublicProfessional> search(String credentialType, String city, String language, String mode,
                                                  String q, int page, int size) {
+        return search(credentialType, city, language, mode, q, null, page, size);
+    }
+
+    public PublicPage<PublicProfessional> search(String credentialType, String city, String language, String mode,
+                                                 String q, String sort, int page, int size) {
         if (page < 0) {
             throw new ApiValidationException("page must be 0 or greater.");
         }
@@ -68,9 +73,12 @@ public class PublicProfessionalService {
         String modeFilter = parseMode(mode);
         String search = trimToNull(q);
         String pattern = search == null ? null : "%" + escapeLike(search.toLowerCase(Locale.ROOT)) + "%";
+        DirectorySort order = parseEnum(DirectorySort.class, "sort", sort,
+                "TOP_RATED, MOST_REVIEWED, LOWEST_FEE, MOST_EXPERIENCED");
 
         Page<Professional> result = repository.search(today(), type == null ? null : type.name(),
-                trimToNull(city), modeFilter, trimToNull(language), pattern, PageRequest.of(page, size));
+                trimToNull(city), modeFilter, trimToNull(language), pattern, order == null ? null : order.name(),
+                PageRequest.of(page, size));
         return new PublicPage<>(result.getContent().stream().map(PublicProfessional::from).toList(),
                 page, size, result.getTotalElements(), result.getTotalPages());
     }

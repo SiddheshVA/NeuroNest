@@ -12,14 +12,18 @@ function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
 
 function DialogContent({
   className,
+  backdropClassName,
   children,
   ...props
-}: DialogPrimitive.Popup.Props) {
+}: DialogPrimitive.Popup.Props & { backdropClassName?: string }) {
   return (
     <DialogPrimitive.Portal data-slot="dialog-portal">
       <DialogPrimitive.Backdrop
         data-slot="dialog-overlay"
-        className="fixed inset-0 z-50 bg-black/10 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0 supports-backdrop-filter:backdrop-blur-xs"
+        className={cn(
+          "fixed inset-0 z-50 bg-black/10 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0 supports-backdrop-filter:backdrop-blur-xs",
+          backdropClassName
+        )}
       />
       <DialogPrimitive.Popup
         data-slot="dialog-content"

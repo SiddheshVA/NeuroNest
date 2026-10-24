@@ -7,6 +7,7 @@ import { BookingStatusChip } from "@/components/bookings/booking-status-chip";
 import { Container } from "@/components/layout/container";
 import { BackLink } from "@/components/navigation/back-link";
 import { ConfirmDialog, ErrorNotice, LoadingBlock, primaryButtonClass, secondaryButtonClass } from "@/components/pro/pro-ui";
+import { SessionReviewControl } from "@/components/reviews/session-review-control";
 import { CrisisResourcesBox } from "@/components/shared/crisis-resources-box";
 import {
   acceptProposal,
@@ -26,6 +27,7 @@ import {
 import { payForBooking } from "@/lib/razorpay-checkout";
 import { formatIstDate, formatIstDateTime } from "@/lib/ist-time";
 import { CREDENTIAL_TYPE_LABELS, type CredentialType } from "@/lib/professionals-client";
+import { getReviewableBookings, type MyReview, type ReviewableBooking } from "@/lib/reviews-client";
 import { loginHref } from "@/lib/safe-redirect";
 import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
@@ -174,9 +176,14 @@ function BookingItem({
   onCancel,
   onAccept,
   onPay,
+  review,
+  onReviewChanged,
 }: {
   booking: BookingView;
   now: number;
+  /** Set only for a confirmed appointment whose session has ended: it can be rated (or already was). */
+  review?: ReviewableBooking;
+  onReviewChanged: (bookingId: string, review: MyReview | null) => void;
   /** The id of the booking being paid for, if any: every Pay now is disabled meanwhile. */
   paying: string | null;
   onCancel: (target: Target) => void;
@@ -248,6 +255,10 @@ function BookingItem({
           You shared: {b.sharedAssessment.instrumentLabel}, score {b.sharedAssessment.score},{" "}
           {b.sharedAssessment.severityBand}, on {formatIstDate(b.sharedAssessment.completedAt)}.
         </p>
+      ) : null}
+
+      {review ? (
+        <SessionReviewControl entry={review} onChanged={(next) => onReviewChanged(b.id, next)} />
       ) : null}
 
       {CANCELLABLE.includes(status) ? (
@@ -380,7 +391,25 @@ export default function AppointmentsPage() {
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [toAccept, setToAccept] = useState<BookingView | null>(null);
   const [accepting, setAccepting] = useState(false);
+  // Past confirmed sessions that can be (or were) rated, by booking id. Only adds the rating control; if it
+  // fails to load, the list works exactly as before.
+  const [reviewable, setReviewable] = useState<Record<string, ReviewableBooking>>({});
   const now = useNow();
+
+  useEffect(() => {
+    let cancelled = false;
+    getReviewableBookings()
+      .then((items) => !cancelled && setReviewable(Object.fromEntries(items.map((item) => [item.bookingId, item]))))
+      .catch(() => !cancelled && setReviewable({}));
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadCount]);
+
+  const reviewChanged = (bookingId: string, review: MyReview | null) =>
+    setReviewable((current) =>
+      current[bookingId] ? { ...current, [bookingId]: { ...current[bookingId], review, canReview: review === null } } : current,
+    );
 
   useEffect(() => {
     let cancelled = false;
@@ -546,6 +575,8 @@ export default function AppointmentsPage() {
                   onCancel={setToCancel}
                   onAccept={setToAccept}
                   onPay={(target) => void pay(target)}
+                  review={reviewable[booking.id]}
+                  onReviewChanged={reviewChanged}
                 />
               ))}
             </ul>

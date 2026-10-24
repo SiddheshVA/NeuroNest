@@ -16,6 +16,7 @@
 
 import { apiFetch } from "@/lib/api";
 import { getAuthToken } from "@/lib/clerkAuthBridge";
+import { CREDENTIAL_TYPE_LABELS, CREDENTIAL_TYPES, type CredentialType } from "@/lib/professionals-client";
 
 export interface ConversationSummary {
   id: string;
@@ -142,6 +143,8 @@ interface BackendSafetyMeta {
   recommendedInstrument: string | null;
   crisisResources: BackendCrisisResource[] | null;
   earlierRiskInConversation?: boolean;
+  /** Tier 4 only: the directory credential type that fits (PSYCHIATRIST, PSYCHOLOGIST, COUNSELOR). */
+  professionalType?: string | null;
 }
 
 async function parseJsonOrThrow<T>(res: Response, conversationId?: string): Promise<T> {
@@ -241,6 +244,28 @@ function assessmentCard(instrument: string | null, priority: number): NuroRecomm
   };
 }
 
+/** The Find Professional card: filtered to one kind of professional when Neuro picked one. */
+function professionalCard(professionalType: string | null | undefined): NuroRecommendation {
+  if (professionalType && (CREDENTIAL_TYPES as readonly string[]).includes(professionalType)) {
+    const kind = CREDENTIAL_TYPE_LABELS[professionalType as CredentialType].toLowerCase();
+    return {
+      type: "PROFESSIONAL",
+      title: `Find a ${kind}`,
+      description: `Verified ${kind}s you can compare and book.`,
+      // The directory list, filtered by type; never a single profile.
+      route: `/find-professional?type=${professionalType}`,
+      priority: 0,
+    };
+  }
+  return {
+    type: "PROFESSIONAL",
+    title: "Find a professional",
+    description: "Counsellors, psychologists and psychiatrists who can support you.",
+    route: "/find-professional",
+    priority: 0,
+  };
+}
+
 function toRecommendations(res: BackendSafetyMeta): NuroRecommendation[] {
   // A crisis shows helplines instead (crisisContacts), never ordinary suggestions.
   if (res.riskFlag) return [];
@@ -250,13 +275,7 @@ function toRecommendations(res: BackendSafetyMeta): NuroRecommendation[] {
       return [assessmentCard(res.recommendedInstrument, 0)];
     case "find_professional":
       return [
-        {
-          type: "PROFESSIONAL",
-          title: "Find a professional",
-          description: "Counsellors, psychologists and psychiatrists who can support you.",
-          route: "/find-professional",
-          priority: 0,
-        },
+        professionalCard(res.professionalType),
         ...(res.recommendedInstrument ? [assessmentCard(res.recommendedInstrument, 1)] : []),
       ];
     case "relaxation":

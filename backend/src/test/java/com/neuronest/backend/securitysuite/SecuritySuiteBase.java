@@ -35,6 +35,8 @@ import com.neuronest.backend.pro.ClerkBackendClient;
 import com.neuronest.backend.pro.ProBookingService;
 import com.neuronest.backend.pro.ProDocumentService;
 import com.neuronest.backend.pro.ProEarningsService;
+import com.neuronest.backend.review.ProfessionalReviewRepository;
+import com.neuronest.backend.review.ReviewService;
 import com.neuronest.backend.pro.ProDocumentStorage;
 import com.neuronest.backend.pro.ProHomeService;
 import com.neuronest.backend.pro.ProProfileService;
@@ -93,7 +95,7 @@ import java.util.UUID;
         ProBookingService.class, ProHomeService.class, ProProfileService.class, ProDocumentService.class,
         ProDocumentStorage.class, ProRegistrationRateLimiter.class,
         AdminProfessionalService.class, AdminVerificationService.class, AdminBookingService.class,
-        AdminBookingQueries.class, AdminSuspensionService.class, SecuritySuiteBase.SuiteBeans.class})
+        AdminBookingQueries.class, AdminSuspensionService.class, ReviewService.class, SecuritySuiteBase.SuiteBeans.class})
 abstract class SecuritySuiteBase {
 
     @DynamicPropertySource
@@ -165,6 +167,8 @@ abstract class SecuritySuiteBase {
     UserRepository users;
     @Autowired
     PaymentRepository payments;
+    @Autowired
+    ProfessionalReviewRepository reviews;
 
     static final JsonMapper JSON = JsonMapper.builder().build();
 

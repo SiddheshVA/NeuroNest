@@ -3,6 +3,7 @@ import { useAuth } from "@clerk/clerk-react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE } from "./api";
 import type { WeeklyHours } from "./weekly-hours";
+import type { ReviewPage } from "./professionals-client";
 import type {
   ConfirmBookingBody,
   DeclineBookingBody,
@@ -400,11 +401,21 @@ export function useProApi() {
         normalizeProEarnings(
           await request<ProEarnings>(`/pro/earnings?${new URLSearchParams({ page: String(page), size: String(size) })}`),
         ),
+      // The professional's own visible reviews and average, read-only (who wrote them is never sent).
+      reviews: (page: number, size: number) =>
+        request<ProReviews>(`/pro/me/reviews?${new URLSearchParams({ page: String(page), size: String(size) })}`),
     }),
     [request],
   );
 
   return { api, disabled };
+}
+
+/** GET /api/pro/me/reviews. */
+export interface ProReviews {
+  ratingAvg: number | null;
+  ratingCount: number;
+  reviews: ReviewPage;
 }
 
 // ---- Upload checks done in the browser before sending (the server checks again) ----

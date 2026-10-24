@@ -10,7 +10,7 @@ import {
   type PublicProfessional,
 } from "@/lib/professionals-client";
 import { summarizeDays } from "@/lib/weekly-hours";
-import { CredentialsChip, ProfessionalAvatar } from "@/components/professionals/professional-bits";
+import { CredentialsChip, ProfessionalAvatar, RatingSummary } from "@/components/professionals/professional-bits";
 
 // label is read to screen readers only; omit it when the visible text already names the detail.
 function Detail({ icon: Icon, label, children }: { icon: LucideIcon; label?: string; children: string }) {
@@ -45,6 +45,7 @@ function ProfessionalCard({ professional }: { professional: PublicProfessional }
             {CREDENTIAL_TYPE_LABELS[professional.credentialType] ?? professional.credentialType}
           </p>
           <CredentialsChip professional={professional} />
+          <RatingSummary ratingAvg={professional.ratingAvg} ratingCount={professional.ratingCount} className="mt-0.5" />
         </div>
       </div>
 

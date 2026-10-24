@@ -7,6 +7,8 @@ import { getBookingSummary, METHOD_LABELS, type BookingSummary } from "@/lib/boo
 import { formatIstDateTime, todayInIndia } from "@/lib/ist-time";
 import { CREDENTIAL_TYPE_LABELS, type CredentialType } from "@/lib/professionals-client";
 import { cn } from "@/lib/utils";
+import { DashboardSectionHeader } from "@/components/dashboard/dashboard-section-header";
+import { RecentSessions } from "@/components/dashboard/recent-sessions";
 
 type State = { status: "loading" } | { status: "error" } | { status: "ready"; summary: BookingSummary };
 
@@ -44,18 +46,14 @@ export function AppointmentsSummary() {
 
   return (
     <section className="rounded-[28px] border border-[#E5E8E1] bg-white p-6 shadow-xs sm:p-8" aria-labelledby="your-appointments">
-      <div className="mb-5 flex items-center gap-2">
-        <CalendarClock className="size-5 text-[#233E33]" aria-hidden="true" />
-        <h2 id="your-appointments" className="text-lg font-semibold">
-          Your appointments
-        </h2>
-      </div>
+      <DashboardSectionHeader icon={CalendarClock} title="Your appointments" id="your-appointments" />
 
       {state.status === "loading" ? (
         <div className="grid gap-4 md:grid-cols-[3fr_2fr]" aria-busy="true">
           <span className="sr-only">Loading your appointments.</span>
-          <div className="h-40 animate-pulse rounded-2xl bg-[#EEF0EA]" aria-hidden="true" />
-          <div className="h-40 animate-pulse rounded-2xl bg-[#EEF0EA]" aria-hidden="true" />
+          {/* Static placeholders: no shimmer. */}
+          <div className="h-40 rounded-2xl bg-[#F5F7F2]" aria-hidden="true" />
+          <div className="h-40 rounded-2xl bg-[#F5F7F2]" aria-hidden="true" />
         </div>
       ) : state.status === "error" ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
@@ -66,7 +64,7 @@ export function AppointmentsSummary() {
               setState({ status: "loading" });
               setReloadCount((n) => n + 1);
             }}
-            className="font-medium underline underline-offset-4"
+            className="cursor-pointer rounded-sm font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             Try again
           </button>
@@ -103,6 +101,8 @@ export function AppointmentsSummary() {
           </div>
         </div>
       )}
+
+      <RecentSessions />
     </section>
   );
 }
@@ -115,7 +115,7 @@ function NextAppointmentCard({ next }: { next: BookingSummary["nextAppointment"]
         <p className="text-sm text-[#4A5750]">You have no upcoming appointments.</p>
         <Link
           href="/professionals"
-          className="inline-flex items-center rounded-full bg-[#233E33] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#192E26]"
+          className="inline-flex items-center rounded-full bg-[#233E33] px-5 py-2.5 text-sm font-medium text-white outline-none transition-colors duration-150 hover:bg-[#192E26] focus-visible:ring-3 focus-visible:ring-ring/50"
         >
           Find a professional
         </Link>
@@ -137,7 +137,7 @@ function NextAppointmentCard({ next }: { next: BookingSummary["nextAppointment"]
       </div>
       {p ? (
         <div className="flex flex-col">
-          <Link href={`/professionals/${p.id}`} className="text-base font-semibold text-[#1C352D] underline-offset-4 hover:underline">
+          <Link href={`/professionals/${p.id}`} className="rounded-sm text-base font-semibold text-[#1C352D] underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50">
             {p.fullName}
           </Link>
           <span className="text-sm text-[#4A5750]">{[type, p.city].filter(Boolean).join(", ")}</span>
@@ -147,7 +147,10 @@ function NextAppointmentCard({ next }: { next: BookingSummary["nextAppointment"]
       )}
       <p className="text-sm font-medium">{formatIstDateTime(next.scheduledTime)}</p>
       <MeetingLine next={next} />
-      <Link href="/appointments" className="w-fit text-sm font-medium text-[#233E33] underline underline-offset-4">
+      <Link
+        href="/appointments"
+        className="w-fit rounded-sm text-sm font-medium text-[#233E33] underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
         View all my appointments
       </Link>
     </div>
@@ -203,7 +206,7 @@ function Counter({
     <Link
       href="/appointments"
       className={cn(
-        "flex flex-col gap-1 rounded-2xl p-4 transition-colors",
+        "flex flex-col gap-1 rounded-2xl p-4 outline-none transition-colors duration-150 focus-visible:ring-3 focus-visible:ring-ring/50",
         highlight ? "border border-amber-300 bg-amber-50 hover:bg-amber-100" : "bg-[#FBF9F4] hover:bg-[#F3F1EA]",
       )}
     >

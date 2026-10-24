@@ -15,6 +15,8 @@ import java.util.List;
  *       risk-flagged (calm banner, gentle check-in). Worked out from saved messages, not by
  *       the classifier.</li>
  *   <li>{@code crisisResources}: set when either is true, always from CrisisResources.</li>
+ *   <li>{@code professionalType}: on tier 4 only, the kind of professional that fits, as a
+ *       directory credential type (PSYCHIATRIST, PSYCHOLOGIST, COUNSELOR); null when none.</li>
  * </ul>
  */
 public record SafetyAssessment(
@@ -24,7 +26,8 @@ public record SafetyAssessment(
         String recommendedAction,
         String recommendedInstrument,
         List<CrisisResource> crisisResources,
-        boolean earlierRiskInConversation
+        boolean earlierRiskInConversation,
+        String professionalType
 ) {
     public static final String SEEK_HELP = "seek_help";
     public static final String ASSESSMENT = "assessment";
@@ -38,7 +41,7 @@ public record SafetyAssessment(
                             String recommendedAction, String recommendedInstrument,
                             List<CrisisResource> crisisResources) {
         this(riskFlag, riskReason, recommendationTier, recommendedAction, recommendedInstrument,
-                crisisResources, false);
+                crisisResources, false, null);
     }
 
     /** Copy noting whether an earlier message in this conversation was risk-flagged. */
@@ -48,6 +51,12 @@ public record SafetyAssessment(
         }
         List<CrisisResource> resources = riskFlag || earlierRisk ? CrisisResources.INDIA_RESOURCES : null;
         return new SafetyAssessment(riskFlag, riskReason, recommendationTier, recommendedAction,
-                recommendedInstrument, resources, earlierRisk);
+                recommendedInstrument, resources, earlierRisk, professionalType);
+    }
+
+    /** Copy with the kind of professional that fits (null for none). */
+    public SafetyAssessment withProfessionalType(String type) {
+        return new SafetyAssessment(riskFlag, riskReason, recommendationTier, recommendedAction,
+                recommendedInstrument, crisisResources, earlierRiskInConversation, type);
     }
 }

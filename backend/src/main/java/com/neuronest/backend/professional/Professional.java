@@ -1,9 +1,11 @@
 package com.neuronest.backend.professional;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -112,6 +114,15 @@ public class Professional {
 
     @Column(name = "is_sample_data", nullable = false)
     private boolean sampleData = false;
+
+    // Written only by ProfessionalReviewRepository.refreshRating (V14), from VISIBLE reviews. Read-only here,
+    // so saving a profile or admin form can never overwrite them with stale values.
+    @Column(name = "rating_avg", precision = 3, scale = 2, insertable = false, updatable = false)
+    private BigDecimal ratingAvg;
+
+    @ColumnDefault("0")
+    @Column(name = "rating_count", nullable = false, insertable = false, updatable = false)
+    private int ratingCount;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "verification_status", nullable = false)
@@ -245,6 +256,10 @@ public class Professional {
     public void setActive(boolean active) { this.active = active; }
 
     public boolean isSampleData() { return sampleData; }
+
+    /** Average of the visible reviews, or null when there are none. */
+    public BigDecimal getRatingAvg() { return ratingAvg; }
+    public int getRatingCount() { return ratingCount; }
     public void setSampleData(boolean sampleData) { this.sampleData = sampleData; }
 
     public VerificationStatus getVerificationStatus() { return verificationStatus; }

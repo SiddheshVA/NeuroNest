@@ -17,6 +17,7 @@ import Typography from "@mui/material/Typography";
 import { AdminApiError, createProfessional, getProfessional, updateProfessional } from "./admin-api";
 import { formatDate, formatDateTime } from "./format";
 import { SampleChip, VerificationStatusChip } from "./VerificationStatusChip";
+import { ReviewsPanel } from "./ReviewsPanel";
 import { SuspensionActions } from "./SuspensionActions";
 import { WeeklyHoursReadOnly } from "./WeeklyHoursReadOnly";
 import {
@@ -490,6 +491,8 @@ export function ProfessionalFormPage() {
 
         <VerificationPanel record={record} onChanged={setRecord} />
       </Box>
+
+      {isEdit && record ? <ReviewsPanel professionalId={record.id} /> : null}
     </Stack>
   );
 }

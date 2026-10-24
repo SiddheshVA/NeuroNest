@@ -51,7 +51,38 @@ export interface PublicProfessional {
   credentialsLabel: string;
   /** True only when the listing can take booking requests. */
   bookable: boolean;
+  /** Average of the visible reviews, or null when there are none yet (shown as "New"). */
+  ratingAvg: number | null;
+  ratingCount: number;
 }
+
+/** Directory sort options (the API's sort parameter). No sort keeps the default order, by name. */
+export const DIRECTORY_SORTS = ["TOP_RATED", "MOST_REVIEWED", "LOWEST_FEE", "MOST_EXPERIENCED"] as const;
+export type DirectorySort = (typeof DIRECTORY_SORTS)[number];
+
+export const DIRECTORY_SORT_LABELS: Record<DirectorySort, string> = {
+  TOP_RATED: "Top rated",
+  MOST_REVIEWED: "Most reviewed",
+  LOWEST_FEE: "Lowest fee",
+  MOST_EXPERIENCED: "Most experienced",
+};
+
+/** One visible review, as GET /api/professionals/{id}/reviews returns it. month is "YYYY-MM". */
+export interface PublicReview {
+  rating: number;
+  comment: string | null;
+  month: string;
+}
+
+export interface ReviewPage {
+  items: PublicReview[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export const REVIEWS_PAGE_SIZE = 5;
 
 /** GET /api/professionals/{id}/availability. Slots are ISO date-times with the +05:30 offset. */
 export interface ProfessionalAvailability {
@@ -80,6 +111,7 @@ export interface ProfessionalFilters {
   city?: string;
   language?: string;
   mode?: SearchMode | "";
+  sort?: DirectorySort | "";
   page?: number;
   size?: number;
 }
@@ -123,6 +155,7 @@ export function searchProfessionals(filters: ProfessionalFilters, signal?: Abort
   if (filters.city) params.set("city", filters.city);
   if (filters.language) params.set("language", filters.language);
   if (filters.mode) params.set("mode", filters.mode);
+  if (filters.sort) params.set("sort", filters.sort);
   params.set("page", String(filters.page ?? 0));
   params.set("size", String(filters.size ?? DIRECTORY_PAGE_SIZE));
   return getJson<ProfessionalPage>(`/professionals?${params}`, signal);
@@ -136,6 +169,28 @@ export function getPublicProfessional(id: string, signal?: AbortSignal) {
 export function getProfessionalAvailability(id: string, from: string, to: string, signal?: AbortSignal) {
   const params = new URLSearchParams({ from, to });
   return getJson<ProfessionalAvailability>(`/professionals/${encodeURIComponent(id)}/availability?${params}`, signal);
+}
+
+/** Visible reviews of a listed professional, newest first. Never says who wrote them. */
+export function getProfessionalReviews(id: string, page: number, signal?: AbortSignal) {
+  const params = new URLSearchParams({ page: String(page), size: String(REVIEWS_PAGE_SIZE) });
+  return getJson<ReviewPage>(`/professionals/${encodeURIComponent(id)}/reviews?${params}`, signal);
+}
+
+/** "4.8" (one decimal). */
+export function formatRating(avg: number): string {
+  return avg.toFixed(1);
+}
+
+/** "October 2026" from "2026-10". */
+export function formatReviewMonth(month: string): string {
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (!year || !monthNumber) return month;
+  return new Date(Date.UTC(year, monthNumber - 1, 1)).toLocaleDateString("en-IN", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 export function getProfessionalMeta(signal?: AbortSignal) {

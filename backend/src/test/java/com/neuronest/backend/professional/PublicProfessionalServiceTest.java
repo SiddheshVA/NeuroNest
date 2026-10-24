@@ -80,7 +80,7 @@ class PublicProfessionalServiceTest {
         p.setCity("Pune");
         p.setLanguages(List.of("English"));
         when(repository.findVisibleById(eq(id), any())).thenReturn(Optional.of(p));
-        when(repository.search(any(), any(), any(), any(), any(), any(), any()))
+        when(repository.search(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(p), PageRequest.of(0, 12), 1));
 
         var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
@@ -94,12 +94,25 @@ class PublicProfessionalServiceTest {
     @Test
     void searchNormalisesFiltersAndUsesTodayInIndia() {
         Page<Professional> empty = new PageImpl<>(List.of(), PageRequest.of(0, 12), 0);
-        when(repository.search(any(), any(), any(), any(), any(), any(), any())).thenReturn(empty);
+        when(repository.search(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(empty);
 
         service.search(" counselor ", " Pune ", " hindi ", "online", " 50%_off ", 0, 12);
 
         verify(repository).search(eq(TODAY_IST), eq("COUNSELOR"), eq("Pune"), eq("ONLINE"), eq("hindi"),
-                eq("%50\\%\\_off%"), eq(PageRequest.of(0, 12)));
+                eq("%50\\%\\_off%"), eq(null), eq(PageRequest.of(0, 12)));
+    }
+
+    @Test
+    void sortIsOptionalCaseInsensitiveAndValidated() {
+        Page<Professional> empty = new PageImpl<>(List.of(), PageRequest.of(0, 12), 0);
+        when(repository.search(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(empty);
+
+        service.search(null, null, null, null, null, " top_rated ", 0, 12);
+        verify(repository).search(any(), any(), any(), any(), any(), any(), eq("TOP_RATED"), any());
+
+        assertThatThrownBy(() -> service.search(null, null, null, null, null, "best", 0, 12))
+                .isInstanceOf(ApiValidationException.class)
+                .hasMessageContaining("TOP_RATED, MOST_REVIEWED, LOWEST_FEE, MOST_EXPERIENCED");
     }
 
     @Test

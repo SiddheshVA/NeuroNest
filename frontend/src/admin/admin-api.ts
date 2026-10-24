@@ -2,6 +2,7 @@ import { API_BASE } from "@/lib/api";
 import { list, normalizeTotals } from "@/lib/money";
 import type {
   AdminPaymentItem,
+  AdminReview,
   AdminPaymentSummary,
   RefundNeededItem,
   AdminBookingItem,
@@ -285,6 +286,20 @@ export function getResponsiveness(days: number, page: number, size: number) {
   return adminRequest<PageResponse<ResponsivenessItem>>(
     `/admin/professionals/responsiveness?days=${days}&page=${page}&size=${size}`,
   );
+}
+
+export function listProfessionalReviews(id: string, page: number, size: number) {
+  return adminRequest<PageResponse<AdminReview>>(
+    `${professionalPath(id)}/reviews?${new URLSearchParams({ page: String(page), size: String(size) })}`,
+  );
+}
+
+/** Hides (or shows again) one review, with a reason. Reviews are never deleted. */
+export function moderateReview(reviewId: string, action: "hide" | "unhide", reason: string) {
+  return adminRequest<AdminReview>(`/admin/reviews/${encodeURIComponent(reviewId)}/${action}`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
 }
 
 export function suspendProfessional(id: string, note: string) {

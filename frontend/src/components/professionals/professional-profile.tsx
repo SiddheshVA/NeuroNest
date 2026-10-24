@@ -14,7 +14,13 @@ import {
 
 import { Container } from "@/components/layout/container";
 import { BookingSection, BookingStatusCard } from "@/components/professionals/booking-section";
-import { CredentialsChip, DirectoryDisclaimer, ProfessionalAvatar } from "@/components/professionals/professional-bits";
+import {
+  CredentialsChip,
+  DirectoryDisclaimer,
+  ProfessionalAvatar,
+  RatingSummary,
+} from "@/components/professionals/professional-bits";
+import { ProfessionalReviews } from "@/components/professionals/professional-reviews";
 import { WeeklyAvailabilityTable } from "@/components/professionals/weekly-availability";
 import {
   CONSULTATION_MODE_LABELS,
@@ -158,6 +164,16 @@ function ProfileBody({ professional: p }: { professional: PublicProfessional }) 
             {CREDENTIAL_TYPE_LABELS[p.credentialType] ?? p.credentialType}
           </p>
           <CredentialsChip professional={p} />
+          {p.ratingCount > 0 ? (
+            <a
+              href="#reviews"
+              className="w-fit rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <RatingSummary ratingAvg={p.ratingAvg} ratingCount={p.ratingCount} />
+            </a>
+          ) : (
+            <RatingSummary ratingAvg={p.ratingAvg} ratingCount={p.ratingCount} />
+          )}
         </div>
       </header>
 
@@ -224,6 +240,8 @@ function ProfileBody({ professional: p }: { professional: PublicProfessional }) 
           <BookingStatusCard professional={p} />
         </aside>
       </div>
+
+      <ProfessionalReviews professional={p} />
 
       <BookingSection professional={p} />
     </>

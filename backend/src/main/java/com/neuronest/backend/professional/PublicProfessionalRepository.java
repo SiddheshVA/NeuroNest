@@ -40,9 +40,27 @@ public interface PublicProfessionalRepository extends Repository<Professional, U
                     WHERE lower(spec) LIKE CAST(:pattern AS text) ESCAPE '\\'))
             """;
 
-    // Real (verified) listings first, then sample listings, then by name; id keeps paging stable.
-    @Query(value = "SELECT p.* FROM professionals p WHERE " + VISIBLE + FILTERS
-            + " ORDER BY p.is_sample_data ASC, lower(p.full_name) ASC, p.id ASC",
+    // C in the smoothed rating: the average of every visible review, or 4.0 while there are none.
+    String PRIOR_RATING = "(SELECT COALESCE(avg(r.rating), 4.0) FROM professional_reviews r WHERE r.status = 'VISIBLE')";
+
+    // (v / (v + 5)) * R + (5 / (v + 5)) * C: few reviews lean towards C, so one 5-star review cannot beat
+    // fifty that average 4.8.
+    String SMOOTHED_RATING = "((p.rating_count::numeric / (p.rating_count + 5)) * COALESCE(p.rating_avg, 0)"
+            + " + (5.0 / (p.rating_count + 5)) * " + PRIOR_RATING + ")";
+
+    // Real (verified) listings first, then sample listings, always. :sort then adds its keys (each CASE is
+    // null, so neutral, for the other sorts); a null :sort keeps the default, by name. Name and id last
+    // keep paging stable.
+    String ORDER = " ORDER BY p.is_sample_data ASC,"
+            + " CASE WHEN CAST(:sort AS text) = 'TOP_RATED' THEN p.rating_count = 0 END ASC,"
+            + " CASE WHEN CAST(:sort AS text) = 'TOP_RATED' THEN " + SMOOTHED_RATING + " END DESC,"
+            + " CASE WHEN CAST(:sort AS text) IN ('TOP_RATED', 'MOST_REVIEWED') THEN p.rating_count END DESC,"
+            + " CASE WHEN CAST(:sort AS text) = 'MOST_REVIEWED' THEN " + SMOOTHED_RATING + " END DESC,"
+            + " CASE WHEN CAST(:sort AS text) = 'LOWEST_FEE' THEN p.consultation_fee END ASC NULLS LAST,"
+            + " CASE WHEN CAST(:sort AS text) = 'MOST_EXPERIENCED' THEN p.years_experience END DESC NULLS LAST,"
+            + " lower(p.full_name) ASC, p.id ASC";
+
+    @Query(value = "SELECT p.* FROM professionals p WHERE " + VISIBLE + FILTERS + ORDER,
             countQuery = "SELECT count(*) FROM professionals p WHERE " + VISIBLE + FILTERS,
             nativeQuery = true)
     Page<Professional> search(@Param("today") LocalDate today,
@@ -51,6 +69,7 @@ public interface PublicProfessionalRepository extends Repository<Professional, U
                               @Param("mode") String mode,
                               @Param("language") String language,
                               @Param("pattern") String pattern,
+                              @Param("sort") String sort,
                               Pageable pageable);
 
     @Query(value = "SELECT p.* FROM professionals p WHERE p.id = :id AND " + VISIBLE, nativeQuery = true)

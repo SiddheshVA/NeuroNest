@@ -9,6 +9,7 @@ import { ProDashboardPage } from "@/components/pro/pro-dashboard";
 import { ProAppointmentsPage } from "@/components/pro/pro-appointments";
 import { ProDaysOffPage } from "@/components/pro/pro-days-off";
 import { ProEarningsPage } from "@/components/pro/pro-earnings";
+import { ProReviewsPage } from "@/components/pro/pro-reviews";
 
 /** Open to everyone: explains the process and shows sign-in; a signed-in visitor goes to /pro/dashboard. */
 export function ProJoinPage() {
@@ -83,6 +84,14 @@ export function ProDaysOffRoute() {
   return (
     <SignedInPro>
       <ProDaysOffPage />
+    </SignedInPro>
+  );
+}
+
+export function ProReviewsRoute() {
+  return (
+    <SignedInPro>
+      <ProReviewsPage />
     </SignedInPro>
   );
 }

@@ -11,5 +11,6 @@ public record ChatAiResponse(
         int recommendationTier,
         String recommendedAction,
         String recommendedInstrument,
-        List<CrisisResource> crisisResources
+        List<CrisisResource> crisisResources,
+        String professionalType
 ) {}

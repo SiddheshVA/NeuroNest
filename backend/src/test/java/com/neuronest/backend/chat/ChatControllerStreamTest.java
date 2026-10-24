@@ -85,6 +85,20 @@ class ChatControllerStreamTest {
     }
 
     @Test
+    void metaCarriesTheProfessionalType() throws Exception {
+        doAnswer(invocation -> {
+            ChatTurnListener listener = invocation.getArgument(1);
+            listener.onMeta(new SafetyAssessment(false, null, 4, "find_professional", null, null)
+                    .withProfessionalType("PSYCHIATRIST"));
+            listener.onDone(UUID.randomUUID());
+            return null;
+        }).when(chatService).runTurn(any(), any());
+
+        assertThat(streamBody()).contains("\"recommendedAction\":\"find_professional\"",
+                "\"professionalType\":\"PSYCHIATRIST\"");
+    }
+
+    @Test
     void turnErrorsBecomeAnErrorEventWithCrisisResources() throws Exception {
         doAnswer(invocation -> {
             ChatTurnListener listener = invocation.getArgument(1);
