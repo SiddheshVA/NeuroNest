@@ -125,12 +125,27 @@ export function medianHoursText(hours: number | null | undefined): string {
 }
 
 /**
- * The status to show. A PENDING or ALTERNATE_PROPOSED request whose expiresAt has passed is shown as
- * EXPIRED (and has no actions), because the server only changes the stored status later.
+ * The status to show. A PENDING or ALTERNATE_PROPOSED request whose expiresAt has passed, or an
+ * AWAITING_PAYMENT booking whose paymentDueAt has passed, is shown as EXPIRED (and has no actions),
+ * because the server only changes the stored status later.
  */
-export function displayStatus(row: Pick<AdminBookingItem, "status" | "expiresAt">, now: number): BookingStatus {
+export function displayStatus(
+  row: Pick<AdminBookingItem, "status" | "expiresAt"> & { paymentDueAt?: string | null },
+  now: number,
+): BookingStatus {
   if ((row.status === "PENDING" || row.status === "ALTERNATE_PROPOSED") && row.expiresAt && Date.parse(row.expiresAt) <= now) {
     return "EXPIRED";
   }
+  if (row.status === "AWAITING_PAYMENT" && row.paymentDueAt && Date.parse(row.paymentDueAt) <= now) {
+    return "EXPIRED";
+  }
   return row.status;
+}
+
+/**
+ * Expired because the person did not pay: the server only sends paymentDueAt for an expired booking when
+ * a time had been agreed. `shown` is the status shown (see displayStatus).
+ */
+export function isUnpaidExpiry(row: Pick<AdminBookingItem, "status" | "paymentDueAt">, shown: BookingStatus): boolean {
+  return shown === "EXPIRED" && (row.status === "AWAITING_PAYMENT" || row.paymentDueAt != null);
 }

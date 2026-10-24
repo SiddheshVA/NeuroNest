@@ -39,6 +39,16 @@ public class PaymentAmounts {
         return payments.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(b.getId(), PaymentStatus.CREATED);
     }
 
+    /**
+     * What was actually paid for a CONFIRMED booking, from its PAID payment row (a receipt). Empty for any
+     * other status, a free session, or an older confirmed booking made before payments existed.
+     */
+    public Optional<Amount> paid(Booking b) {
+        if (b.getStatus() != BookingStatus.CONFIRMED) return Optional.empty();
+        return payments.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(b.getId(), PaymentStatus.PAID)
+                .map(p -> new Amount(p.getAmountPaise(), p.getCurrency()));
+    }
+
     /** The professional's fee in paise, or empty when it is empty or 0 (a free session). */
     public static Optional<Amount> fromFee(Professional p) {
         Integer fee = p == null ? null : p.getConsultationFee();

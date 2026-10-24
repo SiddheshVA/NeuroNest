@@ -227,6 +227,23 @@ export function ProDaysOffPage() {
         </div>
       ) : null}
 
+      {/* Separate from the confirmed appointments: these are accepted but not paid yet, and may still be paid. */}
+      {added && added.affectedAwaitingPayment > 0 ? (
+        <div
+          role="alert"
+          className="flex flex-col gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-4 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
+        >
+          <p className="font-medium">
+            {added.affectedAwaitingPayment} {plural(added.affectedAwaitingPayment, "booking you accepted is", "bookings you accepted are")}{" "}
+            waiting for payment on these dates. The time stays held for the person, and if they pay it becomes an
+            appointment on a day you marked as off.{" "}
+            <Link href="/pro/requests?status=AWAITING_PAYMENT" className="underline underline-offset-4">
+              See the bookings waiting for payment
+            </Link>
+          </p>
+        </div>
+      ) : null}
+
       <section className="flex flex-col gap-3">
         <h2 className="font-heading text-lg font-semibold text-foreground">Your days off</h2>
         {removeError ? <ErrorNotice message={removeError} /> : null}

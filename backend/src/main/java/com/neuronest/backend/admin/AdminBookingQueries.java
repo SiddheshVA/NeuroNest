@@ -84,7 +84,8 @@ public class AdminBookingQueries {
     static final String ITEM_COLUMNS = """
             b.id, b.status, b.created_at, b.expires_at, b.professional_id, p.full_name AS professional_name,
             b.contact_name, b.preferred_mode, b.preferred_method, b.preferred_datetime, b.proposed_datetime,
-            b.responded_by, b.responded_at, b.admin_nudged_at, b.admin_note""";
+            b.responded_by, b.responded_at, b.admin_nudged_at, b.admin_note,
+            CASE WHEN b.status IN ('AWAITING_PAYMENT', 'EXPIRED') THEN b.payment_due_at END AS payment_due_at""";
 
     static final String LIST_FILTERS = """
              WHERE (CAST(:status AS text) IS NULL OR b.status = CAST(:status AS text))
@@ -259,7 +260,7 @@ public class AdminBookingQueries {
                     rs.getString("professional_name"), rs.getString("contact_name"), rs.getString("preferred_mode"),
                     rs.getString("preferred_method"), inIndia(instant(rs, "preferred_datetime")),
                     inIndia(instant(rs, "proposed_datetime")), rs.getString("responded_by"), responded,
-                    instant(rs, "admin_nudged_at"), rs.getString("admin_note"));
+                    instant(rs, "admin_nudged_at"), rs.getString("admin_note"), instant(rs, "payment_due_at"));
         };
     }
 

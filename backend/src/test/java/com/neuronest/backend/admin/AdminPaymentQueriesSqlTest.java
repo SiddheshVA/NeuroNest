@@ -141,6 +141,28 @@ class AdminPaymentQueriesSqlTest {
     }
 
     @Test
+    void theBookingListShowsThePaymentDeadlineForWaitingAndUnpaidExpiredBookingsOnly() {
+        UUID asha = professional("Dr. Asha Rao");
+        UUID waiting = booking(asha, "AWAITING_PAYMENT", "PROFESSIONAL", 4, Duration.ofHours(10));
+        UUID unpaid = booking(asha, "EXPIRED", "PROFESSIONAL", 10, Duration.ofHours(-3));
+        UUID unanswered = booking(asha, "EXPIRED", null, 48, null);
+        UUID paid = booking(asha, "CONFIRMED", "PROFESSIONAL", 6, Duration.ofHours(-30));
+
+        var items = queries.list(null, null, null, NOW, 0, 20).items();
+        java.util.function.Function<UUID, AdminBookingDtos.AdminBookingItem> byId =
+                id -> items.stream().filter(i -> i.id().equals(id)).findFirst().orElseThrow();
+
+        assertThat(byId.apply(waiting).paymentDueAt()).isEqualTo(NOW.plus(Duration.ofHours(10)));
+        assertThat(byId.apply(unpaid).paymentDueAt()).isEqualTo(NOW.minus(Duration.ofHours(3)));
+        assertThat(byId.apply(unanswered).paymentDueAt()).isNull();
+        // Paid bookings keep the column in the database, but the item does not show it.
+        assertThat(byId.apply(paid).paymentDueAt()).isNull();
+        // The status filter accepts the new status.
+        assertThat(queries.list("AWAITING_PAYMENT", null, null, NOW, 0, 20).items())
+                .extracting(AdminBookingDtos.AdminBookingItem::id).containsExactly(waiting);
+    }
+
+    @Test
     void theRefundsListHasOnlyPaidPaymentsForBookingsThatAreNotConfirmed() {
         UUID asha = professional("Dr. Asha Rao");
         UUID expired = booking(asha, "EXPIRED", "PROFESSIONAL", 2, Duration.ofHours(-2));

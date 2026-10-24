@@ -137,6 +137,9 @@ export function AdminLayout() {
             <Button color="inherit" component={NavLink} to="/admin/responsiveness" sx={navLinkSx}>
               Professional responsiveness
             </Button>
+            <Button color="inherit" component={NavLink} to="/admin/payments" sx={navLinkSx}>
+              Payments
+            </Button>
           </Box>
           <Button color="inherit" variant="outlined" startIcon={<LogoutRounded />} onClick={logOut}>
             Log out

@@ -34,6 +34,11 @@ export interface ProBooking {
   /** Only for a CONFIRMED booking whose time is at most 7 days in the past; otherwise null. */
   contactEmail: string | null;
   contactPhone: string | null;
+  /**
+   * ISO-8601 in UTC. The person's deadline to pay while AWAITING_PAYMENT; on an EXPIRED booking it means
+   * the payment window ended unpaid. Null otherwise, including an unanswered request that expired.
+   */
+  paymentDueAt: string | null;
 }
 
 export interface ProBookingPage {
@@ -80,6 +85,7 @@ export const PRO_STATUS_FILTERS: { value: BookingStatus | ""; label: string }[] 
   { value: "PENDING", label: "Waiting for me" },
   { value: "CONFIRMED", label: "Confirmed" },
   { value: "ALTERNATE_PROPOSED", label: "Waiting for the person" },
+  { value: "AWAITING_PAYMENT", label: "Waiting for payment" },
   { value: "DECLINED", label: "Declined" },
   { value: "CANCELLED", label: "Cancelled" },
   { value: "EXPIRED", label: "Expired" },
@@ -111,4 +117,37 @@ export function meetingAddressProblem(value: string): string | null {
     return `Please enter the clinic address in ${MIN_MEETING_ADDRESS} to ${MAX_MEETING_ADDRESS} characters.`;
   }
   return null;
+}
+
+// ---- Payments ----
+
+/** How an unpaid booking that expired is described, apart from an unanswered request. */
+export const UNPAID_EXPIRY_TEXT = "Expired: not paid in time, slot released";
+
+/**
+ * A booking the professional accepted that expired because the person did not pay: the server only sends
+ * paymentDueAt for an expired booking when a time had been agreed. `status` is the status shown.
+ */
+export function isUnpaidExpiry(b: Pick<ProBooking, "status" | "paymentDueAt">, status: BookingStatus): boolean {
+  return status === "EXPIRED" && (b.status === "AWAITING_PAYMENT" || b.paymentDueAt != null);
+}
+
+/** Agreed: the time is set (waiting for the person's payment, or paid). */
+export function isAgreed(b: Pick<ProBooking, "status">): boolean {
+  return b.status === "AWAITING_PAYMENT" || b.status === "CONFIRMED";
+}
+
+/** A missing newer field reads as null and a missing list as [], so an older response never breaks a page. */
+export function normalizeProBooking(b: ProBooking): ProBooking {
+  return { ...b, paymentDueAt: b?.paymentDueAt ?? null };
+}
+
+export function normalizeProBookingPage(p: ProBookingPage): ProBookingPage {
+  return {
+    items: (Array.isArray(p?.items) ? p.items : []).map(normalizeProBooking),
+    page: p?.page ?? 0,
+    size: p?.size ?? 0,
+    totalElements: p?.totalElements ?? 0,
+    totalPages: p?.totalPages ?? 0,
+  };
 }

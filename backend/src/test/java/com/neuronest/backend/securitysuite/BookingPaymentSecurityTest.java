@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import tools.jackson.databind.JsonNode;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -98,8 +99,11 @@ class BookingPaymentSecurityTest extends SecuritySuiteBase {
         for (int i = 0; i < 2; i++) {
             MvcResult verified = as(ownerToken, verifyRequest(ofOwner.getId(), VERIFY_BODY));
             assertThat(verified.getResponse().getStatus()).isEqualTo(200);
-            assertThat(JSON.readTree(verified.getResponse().getContentAsString()).get("status").asString())
-                    .isEqualTo("CONFIRMED");
+            JsonNode view = JSON.readTree(verified.getResponse().getContentAsString());
+            assertThat(view.get("status").asString()).isEqualTo("CONFIRMED");
+            // The receipt comes from the PAID payment row.
+            assertThat(view.get("paidAmount").asLong()).isEqualTo(120_000);
+            assertThat(view.get("paidCurrency").asString()).isEqualTo("INR");
         }
         assertThat(bookings.findById(ofOwner.getId())).get().extracting(Booking::getStatus)
                 .isEqualTo(BookingStatus.CONFIRMED);

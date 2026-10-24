@@ -19,7 +19,15 @@ import {
 import { displayStatus, METHOD_LABELS, type BookingStatus } from "@/lib/bookings-client";
 import { formatIstDate, formatIstDateTime, formatRelative } from "@/lib/ist-time";
 import { ProApiError, useProApi } from "@/lib/pro-client";
-import { PRO_STATUS_FILTERS, PRO_STATUS_LABELS, type ProBooking, type ProBookingPage } from "@/lib/pro-bookings";
+import {
+  isAgreed,
+  isUnpaidExpiry,
+  PRO_STATUS_FILTERS,
+  PRO_STATUS_LABELS,
+  UNPAID_EXPIRY_TEXT,
+  type ProBooking,
+  type ProBookingPage,
+} from "@/lib/pro-bookings";
 import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 
@@ -116,11 +124,11 @@ function RequestRow({ booking: b, now }: { booking: ProBooking; now: number }) {
           <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {b.preferredDatetime ? (
               <Detail
-                label={b.status === "CONFIRMED" ? "Appointment time" : "Requested time"}
+                label={isAgreed(b) ? "Appointment time" : "Requested time"}
                 value={formatIstDateTime(b.preferredDatetime)}
               />
             ) : null}
-            {b.alternateDatetime && b.status !== "CONFIRMED" ? (
+            {b.alternateDatetime && !isAgreed(b) ? (
               <Detail label="Second choice" value={formatIstDateTime(b.alternateDatetime)} />
             ) : null}
             {mode ? <Detail label="Mode" value={mode} /> : null}
@@ -129,6 +137,8 @@ function RequestRow({ booking: b, now }: { booking: ProBooking; now: number }) {
           <p className="text-xs text-muted-foreground">
             Sent {formatRelative(b.createdAt, now)}.
             {status === "PENDING" && b.expiresAt ? ` Expires ${formatRelative(b.expiresAt, now)}.` : ""}
+            {status === "AWAITING_PAYMENT" && b.paymentDueAt ? ` Payment due by ${formatIstDateTime(b.paymentDueAt)}.` : ""}
+            {isUnpaidExpiry(b, status) ? ` ${UNPAID_EXPIRY_TEXT}.` : ""}
           </p>
         </div>
         <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -278,7 +288,9 @@ function statusSentence(b: ProBooking, status: BookingStatus): string {
     case "ALTERNATE_PROPOSED":
       return "You suggested another time. Waiting for the person to accept or cancel.";
     case "AWAITING_PAYMENT":
-      return "You accepted this request. Waiting for the person's payment.";
+      return b.paymentDueAt
+        ? `You accepted this request. Waiting for the person to pay by ${formatIstDateTime(b.paymentDueAt)}.`
+        : "You accepted this request. Waiting for the person's payment.";
     case "CONFIRMED":
       return "This appointment is confirmed.";
     case "DECLINED":
@@ -286,7 +298,7 @@ function statusSentence(b: ProBooking, status: BookingStatus): string {
     case "CANCELLED":
       return "The person cancelled this request.";
     case "EXPIRED":
-      return "This request expired without a confirmed appointment.";
+      return isUnpaidExpiry(b, status) ? `${UNPAID_EXPIRY_TEXT}.` : "This request expired without a confirmed appointment.";
   }
 }
 
@@ -342,7 +354,9 @@ function ContactBlock({ booking: b, onCopied }: { booking: ProBooking; onCopied:
     <p className="text-sm text-foreground">
       {b.status === "CONFIRMED"
         ? "Contact details are no longer shown."
-        : "Contact details are shown after you confirm the appointment."}
+        : b.status === "AWAITING_PAYMENT"
+          ? "Contact details are shown once the person has paid."
+          : "Contact details are shown after you confirm the appointment."}
     </p>
   );
 }
@@ -460,15 +474,18 @@ export function ProRequestPage() {
         <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {b.preferredDatetime ? (
             <Detail
-              label={b.status === "CONFIRMED" ? "Appointment time" : "Requested time"}
+              label={isAgreed(b) ? "Appointment time" : "Requested time"}
               value={formatIstDateTime(b.preferredDatetime)}
             />
           ) : null}
-          {b.alternateDatetime && b.status !== "CONFIRMED" ? (
+          {b.alternateDatetime && !isAgreed(b) ? (
             <Detail label="Second choice" value={formatIstDateTime(b.alternateDatetime)} />
           ) : null}
-          {b.proposedDatetime && b.status !== "CONFIRMED" ? (
+          {b.proposedDatetime && !isAgreed(b) ? (
             <Detail label="Time you suggested" value={formatIstDateTime(b.proposedDatetime)} />
+          ) : null}
+          {status === "AWAITING_PAYMENT" && b.paymentDueAt ? (
+            <Detail label="Payment due by" value={formatIstDateTime(b.paymentDueAt)} />
           ) : null}
           {mode ? <Detail label="Mode" value={mode} /> : null}
           {method && b.preferredMode !== "IN_PERSON" ? <Detail label="Prefers to meet by" value={method} /> : null}
@@ -510,7 +527,7 @@ export function ProRequestPage() {
         <ContactBlock booking={b} onCopied={setSnackbar} />
       </Card>
 
-      {b.status === "CONFIRMED" ? (
+      {isAgreed(b) ? (
         <Card title="Meeting details">
           <dl className="flex flex-col gap-3">
             {b.meetingMethod ? <Detail label="How you will meet" value={METHOD_LABELS[b.meetingMethod]} /> : null}

@@ -488,6 +488,36 @@ class BookingServiceTest {
     }
 
     @Test
+    void aPaidConfirmedBookingShowsWhatWasPaidAndAnOlderOneShowsNothing() {
+        when(professionals.findById(professionalId)).thenReturn(Optional.of(professional));
+        Booking paid = existing(BookingStatus.CONFIRMED, WED_19, null, userId);
+        UUID paidId = UUID.randomUUID();
+        ReflectionTestUtils.setField(paid, "id", paidId);
+        doReturn(Optional.of(paid)).when(bookings).findByIdAndUserId(paidId, userId);
+        Payment payment = new Payment(paidId, "order_1", 80_000, "INR", NOW);
+        payment.markPaid("pay_1", NOW, 10, 8_000, 72_000);
+        when(paymentRepository.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(paidId, PaymentStatus.PAID))
+                .thenReturn(Optional.of(payment));
+
+        BookingView view = service.get(userId, paidId.toString());
+        assertThat(view.paidAmount()).isEqualTo(80_000);
+        assertThat(view.paidCurrency()).isEqualTo("INR");
+        // The amount still to pay is a different field and stays empty once paid.
+        assertThat(view.amount()).isNull();
+
+        // An older confirmed booking (no payment row) shows nothing.
+        Booking legacy = existing(BookingStatus.CONFIRMED, WED_18, null, userId);
+        UUID legacyId = UUID.randomUUID();
+        ReflectionTestUtils.setField(legacy, "id", legacyId);
+        doReturn(Optional.of(legacy)).when(bookings).findByIdAndUserId(legacyId, userId);
+        assertThat(service.get(userId, legacyId.toString()).paidAmount()).isNull();
+
+        // Paid, but the booking is not CONFIRMED (a refund case): no receipt.
+        paid.setStatus(BookingStatus.EXPIRED);
+        assertThat(service.get(userId, paidId.toString()).paidAmount()).isNull();
+    }
+
+    @Test
     void anExpiredUnpaidBookingKeepsItsPaymentDeadlineAndAnUnansweredOneHasNone() {
         Booking unpaid = existing(BookingStatus.EXPIRED, WED_19, null, userId);
         unpaid.setPaymentDueAt(NOW.minusSeconds(3600));

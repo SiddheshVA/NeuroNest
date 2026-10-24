@@ -259,6 +259,25 @@ class ProBookingServiceTest {
     }
 
     @Test
+    void theInboxShowsThePaymentDeadlineWhileWaitingAndAfterAnUnpaidExpiryOnly() {
+        Booking b = online();
+        ProBookingView view = service.confirm(me, b.getId().toString(), confirmBody("PREFERRED", "VIDEO", LINK, null, null));
+        assertThat(view.paymentDueAt()).isEqualTo(NOW.plus(Duration.ofHours(24)));
+        // No contact details before payment.
+        assertThat(view.contactPhone()).isNull();
+
+        b.setStatus(BookingStatus.EXPIRED);
+        assertThat(service.get(me, b.getId().toString()).paymentDueAt()).isEqualTo(NOW.plus(Duration.ofHours(24)));
+        b.setStatus(BookingStatus.CONFIRMED);
+        assertThat(service.get(me, b.getId().toString()).paymentDueAt()).isNull();
+
+        // An unanswered request that expired has no payment deadline.
+        Booking unanswered = online();
+        unanswered.setStatus(BookingStatus.EXPIRED);
+        assertThat(service.get(me, unanswered.getId().toString()).paymentDueAt()).isNull();
+    }
+
+    @Test
     void thePaymentWindowComesFromTheSetting() {
         service.setPaymentWindowHours(48);
         Booking b = online();

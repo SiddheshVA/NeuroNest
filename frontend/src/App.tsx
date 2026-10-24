@@ -18,6 +18,7 @@ import {
   ProAppointmentsRoute,
   ProDashboardRoute,
   ProDaysOffRoute,
+  ProEarningsRoute,
   ProJoinPage,
   ProProfileRoute,
   ProRequestRoute,
@@ -124,6 +125,7 @@ export default function App() {
         <Route path="/pro/profile" element={<ProProfileRoute />} />
         <Route path="/pro/appointments" element={<ProAppointmentsRoute />} />
         <Route path="/pro/days-off" element={<ProDaysOffRoute />} />
+        <Route path="/pro/earnings" element={<ProEarningsRoute />} />
         <Route path="/pro/requests" element={<ProRequestsRoute />} />
         <Route path="/pro/requests/:id" element={<ProRequestRoute />} />
 

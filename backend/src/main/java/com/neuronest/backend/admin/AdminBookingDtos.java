@@ -55,7 +55,10 @@ public final class AdminBookingDtos {
             String respondedBy,
             Instant respondedAt,
             Instant adminNudgedAt,
-            String adminNote) {}
+            String adminNote,
+            // The person's deadline to pay while AWAITING_PAYMENT; on an EXPIRED booking it means it expired
+            // unpaid (an unanswered request has none). Null for every other status.
+            Instant paymentDueAt) {}
 
     public record ResponsivenessItem(
             UUID professionalId,

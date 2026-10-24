@@ -1,3 +1,4 @@
+import type { PaymentTotals } from "@/lib/money";
 import type { WeeklyHours } from "@/lib/weekly-hours";
 
 // Shapes of the admin professionals API. Field names and enum values mirror the backend's
@@ -275,11 +276,20 @@ export interface VerifyRequest {
 
 // ---- Booking requests (AdminBookingDtos) ----
 
-export const BOOKING_STATUSES = ["PENDING", "CONFIRMED", "ALTERNATE_PROPOSED", "DECLINED", "CANCELLED", "EXPIRED"] as const;
+export const BOOKING_STATUSES = [
+  "PENDING",
+  "AWAITING_PAYMENT",
+  "CONFIRMED",
+  "ALTERNATE_PROPOSED",
+  "DECLINED",
+  "CANCELLED",
+  "EXPIRED",
+] as const;
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
 export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   PENDING: "Pending",
+  AWAITING_PAYMENT: "Awaiting payment",
   CONFIRMED: "Confirmed",
   ALTERNATE_PROPOSED: "Waiting for the person",
   DECLINED: "Declined",
@@ -301,7 +311,10 @@ export interface DashboardSummary {
   unansweredOver48h: number;
   pendingTotal: number;
   awaitingUserTotal: number;
+  /** Paid (or free) appointments still to come. */
   upcomingConfirmed: number;
+  /** Accepted by the professional, waiting for the person's payment (deadline not passed). */
+  awaitingPaymentTotal: number;
   professionalsVerifiedActive: number;
   professionalsNeedsInfo: number;
   registrationsExpiringIn30Days: number;
@@ -334,6 +347,11 @@ export interface AdminBookingItem {
   respondedAt: string | null;
   adminNudgedAt: string | null;
   adminNote: string | null;
+  /**
+   * The person's deadline to pay while AWAITING_PAYMENT; on an EXPIRED booking it means it expired unpaid.
+   * Null otherwise, including an unanswered request that expired.
+   */
+  paymentDueAt: string | null;
 }
 
 export interface BookingListFilters {
@@ -353,4 +371,45 @@ export interface ResponsivenessItem {
   pendingNow: number;
   medianHoursToFirstResponse: number | null;
   lastAnsweredAt: string | null;
+}
+
+// ---- Payments and commission (/api/admin/payments...) ----
+
+/** GET /api/admin/payments/summary. Totals in paise; only paid payments whose booking is CONFIRMED. */
+export interface AdminPaymentSummary {
+  /** The current month in India, YYYY-MM. */
+  month: string;
+  allTime: PaymentTotals;
+  thisMonth: PaymentTotals;
+}
+
+/** One PAID payment. counted is false when its booking is not CONFIRMED (a refund is needed). */
+export interface AdminPaymentItem {
+  paymentId: string;
+  bookingId: string;
+  professionalId: string;
+  professionalName: string;
+  sessionTime: string | null;
+  paidAt: string | null;
+  amountPaise: number;
+  commissionPaise: number;
+  professionalSharePaise: number;
+  currency: string;
+  bookingStatus: string;
+  counted: boolean;
+}
+
+/** GET /api/admin/payments/refunds-needed: money taken for a booking that is not CONFIRMED. */
+export interface RefundNeededItem {
+  paymentId: string;
+  bookingId: string;
+  bookingStatus: string;
+  razorpayOrderId: string;
+  razorpayPaymentId: string | null;
+  amountPaise: number;
+  currency: string;
+  paidAt: string | null;
+  professionalId: string;
+  professionalName: string;
+  contactName: string;
 }

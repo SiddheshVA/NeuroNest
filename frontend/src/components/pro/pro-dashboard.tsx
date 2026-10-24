@@ -2,14 +2,14 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
-import { AlertTriangle, CalendarClock, CalendarOff, Clock, Inbox, OctagonAlert } from "lucide-react";
+import { AlertTriangle, CalendarClock, CalendarOff, Clock, CreditCard, Inbox, OctagonAlert } from "lucide-react";
 
 import { ProPortalFrame } from "@/components/pro/pro-portal-nav";
 import { ProStatusBanner } from "@/components/pro/pro-status-banner";
 import { DisabledAccountNotice, ErrorNotice, LoadingBlock } from "@/components/pro/pro-ui";
 import { formatIstDate, formatIstDateTime } from "@/lib/ist-time";
 import { ProApiError, useProApi, type ProMe } from "@/lib/pro-client";
-import type { ProDashboard, ProWarning } from "@/lib/pro-home";
+import type { ProAwaitingPaymentItem, ProDashboard, ProWarning } from "@/lib/pro-home";
 import { cn } from "@/lib/utils";
 
 const RED_WARNINGS = new Set(["REGISTRATION_EXPIRED", "SUSPENDED"]);
@@ -131,6 +131,12 @@ function DashboardContent({ me, summary: s }: { me: ProMe; summary: ProDashboard
         />
         <StatCard icon={Clock} value={s.awaitingUser} label="Waiting for the person" />
         <StatCard
+          icon={CreditCard}
+          value={s.awaitingPayment}
+          label="Accepted, waiting for payment"
+          link={s.awaitingPayment > 0 ? { href: "/pro/requests?status=AWAITING_PAYMENT", label: "See these bookings" } : undefined}
+        />
+        <StatCard
           icon={CalendarClock}
           value={s.upcomingConfirmed}
           label="Upcoming appointments"
@@ -143,6 +149,8 @@ function DashboardContent({ me, summary: s }: { me: ProMe; summary: ProDashboard
           link={{ href: "/pro/days-off", label: "Manage your days off" }}
         />
       </div>
+
+      {s.awaitingPaymentBookings.length > 0 ? <AwaitingPaymentCard items={s.awaitingPaymentBookings} /> : null}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Card title="Next appointment">
@@ -189,6 +197,37 @@ function DashboardContent({ me, summary: s }: { me: ProMe; summary: ProDashboard
   );
 }
 
+/**
+ * Bookings the professional accepted that are waiting for the person's payment: name, time, how they
+ * meet and the deadline. Never a phone number or email (those are shown once it is paid).
+ */
+function AwaitingPaymentCard({ items }: { items: ProAwaitingPaymentItem[] }) {
+  return (
+    <Card title="Accepted, waiting for payment">
+      <p className="text-sm text-muted-foreground">
+        The time is held for the person until their payment deadline. It becomes an appointment once they pay.
+      </p>
+      <ul className="flex flex-col divide-y divide-border">
+        {items.map((item) => (
+          <li key={item.id} className="flex flex-col gap-0.5 py-3 first:pt-1 last:pb-0">
+            <Link
+              href={`/pro/requests/${item.id}`}
+              className="w-fit text-base font-semibold text-foreground underline-offset-4 hover:underline"
+            >
+              {item.contactName}
+            </Link>
+            {item.scheduledTime ? <p className="text-sm text-foreground">{formatIstDateTime(item.scheduledTime)}</p> : null}
+            <p className="text-sm text-muted-foreground">{meetingText(item.meetingMethod)}</p>
+            {item.paymentDueAt ? (
+              <p className="text-sm text-foreground">Pay by {formatIstDateTime(item.paymentDueAt)}</p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 function WarningAlert({ warning }: { warning: ProWarning }) {
   const red = RED_WARNINGS.has(warning.code);
   const Icon = red ? OctagonAlert : AlertTriangle;
@@ -212,6 +251,10 @@ function WarningAlert({ warning }: { warning: ProWarning }) {
         ) : warning.code === "DAY_OFF_CONFLICTS" ? (
           <Link href="/pro/appointments" className="w-fit font-medium underline underline-offset-4">
             See your appointments
+          </Link>
+        ) : warning.code === "DAY_OFF_AWAITING_PAYMENT" ? (
+          <Link href="/pro/requests?status=AWAITING_PAYMENT" className="w-fit font-medium underline underline-offset-4">
+            See the bookings waiting for payment
           </Link>
         ) : warning.code === "REGISTRATION_EXPIRING" || warning.code === "REGISTRATION_EXPIRED" ? (
           <p>{REGISTRATION_SENTENCE}</p>

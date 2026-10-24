@@ -17,7 +17,7 @@ type NavState =
   | { status: "ready"; verified: boolean; pending: number; hasRequests: boolean };
 
 /**
- * The professional portal's tabs: Dashboard, Profile, Requests, Appointments and Days off. A professional
+ * The professional portal's tabs: Dashboard, Profile, Requests, Appointments, Days off and Earnings. A professional
  * who is not verified sees Dashboard and Profile, plus Requests once they have any request. The Requests
  * tab shows how many requests wait for a reply. The counts are loaded again on every page change and
  * when the window gets focus.
@@ -68,7 +68,11 @@ export function ProPortalNav() {
     tabs.push({ href: "/pro/requests", label: "Requests", badge: state.pending });
   }
   if (state.status === "ready" && state.verified) {
-    tabs.push({ href: "/pro/appointments", label: "Appointments" }, { href: "/pro/days-off", label: "Days off" });
+    tabs.push(
+      { href: "/pro/appointments", label: "Appointments" },
+      { href: "/pro/days-off", label: "Days off" },
+      { href: "/pro/earnings", label: "Earnings" },
+    );
   }
 
   return (

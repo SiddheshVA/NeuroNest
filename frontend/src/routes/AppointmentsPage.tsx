@@ -104,6 +104,7 @@ function StatusText({ booking: b, status }: { booking: BookingView; status: Book
       return (
         <div className="flex flex-col gap-1.5 text-sm text-foreground">
           <p className="font-medium">Your appointment is confirmed.</p>
+          {formatAmount(b.paidAmount, b.paidCurrency) ? <p>Paid {formatAmount(b.paidAmount, b.paidCurrency)}</p> : null}
           {b.meetingMethod === "PHONE" ? (
             <p>The professional will call you on the phone number you gave.</p>
           ) : b.meetingMethod === "VIDEO" && b.meetingLink?.startsWith("https://") ? (

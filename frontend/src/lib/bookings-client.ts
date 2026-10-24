@@ -57,6 +57,9 @@ export interface BookingView {
   /** While AWAITING_PAYMENT: what paying charges, in paise (the same amount the order uses). */
   amount: number | null;
   currency: string | null;
+  /** A receipt: what was paid, in paise, for a CONFIRMED booking with a payment. Null otherwise. */
+  paidAmount: number | null;
+  paidCurrency: string | null;
 }
 
 export interface BookingPage {
@@ -125,7 +128,14 @@ function list<T>(value: T[] | null | undefined): T[] {
 }
 
 function normalizeView(b: BookingView): BookingView {
-  return { ...b, paymentDueAt: b.paymentDueAt ?? null, amount: b.amount ?? null, currency: b.currency ?? null };
+  return {
+    ...b,
+    paymentDueAt: b.paymentDueAt ?? null,
+    amount: b.amount ?? null,
+    currency: b.currency ?? null,
+    paidAmount: b.paidAmount ?? null,
+    paidCurrency: b.paidCurrency ?? null,
+  };
 }
 
 function normalizePage(p: BookingPage): BookingPage {
@@ -323,24 +333,7 @@ export const METHOD_LABELS: Record<MeetingMethod, string> = {
   IN_PERSON: "In person",
 };
 
-/**
- * An amount from the server in paise, for example 150000 INR: "₹1,500" (paise shown only when not
- * whole rupees). Null when the amount or currency is unknown.
- */
-export function formatAmount(paise: number | null, currency: string | null): string | null {
-  if (paise == null || !currency || !Number.isFinite(paise)) return null;
-  const whole = paise % 100 === 0;
-  try {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency,
-      minimumFractionDigits: whole ? 0 : 2,
-      maximumFractionDigits: whole ? 0 : 2,
-    }).format(paise / 100);
-  } catch {
-    return null;
-  }
-}
+export { formatAmount } from "./money";
 
 /** How the user asked to meet: "Phone call", "Video call" or "In person". */
 export function requestedMethodLabel(b: Pick<BookingView, "preferredMode" | "preferredMethod">): string | null {

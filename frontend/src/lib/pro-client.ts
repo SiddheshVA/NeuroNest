@@ -11,7 +11,18 @@ import type {
   ProBookingSummary,
   ProposeBookingBody,
 } from "./pro-bookings";
-import type { ProAppointmentPage, ProDashboard, ProDayOff, ProDayOffCreated, ProDayOffRequest } from "./pro-home";
+import { normalizeProBooking, normalizeProBookingPage } from "./pro-bookings";
+import {
+  normalizeDayOffCreated,
+  normalizeProDashboard,
+  normalizeProEarnings,
+  type ProAppointmentPage,
+  type ProDashboard,
+  type ProDayOff,
+  type ProDayOffCreated,
+  type ProDayOffRequest,
+  type ProEarnings,
+} from "./pro-home";
 
 /**
  * Client for the professional self-service API (/api/pro/**). Shapes mirror the backend's ProDtos
@@ -363,24 +374,32 @@ export function useProApi() {
       bookings: (status: string, page: number, size: number) => {
         const params = new URLSearchParams({ page: String(page), size: String(size) });
         if (status) params.set("status", status);
-        return request<ProBookingPage>(`/pro/bookings?${params}`);
+        return request<ProBookingPage>(`/pro/bookings?${params}`).then(normalizeProBookingPage);
       },
       bookingSummary: () => request<ProBookingSummary>("/pro/bookings/summary"),
-      booking: (id: string) => request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}`),
+      booking: (id: string) => request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}`).then(normalizeProBooking),
       confirmBooking: (id: string, body: ConfirmBookingBody) =>
-        request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}/confirm`, { method: "POST", body: JSON.stringify(body) }),
+        request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}/confirm`, { method: "POST", body: JSON.stringify(body) })
+          .then(normalizeProBooking),
       declineBooking: (id: string, body: DeclineBookingBody) =>
-        request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}/decline`, { method: "POST", body: JSON.stringify(body) }),
+        request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}/decline`, { method: "POST", body: JSON.stringify(body) })
+          .then(normalizeProBooking),
       proposeBooking: (id: string, body: ProposeBookingBody) =>
-        request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}/propose`, { method: "POST", body: JSON.stringify(body) }),
+        request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}/propose`, { method: "POST", body: JSON.stringify(body) })
+          .then(normalizeProBooking),
       // Home summary, confirmed appointments and days off.
-      dashboard: () => request<ProDashboard>("/pro/dashboard"),
+      dashboard: () => request<ProDashboard>("/pro/dashboard").then(normalizeProDashboard),
       appointments: (when: "upcoming" | "past", page: number, size: number) =>
         request<ProAppointmentPage>(`/pro/appointments?${new URLSearchParams({ when, page: String(page), size: String(size) })}`),
       daysOff: () => request<ProDayOff[]>("/pro/days-off"),
       addDayOff: (body: ProDayOffRequest) =>
-        request<ProDayOffCreated>("/pro/days-off", { method: "POST", body: JSON.stringify(body) }),
+        request<ProDayOffCreated>("/pro/days-off", { method: "POST", body: JSON.stringify(body) }).then(normalizeDayOffCreated),
       deleteDayOff: (id: string) => request<void>(`/pro/days-off/${encodeURIComponent(id)}`, { method: "DELETE" }),
+      // The signed-in professional's own paid sessions and totals (the server takes them from the token).
+      earnings: async (page: number, size: number) =>
+        normalizeProEarnings(
+          await request<ProEarnings>(`/pro/earnings?${new URLSearchParams({ page: String(page), size: String(size) })}`),
+        ),
     }),
     [request],
   );

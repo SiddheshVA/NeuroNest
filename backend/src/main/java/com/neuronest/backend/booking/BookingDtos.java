@@ -64,13 +64,17 @@ public final class BookingDtos {
             // What paying would charge, in paise, while AWAITING_PAYMENT (PaymentAmounts, the same amount
             // the order endpoint charges); null otherwise.
             Long amount,
-            String currency) {
+            String currency,
+            // A receipt: what was paid, in paise, for a CONFIRMED booking with a PAID payment (read from the
+            // payment row); null otherwise, including free sessions and older bookings without a payment.
+            Long paidAmount,
+            String paidCurrency) {
 
         static BookingView from(Booking b, Professional p) {
-            return from(b, p, null);
+            return from(b, p, null, null);
         }
 
-        static BookingView from(Booking b, Professional p, PaymentAmounts.Amount due) {
+        static BookingView from(Booking b, Professional p, PaymentAmounts.Amount due, PaymentAmounts.Amount paid) {
             boolean confirmed = b.getStatus() == BookingStatus.CONFIRMED;
             return new BookingView(b.getId(), b.getStatus().name(), b.getCreatedAt(), b.getExpiresAt(),
                     b.getPreferredMode(), inIndia(b.getPreferredDatetime()), inIndia(b.getAlternateDatetime()),
@@ -82,7 +86,8 @@ public final class BookingDtos {
                     b.getSharedAssessment(), b.getAssessmentSharedAt(),
                     b.getStatus() == BookingStatus.AWAITING_PAYMENT || b.getStatus() == BookingStatus.EXPIRED
                             ? b.getPaymentDueAt() : null,
-                    due == null ? null : due.paise(), due == null ? null : due.currency());
+                    due == null ? null : due.paise(), due == null ? null : due.currency(),
+                    paid == null || !confirmed ? null : paid.paise(), paid == null || !confirmed ? null : paid.currency());
         }
 
         static OffsetDateTime inIndia(Instant instant) {

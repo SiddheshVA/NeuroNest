@@ -281,10 +281,11 @@ public class BookingService {
         return view(b, professionals.findById(b.getProfessionalId()).orElse(null));
     }
 
-    // While AWAITING_PAYMENT, with the amount paying would charge (PaymentAmounts).
+    // While AWAITING_PAYMENT, with the amount paying would charge; once CONFIRMED, with what was paid
+    // (both from PaymentAmounts).
     private BookingView view(Booking b, Professional p) {
         PaymentAmounts.Amount due = b.getStatus() == BookingStatus.AWAITING_PAYMENT ? amounts.due(b, p).orElse(null) : null;
-        return BookingView.from(b, p, due);
+        return BookingView.from(b, p, due, amounts.paid(b).orElse(null));
     }
 
     // ---- Cancelling ----

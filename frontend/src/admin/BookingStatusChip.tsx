@@ -3,6 +3,7 @@ import { BOOKING_STATUS_LABELS, type BookingStatus } from "./types";
 
 const STATUS_COLORS: Record<BookingStatus, ChipProps["color"]> = {
   PENDING: "warning",
+  AWAITING_PAYMENT: "secondary",
   CONFIRMED: "success",
   ALTERNATE_PROPOSED: "info",
   DECLINED: "error",

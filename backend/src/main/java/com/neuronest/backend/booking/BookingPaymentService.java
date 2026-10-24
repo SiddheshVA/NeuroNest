@@ -170,8 +170,10 @@ public class BookingPaymentService {
                 .orElseThrow(() -> new BookingExceptions.NotFoundException("This booking request was not found."));
     }
 
+    // A confirmed booking's view includes what was paid (its receipt).
     private BookingView view(Booking b) {
-        return BookingView.from(b, professionals.findById(b.getProfessionalId()).orElse(null));
+        return BookingView.from(b, professionals.findById(b.getProfessionalId()).orElse(null), null,
+                amounts.paid(b).orElse(null));
     }
 
     private static Optional<UUID> parseId(String id) {
