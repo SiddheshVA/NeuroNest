@@ -91,7 +91,7 @@ class AdminBookingSecurityTest {
         Instant now = Instant.parse("2026-10-12T04:30:00Z");
         return new AdminBookingItem(UUID.randomUUID(), "PENDING", now, now.plusSeconds(3600), 3, UUID.randomUUID(),
                 "Dr. Asha Rao", "Ravi Kumar", "ONLINE", "VIDEO", OffsetDateTime.parse("2026-10-14T18:00+05:30"), null,
-                null, null, null, null);
+                null, null, null, null, null);
     }
 
     @Test
@@ -116,7 +116,8 @@ class AdminBookingSecurityTest {
         List<String> fields = new ArrayList<>(first.propertyNames());
         assertThat(fields).containsExactlyInAnyOrder("id", "status", "createdAt", "expiresAt", "hoursWaiting",
                 "professionalId", "professionalName", "contactName", "preferredMode", "preferredMethod",
-                "scheduledOrRequestedTime", "proposedDatetime", "respondedBy", "respondedAt", "adminNudgedAt", "adminNote");
+                "scheduledOrRequestedTime", "proposedDatetime", "respondedBy", "respondedAt", "adminNudgedAt", "adminNote",
+                "paymentDueAt");
         assertThat(body).doesNotContain("contactEmail", "contact_email", "contactPhone", "\"note\"", "professionalNote",
                 "sharedAssessment", "meetingLink", "meetingAddress", "userId", "sessionId");
     }

@@ -8,6 +8,10 @@ import com.neuronest.backend.booking.BookingDtos.BookingView;
 import com.neuronest.backend.booking.BookingDtos.CreateBookingRequest;
 import com.neuronest.backend.config.ApiValidationException;
 import com.neuronest.backend.config.ConflictException;
+import com.neuronest.backend.notification.BookingEvent;
+import com.neuronest.backend.payment.Payment;
+import com.neuronest.backend.payment.PaymentRepository;
+import com.neuronest.backend.payment.PaymentStatus;
 import com.neuronest.backend.professional.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,7 +58,9 @@ class BookingServiceTest {
     private final SlotService slots = new SlotService(new AvailabilityService(), bookings, daysOff);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final PublicProfessionalService directory = new PublicProfessionalService(directoryRepository, slots, CLOCK);
-    private final BookingService service = new BookingService(bookings, slots, directory, professionals, accounts, users, assessments, events, CLOCK);
+    private final PaymentRepository paymentRepository = mock(PaymentRepository.class);
+    private final BookingService service = new BookingService(bookings, slots, directory, professionals, accounts, users,
+            assessments, events, new PaymentAmounts(paymentRepository), CLOCK);
 
     private final UUID userId = UUID.randomUUID();
     private final UUID professionalId = UUID.randomUUID();
@@ -171,7 +177,7 @@ class BookingServiceTest {
     @Test
     void aSlotOverlappingAConfirmedBookingIsRejectedAndLeavesTheAvailability() {
         Booking confirmed = existing(BookingStatus.CONFIRMED, WED_19, null, UUID.randomUUID());
-        doReturn(List.of(confirmed)).when(bookings).findInWindow(eq(professionalId), eq(BookingStatus.CONFIRMED), any(), any());
+        doReturn(List.of(confirmed)).when(bookings).findInWindow(eq(professionalId), eq(BookingStatus.BLOCKS_SLOT), any(), any());
 
         assertThatThrownBy(() -> book(WED_19)).isInstanceOf(ConflictException.class)
                 .hasMessage("This time is no longer available. Please choose another time.");
@@ -204,7 +210,7 @@ class BookingServiceTest {
 
     @Test
     void aPendingOrProposedRequestDoesNotRemoveTheSlot() {
-        // Even if the database returned them, only CONFIRMED bookings count.
+        // Even if the database returned them, only AWAITING_PAYMENT and CONFIRMED bookings count.
         doReturn(List.of(existing(BookingStatus.PENDING, WED_19, null, UUID.randomUUID()),
                 existing(BookingStatus.ALTERNATE_PROPOSED, WED_18, WED_19, UUID.randomUUID())))
                 .when(bookings).findInWindow(any(), any(), any(), any());
@@ -212,9 +218,21 @@ class BookingServiceTest {
         assertThat(directory.availability(professionalId.toString(), "2026-10-14", "2026-10-14").days().get(0).slots())
                 .containsExactly("2026-10-14T18:00:00+05:30", "2026-10-14T19:00:00+05:30");
         assertThat(book(WED_19).status()).isEqualTo("PENDING");
-        // And the query itself asks only for CONFIRMED bookings.
-        verify(bookings, atLeastOnce()).findInWindow(eq(professionalId), eq(BookingStatus.CONFIRMED), any(), any());
-        verify(bookings, never()).findInWindow(any(), eq(BookingStatus.PENDING), any(), any());
+        // And the query itself asks only for AWAITING_PAYMENT and CONFIRMED bookings.
+        verify(bookings, atLeastOnce()).findInWindow(eq(professionalId), eq(BookingStatus.BLOCKS_SLOT), any(), any());
+        assertThat(BookingStatus.BLOCKS_SLOT).containsExactlyInAnyOrder(BookingStatus.AWAITING_PAYMENT,
+                BookingStatus.CONFIRMED);
+    }
+
+    @Test
+    void aBookingAwaitingPaymentBlocksItsSlot() {
+        doReturn(List.of(existing(BookingStatus.AWAITING_PAYMENT, WED_19, null, UUID.randomUUID())))
+                .when(bookings).findInWindow(eq(professionalId), eq(BookingStatus.BLOCKS_SLOT), any(), any());
+
+        assertThat(directory.availability(professionalId.toString(), "2026-10-14", "2026-10-14").days().get(0).slots())
+                .containsExactly("2026-10-14T18:00:00+05:30");
+        assertThatThrownBy(() -> book(WED_19)).isInstanceOf(ConflictException.class)
+                .hasMessage("This time is no longer available. Please choose another time.");
     }
 
     @Test
@@ -387,6 +405,129 @@ class BookingServiceTest {
         assertThatThrownBy(() -> service.cancel(userId, bookingId.toString())).isInstanceOf(ConflictException.class)
                 .hasMessage("This booking request can no longer be cancelled. Its status is CANCELLED.");
         verify(bookings, times(1)).saveAndFlush(any());
+    }
+
+    @Test
+    void aBookingAwaitingPaymentCanBeCancelledAndTheProfessionalIsTold() {
+        UUID bookingId = UUID.randomUUID();
+        Booking mine = existing(BookingStatus.AWAITING_PAYMENT, WED_18, null, userId);
+        mine.setPaymentDueAt(NOW.plusSeconds(3600));
+        doReturn(Optional.of(mine)).when(bookings).findByIdForUpdate(bookingId);
+
+        BookingView cancelled = service.cancel(userId, bookingId.toString());
+
+        assertThat(cancelled.status()).isEqualTo("CANCELLED");
+        assertThat(mine.getStatus()).isEqualTo(BookingStatus.CANCELLED);
+        assertThat(mine.getRespondedBy()).isEqualTo("USER");
+        assertThat(cancelled.paymentDueAt()).isNull();
+        verify(events).publishEvent(new BookingEvent(BookingEvent.Type.CANCELLED_BY_USER, mine.getId()));
+        // A paid booking cannot be cancelled here.
+        Booking paid = existing(BookingStatus.CONFIRMED, WED_19, null, userId);
+        UUID paidId = UUID.randomUUID();
+        doReturn(Optional.of(paid)).when(bookings).findByIdForUpdate(paidId);
+        assertThatThrownBy(() -> service.cancel(userId, paidId.toString())).isInstanceOf(ConflictException.class)
+                .hasMessage("This booking request can no longer be cancelled. Its status is CONFIRMED.");
+    }
+
+    @Test
+    void theSummaryListsBookingsAwaitingPaymentAsTheirOwnGroup() {
+        Booking unpaid = existing(BookingStatus.AWAITING_PAYMENT, WED_19, null, userId);
+        ReflectionTestUtils.setField(unpaid, "id", UUID.randomUUID());
+        unpaid.setPreferredMode("ONLINE");
+        unpaid.setMeetingMethod("VIDEO");
+        unpaid.setMeetingLink("https://meet.example.com/PRIVATE-LINK");
+        unpaid.setPaymentDueAt(NOW.plusSeconds(6 * 3600));
+        doReturn(List.of(unpaid)).when(bookings).findByUserIdAndStatusAndPaymentDueAtAfterOrderByPaymentDueAtAscIdAsc(
+                userId, BookingStatus.AWAITING_PAYMENT, NOW);
+        when(professionals.findAllById(List.of(professionalId))).thenReturn(List.of(professional));
+
+        var summary = service.summary(userId);
+
+        assertThat(summary.awaitingPayment()).singleElement().satisfies(a -> {
+            assertThat(a.id()).isEqualTo(unpaid.getId());
+            assertThat(a.scheduledTime()).isEqualTo(OffsetDateTime.parse(WED_19));
+            assertThat(a.paymentDueAt()).isEqualTo(NOW.plusSeconds(6 * 3600));
+            assertThat(a.professional().fullName()).isEqualTo("Dr. Asha Rao");
+        });
+        // The upcoming appointment stays CONFIRMED-only, and no meeting detail is shown before payment.
+        assertThat(summary.nextAppointment()).isNull();
+        verify(bookings).findFirstByUserIdAndStatusAndPreferredDatetimeGreaterThanEqualOrderByPreferredDatetimeAscIdAsc(
+                userId, BookingStatus.CONFIRMED, NOW);
+        assertThat(summary.toString()).doesNotContain("PRIVATE-LINK", "asha@example.com");
+    }
+
+    @Test
+    void aBookingAwaitingPaymentShowsTheAmountTheOrderWouldCharge() {
+        professional.setConsultationFee(1500);
+        when(professionals.findById(professionalId)).thenReturn(Optional.of(professional));
+        when(professionals.findAllById(List.of(professionalId))).thenReturn(List.of(professional));
+        Booking unpaid = existing(BookingStatus.AWAITING_PAYMENT, WED_19, null, userId);
+        UUID id = UUID.randomUUID();
+        ReflectionTestUtils.setField(unpaid, "id", id);
+        unpaid.setPaymentDueAt(NOW.plusSeconds(3600));
+        doReturn(Optional.of(unpaid)).when(bookings).findByIdAndUserId(id, userId);
+        doReturn(List.of(unpaid)).when(bookings).findByUserIdAndStatusAndPaymentDueAtAfterOrderByPaymentDueAtAscIdAsc(
+                userId, BookingStatus.AWAITING_PAYMENT, NOW);
+
+        BookingView view = service.get(userId, id.toString());
+        assertThat(view.amount()).isEqualTo(150_000);
+        assertThat(view.currency()).isEqualTo("INR");
+        assertThat(service.summary(userId).awaitingPayment()).singleElement()
+                .satisfies(a -> assertThat(a.amount()).isEqualTo(150_000));
+
+        // Once an order exists, its amount is shown even if the fee changed since.
+        Payment order = new Payment(id, "order_1", 120_000, "INR", NOW);
+        when(paymentRepository.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(id, PaymentStatus.CREATED))
+                .thenReturn(Optional.of(order));
+        assertThat(service.get(userId, id.toString()).amount()).isEqualTo(120_000);
+        assertThat(service.summary(userId).awaitingPayment().get(0).amount()).isEqualTo(120_000);
+
+        // No amount once it is no longer waiting for payment.
+        unpaid.setStatus(BookingStatus.CONFIRMED);
+        assertThat(service.get(userId, id.toString()).amount()).isNull();
+    }
+
+    @Test
+    void aPaidConfirmedBookingShowsWhatWasPaidAndAnOlderOneShowsNothing() {
+        when(professionals.findById(professionalId)).thenReturn(Optional.of(professional));
+        Booking paid = existing(BookingStatus.CONFIRMED, WED_19, null, userId);
+        UUID paidId = UUID.randomUUID();
+        ReflectionTestUtils.setField(paid, "id", paidId);
+        doReturn(Optional.of(paid)).when(bookings).findByIdAndUserId(paidId, userId);
+        Payment payment = new Payment(paidId, "order_1", 80_000, "INR", NOW);
+        payment.markPaid("pay_1", NOW, 10, 8_000, 72_000);
+        when(paymentRepository.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(paidId, PaymentStatus.PAID))
+                .thenReturn(Optional.of(payment));
+
+        BookingView view = service.get(userId, paidId.toString());
+        assertThat(view.paidAmount()).isEqualTo(80_000);
+        assertThat(view.paidCurrency()).isEqualTo("INR");
+        // The amount still to pay is a different field and stays empty once paid.
+        assertThat(view.amount()).isNull();
+
+        // An older confirmed booking (no payment row) shows nothing.
+        Booking legacy = existing(BookingStatus.CONFIRMED, WED_18, null, userId);
+        UUID legacyId = UUID.randomUUID();
+        ReflectionTestUtils.setField(legacy, "id", legacyId);
+        doReturn(Optional.of(legacy)).when(bookings).findByIdAndUserId(legacyId, userId);
+        assertThat(service.get(userId, legacyId.toString()).paidAmount()).isNull();
+
+        // Paid, but the booking is not CONFIRMED (a refund case): no receipt.
+        paid.setStatus(BookingStatus.EXPIRED);
+        assertThat(service.get(userId, paidId.toString()).paidAmount()).isNull();
+    }
+
+    @Test
+    void anExpiredUnpaidBookingKeepsItsPaymentDeadlineAndAnUnansweredOneHasNone() {
+        Booking unpaid = existing(BookingStatus.EXPIRED, WED_19, null, userId);
+        unpaid.setPaymentDueAt(NOW.minusSeconds(3600));
+        Booking unanswered = existing(BookingStatus.EXPIRED, WED_18, null, userId);
+
+        assertThat(BookingView.from(unpaid, professional).paymentDueAt()).isEqualTo(NOW.minusSeconds(3600));
+        assertThat(BookingView.from(unanswered, professional).paymentDueAt()).isNull();
+        // Paid or cancelled bookings do not carry it.
+        unpaid.setStatus(BookingStatus.CANCELLED);
+        assertThat(BookingView.from(unpaid, professional).paymentDueAt()).isNull();
     }
 
     @Test

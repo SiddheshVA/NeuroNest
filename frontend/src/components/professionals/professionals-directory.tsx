@@ -15,11 +15,14 @@ import {
   CREDENTIAL_TYPE_LABELS,
   CREDENTIAL_TYPES,
   DIRECTORY_PAGE_SIZE,
+  DIRECTORY_SORT_LABELS,
+  DIRECTORY_SORTS,
   getProfessionalMeta,
   ProfessionalsApiError,
   SEARCH_MODES,
   searchProfessionals,
   type CredentialType,
+  type DirectorySort,
   type ProfessionalMeta,
   type ProfessionalPage,
   type SearchMode,
@@ -27,7 +30,7 @@ import {
 
 const EMPTY_MESSAGE = "No professionals match these filters. Try removing a filter.";
 
-type FilterKey = "q" | "type" | "city" | "language" | "mode" | "page";
+type FilterKey = "q" | "type" | "city" | "language" | "mode" | "sort" | "page";
 
 const selectClassName =
   "h-10 w-full min-w-0 rounded-full border border-input bg-card px-3.5 text-sm text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
@@ -37,6 +40,7 @@ function useDirectoryParams() {
   const [params, setParams] = useSearchParams();
   const typeParam = params.get("type") ?? "";
   const modeParam = params.get("mode") ?? "";
+  const sortParam = params.get("sort") ?? "";
   const pageParam = Number(params.get("page"));
 
   const values = {
@@ -45,12 +49,13 @@ function useDirectoryParams() {
     city: params.get("city") ?? "",
     language: params.get("language") ?? "",
     mode: (SEARCH_MODES as readonly string[]).includes(modeParam) ? (modeParam as SearchMode) : "",
+    sort: (DIRECTORY_SORTS as readonly string[]).includes(sortParam) ? (sortParam as DirectorySort) : "",
     // URL pages count from 1 for people; the API counts from 0.
     page: Number.isInteger(pageParam) && pageParam > 1 ? pageParam - 1 : 0,
     urgent: params.get("urgent") === "1",
   } as const;
 
-  // Any filter change returns to the first page. Other parameters (such as urgent) are kept.
+  // Any filter or sort change returns to the first page. Other parameters (such as urgent) are kept.
   function update(changes: Partial<Record<FilterKey, string>>) {
     setParams(
       (current) => {
@@ -72,6 +77,9 @@ function useDirectoryParams() {
       (current) => {
         const next = new URLSearchParams();
         if (current.get("urgent") === "1") next.set("urgent", "1");
+        // The sort is an order, not a filter: clearing the filters keeps it.
+        const sort = current.get("sort");
+        if (sort) next.set("sort", sort);
         return next;
       },
       { replace: true },
@@ -85,14 +93,14 @@ type Loaded = { key: string | null; data: ProfessionalPage | null; error: string
 
 function ProfessionalsDirectory() {
   const { values, update, clearFilters } = useDirectoryParams();
-  const { q, credentialType, city, language, mode, page, urgent } = values;
+  const { q, credentialType, city, language, mode, sort, page, urgent } = values;
 
   const [searchText, setSearchText] = useState(q);
   const [meta, setMeta] = useState<ProfessionalMeta>({ cities: [], languages: [] });
   const [retryCount, setRetryCount] = useState(0);
   const [loaded, setLoaded] = useState<Loaded>({ key: null, data: null, error: null });
 
-  const queryKey = JSON.stringify([q, credentialType, city, language, mode, page, retryCount]);
+  const queryKey = JSON.stringify([q, credentialType, city, language, mode, sort, page, retryCount]);
   const loading = loaded.key !== queryKey;
   const data = loaded.data;
   const error = loading ? null : loaded.error;
@@ -120,7 +128,7 @@ function ProfessionalsDirectory() {
   useEffect(() => {
     const controller = new AbortController();
     searchProfessionals(
-      { q, credentialType, city, language, mode, page, size: DIRECTORY_PAGE_SIZE },
+      { q, credentialType, city, language, mode, sort, page, size: DIRECTORY_PAGE_SIZE },
       controller.signal,
     )
       .then((result) => setLoaded({ key: queryKey, data: result, error: null }))
@@ -135,7 +143,7 @@ function ProfessionalsDirectory() {
         setLoaded((current) => ({ key: queryKey, data: current.data, error: message }));
       });
     return () => controller.abort();
-  }, [queryKey, q, credentialType, city, language, mode, page]);
+  }, [queryKey, q, credentialType, city, language, mode, sort, page]);
 
   // A city or language from a shared link that is no longer offered still shows as selected.
   const cityOptions = city && !meta.cities.includes(city) ? [city, ...meta.cities] : meta.cities;
@@ -259,23 +267,40 @@ function ProfessionalsDirectory() {
           </select>
         </div>
 
-        <div className="flex min-h-5 flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground" aria-live="polite">
-          <span>
+        <div className="flex min-h-5 flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+          <span aria-live="polite">
             {loading && !data
               ? "Loading professionals."
               : data
                 ? `${data.totalElements} ${data.totalElements === 1 ? "professional" : "professionals"} found.`
                 : null}
           </span>
-          {hasFilters ? (
-            <button
-              type="button"
-              onClick={resetAll}
-              className="font-medium text-primary underline-offset-4 hover:underline"
-            >
-              Clear all filters
-            </button>
-          ) : null}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            {hasFilters ? (
+              <button
+                type="button"
+                onClick={resetAll}
+                className="rounded-sm font-medium text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                Clear all filters
+              </button>
+            ) : null}
+            <label className="flex items-center gap-2">
+              <span className="text-foreground">Sort by</span>
+              <select
+                value={sort}
+                onChange={(event) => update({ sort: event.target.value })}
+                className={cn(selectClassName, "w-auto")}
+              >
+                <option value="">Name (A to Z)</option>
+                {DIRECTORY_SORTS.map((option) => (
+                  <option key={option} value={option}>
+                    {DIRECTORY_SORT_LABELS[option]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
 
         {error ? (

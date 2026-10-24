@@ -18,6 +18,7 @@ const BACK_ROUTES: ({ pattern: string } & BackTarget)[] = [
   // ---- Public and user app ----
   { pattern: "/dashboard", parentPath: "/", label: "Home" },
   { pattern: "/appointments", parentPath: "/dashboard", label: "Dashboard" },
+  { pattern: "/dashboard/check-ins/:id", parentPath: "/dashboard", label: "Dashboard" },
   { pattern: "/professionals", parentPath: "/", label: "Home" },
   { pattern: "/professionals/:id", parentPath: "/professionals", label: "Find Professional" },
   { pattern: "/assessment", parentPath: "/", label: "Home" },

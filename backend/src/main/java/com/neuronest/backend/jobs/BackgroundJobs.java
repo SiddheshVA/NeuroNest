@@ -37,15 +37,25 @@ public class BackgroundJobs {
     private final BookingJobStore store;
     private final ApplicationEventPublisher events;
     private final TransactionOperations transactions;
+    /** Extra time after payment_due_at before an unpaid booking expires, for a checkout still finishing. */
+    static final Duration DEFAULT_PAYMENT_GRACE = Duration.ofMinutes(15);
+
     private final Clock clock;
+    private final Duration paymentGrace;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     public BackgroundJobs(BookingJobStore store, ApplicationEventPublisher events, TransactionOperations transactions,
                           Clock clock) {
+        this(store, events, transactions, clock, DEFAULT_PAYMENT_GRACE);
+    }
+
+    public BackgroundJobs(BookingJobStore store, ApplicationEventPublisher events, TransactionOperations transactions,
+                          Clock clock, Duration paymentGrace) {
         this.store = store;
         this.events = events;
         this.transactions = transactions;
         this.clock = clock;
+        this.paymentGrace = paymentGrace;
     }
 
     /** Runs every task once. Returns false when another run was still going and this one was skipped. */
@@ -58,6 +68,7 @@ public class BackgroundJobs {
             // The retry goes first, so requests expired in this run are never retried in the same run.
             task("expiry email retries", this::retryExpiryEmails);
             task("expired requests", this::expireRequests);
+            task("unpaid bookings", this::expireUnpaidBookings);
             task("reminders", this::sendReminders);
             task("expired registrations", this::expireRegistrations);
             log.info("Background jobs: run complete.");
@@ -84,6 +95,14 @@ public class BackgroundJobs {
     int expireRequests() {
         Instant now = clock.instant();
         return claimAndPublish(() -> store.expireOverdueRequests(now, BATCH), BookingEvent.Type.EXPIRED);
+    }
+
+    // Same EXPIRED status and event as an unanswered request, so the slot is released, both sides are
+    // emailed, and the user's email gets the usual one retry. The email wording follows payment_due_at.
+    int expireUnpaidBookings() {
+        Instant now = clock.instant();
+        return claimAndPublish(() -> store.expireUnpaidBookings(now, now.minus(paymentGrace), BATCH),
+                BookingEvent.Type.EXPIRED);
     }
 
     int sendReminders() {

@@ -7,9 +7,14 @@ import com.neuronest.backend.booking.BookingDtos.BookingView;
 import com.neuronest.backend.booking.BookingRepository;
 import com.neuronest.backend.booking.BookingService;
 import com.neuronest.backend.booking.BookingStatus;
+import com.neuronest.backend.booking.PaymentAmounts;
 import com.neuronest.backend.booking.SharedAssessment;
 import com.neuronest.backend.booking.SlotService;
 import com.neuronest.backend.notification.BookingEvent.Type;
+import com.neuronest.backend.payment.PaymentRepository;
+import com.neuronest.backend.payment.Payment;
+import com.neuronest.backend.payment.PaymentStatus;
+import com.neuronest.backend.pro.ProBookingDtos.ConfirmRequest;
 import com.neuronest.backend.pro.ProBookingDtos.DeclineRequest;
 import com.neuronest.backend.pro.ProBookingService;
 import com.neuronest.backend.pro.ProPrincipal;
@@ -77,6 +82,7 @@ class BookingNotificationTest {
     private final BookingRepository bookings = mock(BookingRepository.class, withSettings().defaultAnswer(CALLS_REAL_METHODS));
     private final ProfessionalRepository professionals = mock(ProfessionalRepository.class);
     private final MailRetryScheduler retries = mock(MailRetryScheduler.class);
+    private final PaymentRepository payments = mock(PaymentRepository.class);
     private final PublicProfessionalService directory = mock(PublicProfessionalService.class);
     private final FakeSender sender = new FakeSender();
     private final MailSettings enabled = new MailSettings("noreply@neuronest.example", "app-password", "NeuroNest", BASE_URL + "/");
@@ -122,7 +128,7 @@ class BookingNotificationTest {
 
     private BookingNotificationListener listener(MailSettings settings) {
         return new BookingNotificationListener(bookings, professionals, directory, new BookingEmails(settings), sender,
-                settings, retries, CLOCK);
+                settings, retries, payments, CLOCK);
     }
 
     private List<OutgoingEmail> send(Type type) {
@@ -167,7 +173,7 @@ class BookingNotificationTest {
         confirmedWith("VIDEO", VIDEO_LINK, null);
         for (Type type : Type.values()) send(type);
 
-        assertThat(sender.sent).hasSize(13).allSatisfy(e -> {
+        assertThat(sender.sent).hasSize(15).allSatisfy(e -> {
             assertThat(e.subject()).startsWith("NeuroNest: ");
             assertThat(e.subject().toLowerCase()).doesNotContain("mental", "therapy", "therapist", "psych", "counsel");
             assertThat(e.text()).contains(BookingEmails.FOOTER);
@@ -347,6 +353,114 @@ class BookingNotificationTest {
                 + "confirmed. Open NeuroNest to see the contact details.");
     }
 
+    // ---- payments ----
+
+    private static final Instant PAYMENT_DUE = OffsetDateTime.parse("2026-10-13T10:00:00+05:30").toInstant();
+
+    private void awaitingPaymentWith(String method) {
+        booking.setStatus(BookingStatus.AWAITING_PAYMENT);
+        booking.setPaymentDueAt(PAYMENT_DUE);
+        booking.setMeetingMethod(method);
+        booking.setMeetingLink(VIDEO_LINK);
+        booking.setMeetingAddress(ADDRESS);
+        professional.setConsultationFee(1500);
+    }
+
+    @Test
+    void theAwaitingPaymentEmailsAskForPaymentAndShareNoMeetingDetailOrPhone() {
+        for (String method : List.of("PHONE", "VIDEO", "IN_PERSON")) {
+            awaitingPaymentWith(method);
+            send(Type.AWAITING_PAYMENT);
+        }
+
+        assertThat(sender.sent).hasSize(6).allSatisfy(e -> {
+            String content = all(e);
+            assertThat(content).doesNotContain(VIDEO_LINK, ADDRESS, "9876543210", "9812345678", "+91",
+                    BookingEmails.PHONE_SENTENCE, REQUEST_NOTE, PRO_NOTE);
+            assertThat(content.toLowerCase()).doesNotContain("confirmed");
+            assertThat(content).doesNotContain(e.to().equals(USER_EMAIL) ? PRO_EMAIL : USER_EMAIL);
+        });
+        OutgoingEmail toUser = sender.sent.get(0);
+        assertThat(toUser.to()).isEqualTo(USER_EMAIL);
+        assertThat(toUser.subject()).isEqualTo("NeuroNest: your request was accepted");
+        assertThat(toUser.text()).contains("Dr. Asha Rao accepted your request for Wed, 14 Oct 2026, 6:00 PM IST.",
+                "Please pay by Tue, 13 Oct 2026, 10:00 AM IST to confirm your slot.", "Amount to pay: \u20B91,500.00.",
+                "Pay now: " + BASE_URL + "/appointments");
+        OutgoingEmail toProfessional = sender.sent.get(1);
+        assertThat(toProfessional.to()).isEqualTo(PRO_EMAIL);
+        assertThat(toProfessional.subject()).isEqualTo("NeuroNest: a request was accepted");
+        assertThat(toProfessional.text()).contains("You accepted the request from Ravi Kumar for Wed, 14 Oct 2026, "
+                + "6:00 PM IST. It is waiting for their payment, due by Tue, 13 Oct 2026, 10:00 AM IST.");
+    }
+
+    @Test
+    void theProfessionalsConfirmSendsOnlyTheAwaitingPaymentEmails() {
+        BookingNotificationListener l = listener(enabled);
+        professional.setConsultationFee(1500);
+
+        var view = proService(l).confirm(new ProPrincipal("pro_clerk"), booking.getId().toString(),
+                new ConfirmRequest("PREFERRED", "VIDEO", VIDEO_LINK, null, null));
+
+        assertThat(view.status()).isEqualTo("AWAITING_PAYMENT");
+        assertThat(sender.sent).extracting(OutgoingEmail::subject).containsExactly(
+                "NeuroNest: your request was accepted", "NeuroNest: a request was accepted");
+        assertThat(sender.sent).allSatisfy(e -> assertThat(all(e)).doesNotContain(VIDEO_LINK, "9876543210"));
+    }
+
+    @Test
+    void aFreeSessionsConfirmSendsTheConfirmedEmailsAtOnceWithoutAnAmount() {
+        professional.setConsultationFee(0);
+
+        var view = proService(listener(enabled)).confirm(new ProPrincipal("pro_clerk"), booking.getId().toString(),
+                new ConfirmRequest("PREFERRED", "VIDEO", VIDEO_LINK, null, null));
+
+        assertThat(view.status()).isEqualTo("CONFIRMED");
+        assertThat(sender.sent).extracting(OutgoingEmail::subject).containsExactly(
+                "NeuroNest: your appointment is confirmed", "NeuroNest: an appointment is confirmed");
+        assertThat(forUser(sender.sent)).contains(VIDEO_LINK).doesNotContain("Amount", "pay");
+    }
+
+    @Test
+    void theConfirmationAfterPaymentHasTheMeetingDetailsAndTheAmountPaid() {
+        confirmedWith("VIDEO", VIDEO_LINK, null);
+        Payment paid = new Payment(booking.getId(), "order_1", 150_000, "INR", NOW);
+        paid.markPaid("pay_1", NOW, 10, 15_000, 135_000);
+        when(payments.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(booking.getId(), PaymentStatus.PAID))
+                .thenReturn(Optional.of(paid));
+
+        List<OutgoingEmail> emails = send(Type.CONFIRMED);
+
+        assertThat(forUser(emails)).contains("Your appointment with Dr. Asha Rao is confirmed.", VIDEO_LINK,
+                "Amount paid: \u20B91,500.00.");
+        OutgoingEmail toProfessional = emails.stream().filter(e -> e.to().equals(PRO_EMAIL)).findFirst().orElseThrow();
+        assertThat(all(toProfessional)).doesNotContain("Amount paid", VIDEO_LINK);
+        // Without a stored payment the confirmation still goes out, just without the amount.
+        sender.sent.clear();
+        when(payments.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(any(), any())).thenReturn(Optional.empty());
+        assertThat(forUser(send(Type.CONFIRMED))).contains(VIDEO_LINK).doesNotContain("Amount paid");
+    }
+
+    @Test
+    void anUnpaidBookingThatExpiredGetsTheNeutralPaymentWording() {
+        awaitingPaymentWith("VIDEO");
+        booking.setStatus(BookingStatus.EXPIRED);
+
+        List<OutgoingEmail> emails = send(Type.EXPIRED);
+
+        assertThat(emails).extracting(OutgoingEmail::to).containsExactly(USER_EMAIL, PRO_EMAIL);
+        OutgoingEmail toUser = emails.get(0);
+        assertThat(toUser.subject()).isEqualTo("NeuroNest: an update on your request");
+        assertThat(toUser.text()).contains("Your booking with Dr. Asha Rao for Wed, 14 Oct 2026, 6:00 PM IST was released "
+                + "because the payment was not made by Tue, 13 Oct 2026, 10:00 AM IST.", BASE_URL + "/professionals",
+                BookingEmails.SUPPORT_INTRO, BookingEmails.FOOTER);
+        assertThat(emails.get(1).subject()).isEqualTo("NeuroNest: a request expired");
+        assertThat(emails.get(1).text()).contains("A request from Ravi Kumar for Wed, 14 Oct 2026, 6:00 PM IST expired "
+                + "because the payment was not made in time.", BookingEmails.FOOTER);
+        assertThat(emails).allSatisfy(e -> assertThat(all(e)).doesNotContain(VIDEO_LINK, ADDRESS, "9876543210",
+                "not answered"));
+        verify(bookings).markExpiryNotified(booking.getId(), NOW);
+    }
+
     @Test
     void everyNeuroNestLinkStartsWithTheBaseUrl() {
         booking.setProposedDatetime(OffsetDateTime.parse("2026-10-15T18:00:00+05:30").toInstant());
@@ -374,7 +488,8 @@ class BookingNotificationTest {
         ApplicationEventPublisher publisher = event -> l.handle((BookingEvent) event);
         BookingService service = new BookingService(bookings, new SlotService(new AvailabilityService(), bookings, mock(ProfessionalDayOffRepository.class)),
                 mock(PublicProfessionalService.class), professionals, mock(ProfessionalAccountRepository.class),
-                mock(UserRepository.class), mock(AssessmentResultRepository.class), publisher);
+                mock(UserRepository.class), mock(AssessmentResultRepository.class), publisher,
+                new PaymentAmounts(payments));
         ReflectionTestUtils.setField(service, "clock", CLOCK);
         return service;
     }

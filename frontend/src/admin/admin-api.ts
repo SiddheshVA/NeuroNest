@@ -1,5 +1,10 @@
 import { API_BASE } from "@/lib/api";
+import { list, normalizeTotals } from "@/lib/money";
 import type {
+  AdminPaymentItem,
+  AdminReview,
+  AdminPaymentSummary,
+  RefundNeededItem,
   AdminBookingItem,
   AdminDocument,
   BookingListFilters,
@@ -246,7 +251,11 @@ export function rejectProfessional(id: string, reason: string) {
 // ---- Dashboard and booking requests ----
 
 export function getDashboardSummary() {
-  return adminRequest<DashboardSummary>("/admin/dashboard/summary");
+  // An older backend has no awaitingPaymentTotal: it reads as 0.
+  return adminRequest<DashboardSummary>("/admin/dashboard/summary").then((s) => ({
+    ...s,
+    awaitingPaymentTotal: s?.awaitingPaymentTotal ?? 0,
+  }));
 }
 
 export function listBookings(filters: BookingListFilters) {
@@ -256,7 +265,10 @@ export function listBookings(filters: BookingListFilters) {
   if (filters.professionalId) params.set("professionalId", filters.professionalId);
   params.set("page", String(filters.page));
   params.set("size", String(filters.size));
-  return adminRequest<PageResponse<AdminBookingItem>>(`/admin/bookings?${params}`);
+  return adminRequest<PageResponse<AdminBookingItem>>(`/admin/bookings?${params}`).then((page) => {
+    const normalized = normalizePage(page);
+    return { ...normalized, items: normalized.items.map((item) => ({ ...item, paymentDueAt: item.paymentDueAt ?? null })) };
+  });
 }
 
 export function nudgeBooking(id: string) {
@@ -276,6 +288,20 @@ export function getResponsiveness(days: number, page: number, size: number) {
   );
 }
 
+export function listProfessionalReviews(id: string, page: number, size: number) {
+  return adminRequest<PageResponse<AdminReview>>(
+    `${professionalPath(id)}/reviews?${new URLSearchParams({ page: String(page), size: String(size) })}`,
+  );
+}
+
+/** Hides (or shows again) one review, with a reason. Reviews are never deleted. */
+export function moderateReview(reviewId: string, action: "hide" | "unhide", reason: string) {
+  return adminRequest<AdminReview>(`/admin/reviews/${encodeURIComponent(reviewId)}/${action}`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
 export function suspendProfessional(id: string, note: string) {
   return adminRequest<ProfessionalDetail>(`${professionalPath(id)}/suspend`, {
     method: "POST",
@@ -288,4 +314,36 @@ export function reinstateProfessional(id: string, note: string) {
     method: "POST",
     body: JSON.stringify({ note }),
   });
+}
+
+// ---- Payments and commission (read-only) ----
+// Lists default to [] and totals to 0, so an older or partial response never breaks the page.
+
+function normalizePage<T>(page: PageResponse<T> | null | undefined): PageResponse<T> {
+  return {
+    items: list(page?.items),
+    page: page?.page ?? 0,
+    size: page?.size ?? 0,
+    totalElements: page?.totalElements ?? 0,
+    totalPages: page?.totalPages ?? 0,
+  };
+}
+
+export async function getPaymentSummary(): Promise<AdminPaymentSummary> {
+  const summary = await adminRequest<Partial<AdminPaymentSummary>>("/admin/payments/summary");
+  return {
+    month: typeof summary?.month === "string" ? summary.month : "",
+    allTime: normalizeTotals(summary?.allTime),
+    thisMonth: normalizeTotals(summary?.thisMonth),
+  };
+}
+
+export async function listPayments(page: number, size: number) {
+  return normalizePage(await adminRequest<PageResponse<AdminPaymentItem>>(`/admin/payments?page=${page}&size=${size}`));
+}
+
+export async function listRefundsNeeded(page: number, size: number) {
+  return normalizePage(
+    await adminRequest<PageResponse<RefundNeededItem>>(`/admin/payments/refunds-needed?page=${page}&size=${size}`),
+  );
 }

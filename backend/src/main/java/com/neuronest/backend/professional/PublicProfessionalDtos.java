@@ -1,5 +1,6 @@
 package com.neuronest.backend.professional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +34,10 @@ public final class PublicProfessionalDtos {
             boolean isSampleData,
             String credentialsLabel,
             // True only when the listing can take booking requests.
-            boolean bookable) {
+            boolean bookable,
+            // Average of the visible reviews (null when there are none, shown as "New") and their count.
+            BigDecimal ratingAvg,
+            int ratingCount) {
 
         static PublicProfessional from(Professional p) {
             return new PublicProfessional(p.getId(), p.getFullName(), p.getCredentialType().name(),
@@ -42,7 +46,7 @@ public final class PublicProfessionalDtos {
                     p.getYearsExperience(), p.getAvailabilityNote(), WeeklyHours.copy(p.getWeeklyHours()),
                     p.getSessionMinutes(), p.getPhotoUrl(),
                     p.getRegistrationBody() == null ? null : p.getRegistrationBody().name(), p.isSampleData(),
-                    credentialsLabel(p), bookable(p));
+                    credentialsLabel(p), bookable(p), p.getRatingAvg(), p.getRatingCount());
         }
 
         // Only built from visible listings, so this adds: real (not sample), active, verified, and with

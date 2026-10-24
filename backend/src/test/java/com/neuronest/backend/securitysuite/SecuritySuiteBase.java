@@ -16,6 +16,9 @@ import com.neuronest.backend.auth.OtpService;
 import com.neuronest.backend.auth.User;
 import com.neuronest.backend.auth.UserRepository;
 import com.neuronest.backend.booking.Booking;
+import com.neuronest.backend.booking.BookingPaymentService;
+import com.neuronest.backend.booking.CommissionSplit;
+import com.neuronest.backend.booking.PaymentAmounts;
 import com.neuronest.backend.booking.BookingRepository;
 import com.neuronest.backend.booking.BookingService;
 import com.neuronest.backend.booking.BookingStatus;
@@ -25,9 +28,15 @@ import com.neuronest.backend.chat.ChatService;
 import com.neuronest.backend.config.SecurityConfig;
 import com.neuronest.backend.memory.MemoryRecallService;
 import com.neuronest.backend.memory.MemoryRepository;
+import com.neuronest.backend.payment.PaymentReportQueries;
+import com.neuronest.backend.payment.PaymentRepository;
+import com.neuronest.backend.payment.RazorpayGateway;
 import com.neuronest.backend.pro.ClerkBackendClient;
 import com.neuronest.backend.pro.ProBookingService;
 import com.neuronest.backend.pro.ProDocumentService;
+import com.neuronest.backend.pro.ProEarningsService;
+import com.neuronest.backend.review.ProfessionalReviewRepository;
+import com.neuronest.backend.review.ReviewService;
 import com.neuronest.backend.pro.ProDocumentStorage;
 import com.neuronest.backend.pro.ProHomeService;
 import com.neuronest.backend.pro.ProProfileService;
@@ -81,10 +90,12 @@ import java.util.UUID;
 @Import({SecurityConfig.class, AdminConfig.class, AdminJwtService.class, AdminLoginRateLimiter.class,
         ClerkTokenVerifier.class, ClerkUserService.class, JwtService.class,
         AvailabilityService.class, SlotService.class, PublicProfessionalService.class, BookingService.class,
+        BookingPaymentService.class, PaymentAmounts.class, CommissionSplit.class, PaymentReportQueries.class,
+        ProEarningsService.class,
         ProBookingService.class, ProHomeService.class, ProProfileService.class, ProDocumentService.class,
         ProDocumentStorage.class, ProRegistrationRateLimiter.class,
         AdminProfessionalService.class, AdminVerificationService.class, AdminBookingService.class,
-        AdminBookingQueries.class, AdminSuspensionService.class, SecuritySuiteBase.SuiteBeans.class})
+        AdminBookingQueries.class, AdminSuspensionService.class, ReviewService.class, SecuritySuiteBase.SuiteBeans.class})
 abstract class SecuritySuiteBase {
 
     @DynamicPropertySource
@@ -133,6 +144,10 @@ abstract class SecuritySuiteBase {
     ClerkBackendClient clerkBackendClient;
     @MockitoBean
     SessionAccessService sessionAccessService;
+    // Razorpay itself is never called. A fresh mock is not configured, so payments answer 503 unless a
+    // test stubs isConfigured().
+    @MockitoBean
+    RazorpayGateway razorpay;
 
     @Autowired
     MockMvc mvc;
@@ -150,6 +165,10 @@ abstract class SecuritySuiteBase {
     BookingRepository bookings;
     @Autowired
     UserRepository users;
+    @Autowired
+    PaymentRepository payments;
+    @Autowired
+    ProfessionalReviewRepository reviews;
 
     static final JsonMapper JSON = JsonMapper.builder().build();
 

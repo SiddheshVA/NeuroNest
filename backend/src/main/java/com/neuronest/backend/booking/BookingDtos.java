@@ -1,5 +1,6 @@
 package com.neuronest.backend.booking;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.neuronest.backend.professional.AvailabilityService;
 import com.neuronest.backend.professional.Professional;
 
@@ -56,9 +57,24 @@ public final class BookingDtos {
             String meetingAddress,
             // Exactly what the user chose to share with the professional, or null.
             SharedAssessment sharedAssessment,
-            Instant assessmentSharedAt) {
+            Instant assessmentSharedAt,
+            // The deadline to pay while AWAITING_PAYMENT, and still sent once EXPIRED (it then means the
+            // payment window ended unpaid); null for every other status and for an unanswered request.
+            Instant paymentDueAt,
+            // What paying would charge, in paise, while AWAITING_PAYMENT (PaymentAmounts, the same amount
+            // the order endpoint charges); null otherwise.
+            Long amount,
+            String currency,
+            // A receipt: what was paid, in paise, for a CONFIRMED booking with a PAID payment (read from the
+            // payment row); null otherwise, including free sessions and older bookings without a payment.
+            Long paidAmount,
+            String paidCurrency) {
 
         static BookingView from(Booking b, Professional p) {
+            return from(b, p, null, null);
+        }
+
+        static BookingView from(Booking b, Professional p, PaymentAmounts.Amount due, PaymentAmounts.Amount paid) {
             boolean confirmed = b.getStatus() == BookingStatus.CONFIRMED;
             return new BookingView(b.getId(), b.getStatus().name(), b.getCreatedAt(), b.getExpiresAt(),
                     b.getPreferredMode(), inIndia(b.getPreferredDatetime()), inIndia(b.getAlternateDatetime()),
@@ -67,7 +83,11 @@ public final class BookingDtos {
                     confirmed ? b.getMeetingMethod() : null,
                     confirmed ? b.getMeetingLink() : null,
                     confirmed ? b.getMeetingAddress() : null,
-                    b.getSharedAssessment(), b.getAssessmentSharedAt());
+                    b.getSharedAssessment(), b.getAssessmentSharedAt(),
+                    b.getStatus() == BookingStatus.AWAITING_PAYMENT || b.getStatus() == BookingStatus.EXPIRED
+                            ? b.getPaymentDueAt() : null,
+                    due == null ? null : due.paise(), due == null ? null : due.currency(),
+                    paid == null || !confirmed ? null : paid.paise(), paid == null || !confirmed ? null : paid.currency());
         }
 
         static OffsetDateTime inIndia(Instant instant) {
@@ -97,6 +117,45 @@ public final class BookingDtos {
         }
     }
 
-    /** GET /api/bookings/summary: counts of open requests that have not expired, and the next appointment. */
-    public record BookingSummary(NextAppointment nextAppointment, long waitingForProfessional, long needsYourAnswer) {}
+    /**
+     * An agreed booking the user still has to pay for, so the dashboard can show "Pay now". No meeting
+     * details: those are only shown once it is paid and CONFIRMED.
+     */
+    public record AwaitingPayment(
+            UUID id,
+            // Shown in Indian Standard Time, for example 2026-10-20T18:00+05:30.
+            OffsetDateTime scheduledTime,
+            Instant paymentDueAt,
+            String preferredMode,
+            ProfessionalSummary professional,
+            // What paying would charge, in paise (PaymentAmounts, the same amount the order endpoint
+            // charges); null if it cannot be worked out.
+            Long amount,
+            String currency) {
+
+        static AwaitingPayment from(Booking b, Professional p, PaymentAmounts.Amount due) {
+            return new AwaitingPayment(b.getId(), BookingView.inIndia(b.getPreferredDatetime()), b.getPaymentDueAt(),
+                    b.getPreferredMode(), ProfessionalSummary.from(p), due == null ? null : due.paise(),
+                    due == null ? null : due.currency());
+        }
+    }
+
+    /**
+     * GET /api/bookings/summary: the next (paid) appointment, the bookings waiting for payment, and counts
+     * of open requests that have not expired.
+     */
+    public record BookingSummary(NextAppointment nextAppointment, List<AwaitingPayment> awaitingPayment,
+                                 long waitingForProfessional, long needsYourAnswer) {}
+
+    /**
+     * POST /api/bookings/{id}/payment/order: what the Razorpay checkout needs. amount is in paise and
+     * always comes from the professional's fee in the database. keyId is the public key, never the secret.
+     */
+    public record PaymentOrder(String razorpayOrderId, long amount, String currency, String keyId) {}
+
+    /** POST /api/bookings/{id}/payment/verify: the three values the Razorpay checkout hands back, as it names them. */
+    public record VerifyPaymentRequest(
+            @JsonProperty("razorpay_order_id") String razorpayOrderId,
+            @JsonProperty("razorpay_payment_id") String razorpayPaymentId,
+            @JsonProperty("razorpay_signature") String razorpaySignature) {}
 }

@@ -2,11 +2,20 @@ import { apiFetch } from "./api";
 
 /**
  * Client for a signed-in user's booking requests (POST /api/bookings, GET /api/bookings/mine,
- * GET /api/bookings/{id}, POST /api/bookings/{id}/cancel). Field names mirror the backend's BookingDtos.
+ * GET /api/bookings/{id}, POST /api/bookings/{id}/cancel, and paying: POST /api/bookings/{id}/payment/order
+ * and /payment/verify). Field names mirror the backend's BookingDtos.
  * apiFetch attaches a fresh Clerk token to every call. Request bodies are never logged.
  */
 
-export type BookingStatus = "PENDING" | "CONFIRMED" | "DECLINED" | "ALTERNATE_PROPOSED" | "CANCELLED" | "EXPIRED";
+/** AWAITING_PAYMENT: the time is agreed and the user has until paymentDueAt to pay. CONFIRMED means paid (or free). */
+export type BookingStatus =
+  | "PENDING"
+  | "AWAITING_PAYMENT"
+  | "CONFIRMED"
+  | "DECLINED"
+  | "ALTERNATE_PROPOSED"
+  | "CANCELLED"
+  | "EXPIRED";
 export type PreferredMode = "ONLINE" | "IN_PERSON";
 export type PreferredMethod = "PHONE" | "VIDEO";
 export type MeetingMethod = "PHONE" | "VIDEO" | "IN_PERSON";
@@ -40,6 +49,17 @@ export interface BookingView {
   sharedAssessment: SharedAssessment | null;
   assessmentSharedAt: string | null;
   professional: { id: string; fullName: string; credentialType: string; city: string | null } | null;
+  /**
+   * ISO-8601 in UTC. The deadline to pay while AWAITING_PAYMENT; on an EXPIRED booking it means the payment
+   * window ended unpaid. Null otherwise.
+   */
+  paymentDueAt: string | null;
+  /** While AWAITING_PAYMENT: what paying charges, in paise (the same amount the order uses). */
+  amount: number | null;
+  currency: string | null;
+  /** A receipt: what was paid, in paise, for a CONFIRMED booking with a payment. Null otherwise. */
+  paidAmount: number | null;
+  paidCurrency: string | null;
 }
 
 export interface BookingPage {
@@ -99,23 +119,84 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function createBooking(body: CreateBookingRequest) {
-  return request<BookingView>("/bookings", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+// ---- Tolerating older or partial responses ----
+// An older backend build sends no payment fields. Every list defaults to [] and every newer field to
+// null, so a missing field never breaks a page.
+
+function list<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
 }
 
-export function getMyBookings(page: number, size: number) {
-  return request<BookingPage>(`/bookings/mine?page=${page}&size=${size}`);
+function normalizeView(b: BookingView): BookingView {
+  return {
+    ...b,
+    paymentDueAt: b.paymentDueAt ?? null,
+    amount: b.amount ?? null,
+    currency: b.currency ?? null,
+    paidAmount: b.paidAmount ?? null,
+    paidCurrency: b.paidCurrency ?? null,
+  };
 }
 
-export function cancelBooking(id: string) {
-  return request<BookingView>(`/bookings/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+function normalizePage(p: BookingPage): BookingPage {
+  return {
+    ...p,
+    items: list(p?.items).map(normalizeView),
+    page: p?.page ?? 0,
+    size: p?.size ?? 0,
+    totalElements: p?.totalElements ?? 0,
+    totalPages: p?.totalPages ?? 0,
+  };
 }
 
-/** GET /api/bookings/summary: the signed-in user's next confirmed appointment and open requests. */
+function normalizeSummary(s: BookingSummary): BookingSummary {
+  return {
+    nextAppointment: s?.nextAppointment ?? null,
+    // Only entries the page can show: an id and a payment deadline.
+    awaitingPayment: list(s?.awaitingPayment)
+      .filter((a) => a && typeof a.id === "string" && typeof a.paymentDueAt === "string")
+      .map((a) => ({ ...a, amount: a.amount ?? null, currency: a.currency ?? null })),
+    waitingForProfessional: s?.waitingForProfessional ?? 0,
+    needsYourAnswer: s?.needsYourAnswer ?? 0,
+  };
+}
+
+export async function createBooking(body: CreateBookingRequest) {
+  return normalizeView(
+    await request<BookingView>("/bookings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function getMyBookings(page: number, size: number) {
+  return normalizePage(await request<BookingPage>(`/bookings/mine?page=${page}&size=${size}`));
+}
+
+export async function cancelBooking(id: string) {
+  return normalizeView(await request<BookingView>(`/bookings/${encodeURIComponent(id)}/cancel`, { method: "POST" }));
+}
+
+/** An agreed booking the user still has to pay for. No meeting details until it is paid. */
+export interface AwaitingPaymentBooking {
+  id: string;
+  /** ISO date-time with the +05:30 offset. */
+  scheduledTime: string;
+  /** ISO-8601 in UTC. */
+  paymentDueAt: string;
+  preferredMode: PreferredMode | null;
+  professional: { id: string; fullName: string; credentialType: string; city: string | null } | null;
+  /** What paying charges, in paise (the same amount the order uses); null if not known. */
+  amount: number | null;
+  currency: string | null;
+}
+
+/**
+ * GET /api/bookings/summary: the signed-in user's next confirmed appointment, the bookings waiting for
+ * their payment, and open requests.
+ */
 export interface BookingSummary {
   nextAppointment: {
     id: string;
@@ -127,27 +208,75 @@ export interface BookingSummary {
     meetingAddress: string | null;
     professional: { id: string; fullName: string; credentialType: string; city: string | null } | null;
   } | null;
+  /** AWAITING_PAYMENT bookings whose deadline has not passed, earliest deadline first. */
+  awaitingPayment: AwaitingPaymentBooking[];
   /** PENDING requests that have not expired. */
   waitingForProfessional: number;
   /** ALTERNATE_PROPOSED requests that have not expired. */
   needsYourAnswer: number;
 }
 
-export function getBookingSummary() {
-  return request<BookingSummary>("/bookings/summary");
+export async function getBookingSummary() {
+  return normalizeSummary(await request<BookingSummary>("/bookings/summary"));
 }
 
 /** Accepts the time the professional suggested (owner only, from ALTERNATE_PROPOSED). */
-export function acceptProposal(id: string) {
-  return request<BookingView>(`/bookings/${encodeURIComponent(id)}/accept-proposal`, { method: "POST" });
+export async function acceptProposal(id: string) {
+  return normalizeView(
+    await request<BookingView>(`/bookings/${encodeURIComponent(id)}/accept-proposal`, { method: "POST" }),
+  );
+}
+
+// ---- Paying (the order amount always comes from the server, never from the page) ----
+
+export interface PaymentOrder {
+  razorpayOrderId: string;
+  /** In paise. */
+  amount: number;
+  currency: string;
+  /** Razorpay's public key id. Only ever taken from this response. */
+  keyId: string;
+}
+
+export interface VerifyPaymentBody {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+/** Creates the Razorpay order, or returns the unpaid one already made for this booking. */
+export async function createPaymentOrder(id: string) {
+  const order = await request<PaymentOrder>(`/bookings/${encodeURIComponent(id)}/payment/order`, { method: "POST" });
+  if (!order || !order.razorpayOrderId || !order.keyId || !(order.amount > 0) || !order.currency) {
+    throw new BookingApiError(0, "The payment could not be started. Please try again later.");
+  }
+  return order;
+}
+
+/** Checks the payment and confirms the booking. Safe to call more than once. */
+export async function verifyPayment(id: string, body: VerifyPaymentBody) {
+  return normalizeView(
+    await request<BookingView>(`/bookings/${encodeURIComponent(id)}/payment/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
 }
 
 /**
- * The status to show. A PENDING or ALTERNATE_PROPOSED request whose expiresAt has passed is shown as
- * EXPIRED, with no actions, because the server only changes the stored status later.
+ * The status to show. A PENDING or ALTERNATE_PROPOSED request whose expiresAt has passed, or an
+ * AWAITING_PAYMENT booking whose paymentDueAt has passed, is shown as EXPIRED, with no actions, because
+ * the server only changes the stored status later.
  */
-export function displayStatus(b: { status: BookingStatus; expiresAt: string | null }, now: number): BookingStatus {
+export function displayStatus(
+  b: { status: BookingStatus; expiresAt: string | null; paymentDueAt?: string | null },
+  now: number,
+): BookingStatus {
   if ((b.status === "PENDING" || b.status === "ALTERNATE_PROPOSED") && b.expiresAt && Date.parse(b.expiresAt) <= now) {
+    return "EXPIRED";
+  }
+  if (b.status === "AWAITING_PAYMENT" && b.paymentDueAt && Date.parse(b.paymentDueAt) <= now) {
     return "EXPIRED";
   }
   return b.status;
@@ -190,6 +319,7 @@ export function isIndianMobile(value: string): boolean {
 
 export const STATUS_LABELS: Record<BookingStatus, string> = {
   PENDING: "Waiting for a reply",
+  AWAITING_PAYMENT: "Awaiting payment",
   CONFIRMED: "Confirmed",
   DECLINED: "Declined",
   ALTERNATE_PROPOSED: "Another time suggested",
@@ -202,6 +332,8 @@ export const METHOD_LABELS: Record<MeetingMethod, string> = {
   VIDEO: "Video call",
   IN_PERSON: "In person",
 };
+
+export { formatAmount } from "./money";
 
 /** How the user asked to meet: "Phone call", "Video call" or "In person". */
 export function requestedMethodLabel(b: Pick<BookingView, "preferredMode" | "preferredMethod">): string | null {

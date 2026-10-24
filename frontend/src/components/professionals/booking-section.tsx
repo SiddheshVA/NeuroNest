@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@clerk/nextjs";
 import { CalendarClock, CalendarX, CheckCircle2, Loader2, LogIn } from "lucide-react";
 
@@ -43,8 +43,34 @@ const MAX_NOTE = 500;
 const SHARE_EXPLANATION =
   "The professional will see the name of the test, your score, the result band and the date. They will not see your individual answers or your AI chat.";
 
-function profilePath(professionalId: string) {
-  return `/professionals/${professionalId}`;
+// The request form is open while the profile URL has ?book=1. Signing in returns to that URL, so the form
+// opens by itself afterwards.
+const BOOK_PARAM = "book";
+const FORM_ID = "request-appointment";
+const TOGGLE_ID = "request-appointment-toggle";
+
+function bookingPath(professionalId: string) {
+  return `/professionals/${professionalId}?${BOOK_PARAM}=1`;
+}
+
+/** Whether the request form is open, and a setter that keeps the rest of the URL (and adds no history). */
+function useBookingFormOpen(): [boolean, (open: boolean) => void] {
+  const [params, setParams] = useSearchParams();
+  const open = params.get(BOOK_PARAM) === "1";
+  const setOpen = useCallback(
+    (next: boolean) =>
+      setParams(
+        (current) => {
+          const updated = new URLSearchParams(current);
+          if (next) updated.set(BOOK_PARAM, "1");
+          else updated.delete(BOOK_PARAM);
+          return updated;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
+  return [open, setOpen];
 }
 
 function Card({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -55,10 +81,11 @@ function Card({ children, className }: { children: React.ReactNode; className?: 
 
 /**
  * The side panel of a profile: why booking is not possible, a sign-in prompt for signed-out visitors,
- * or a pointer to the request form below for signed-in ones.
+ * or the button that opens the request form for signed-in ones.
  */
 export function BookingStatusCard({ professional: p }: { professional: PublicProfessional }) {
   const { isLoaded, isSignedIn } = useAuth();
+  const [open, setOpen] = useBookingFormOpen();
 
   if (!p.bookable) {
     return (
@@ -77,7 +104,7 @@ export function BookingStatusCard({ professional: p }: { professional: PublicPro
     return (
       <Card>
         <p className="text-sm text-foreground">Sign in to see available times and request an appointment.</p>
-        <Link href={loginHref(profilePath(p.id))} className={primaryButtonClass}>
+        <Link href={loginHref(bookingPath(p.id))} className={primaryButtonClass}>
           <LogIn className="size-4" aria-hidden="true" />
           Sign in
         </Link>
@@ -86,21 +113,68 @@ export function BookingStatusCard({ professional: p }: { professional: PublicPro
   }
   return (
     <Card>
-      <p className="text-sm text-foreground">Choose a time in the form below to request an appointment.</p>
-      <a href="#request-appointment" className={secondaryButtonClass}>
+      <p className="text-sm text-foreground">Choose a time that suits you and send a request.</p>
+      <button
+        type="button"
+        id={TOGGLE_ID}
+        aria-expanded={open}
+        aria-controls={open ? FORM_ID : undefined}
+        onClick={() => setOpen(!open)}
+        className={cn(secondaryButtonClass, "cursor-pointer")}
+      >
         <CalendarClock className="size-4" aria-hidden="true" />
         Request appointment
-      </a>
+      </button>
     </Card>
   );
 }
 
-/** The request form, only for a bookable listing and a signed-in visitor. Nothing is loaded otherwise. */
+/**
+ * The request form, only for a bookable listing and a signed-in visitor, and only once it has been opened
+ * (the "Request appointment" button, or ?book=1 after signing in). Nothing is loaded until then.
+ */
 export function BookingSection({ professional }: { professional: PublicProfessional }) {
   const { isLoaded, isSignedIn } = useAuth();
-  if (!professional.bookable || !isLoaded || !isSignedIn) return null;
+  const [open, setOpen] = useBookingFormOpen();
+  if (!professional.bookable || !isLoaded || !isSignedIn || !open) return null;
   return (
-    <section id="request-appointment" className="scroll-mt-24 rounded-2xl bg-card p-6 ring-1 ring-foreground/10 sm:p-8">
+    <OpenBookingSection
+      professional={professional}
+      onClose={() => {
+        setOpen(false);
+        // Back to the button that opened it.
+        document.getElementById(TOGGLE_ID)?.focus();
+      }}
+    />
+  );
+}
+
+function OpenBookingSection({ professional, onClose }: { professional: PublicProfessional; onClose: () => void }) {
+  const sectionRef = useRef<HTMLElement>(null);
+
+  // When it opens: an ordinary (instant) scroll to the form, and focus on it, so keyboard users land there.
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section) return;
+    section.scrollIntoView({ block: "start" });
+    section.focus({ preventScroll: true });
+  }, []);
+
+  return (
+    <section
+      ref={sectionRef}
+      id={FORM_ID}
+      tabIndex={-1}
+      aria-label="Request an appointment"
+      className="relative scroll-mt-24 rounded-2xl bg-card p-6 ring-1 ring-foreground/10 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:p-8"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute top-6 right-6 cursor-pointer rounded-sm text-sm font-medium text-primary underline-offset-4 outline-none transition-colors duration-150 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 sm:top-8 sm:right-8"
+      >
+        Close<span className="sr-only"> the appointment request form</span>
+      </button>
       <BookingForm professional={professional} />
     </section>
   );
@@ -298,7 +372,7 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
     } catch (error) {
       setShare(false);
       if (error instanceof BookingApiError && error.status === 401) {
-        navigate(loginHref(profilePath(p.id)));
+        navigate(loginHref(bookingPath(p.id)));
         return;
       }
       setShareState({ status: "error" });
@@ -344,7 +418,7 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
       setSent(true);
     } catch (error) {
       if (error instanceof BookingApiError && error.status === 401) {
-        navigate(loginHref(profilePath(p.id)));
+        navigate(loginHref(bookingPath(p.id)));
         return;
       }
       if (isSlotTaken(error)) {
@@ -387,7 +461,8 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
         void submit();
       }}
     >
-      <h2 className="font-heading text-lg font-semibold text-foreground">Request an appointment</h2>
+      {/* Room on the right for the Close link. */}
+      <h2 className="pr-16 font-heading text-lg font-semibold text-foreground">Request an appointment</h2>
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <SelectField

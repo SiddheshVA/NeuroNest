@@ -1,6 +1,7 @@
 package com.neuronest.backend.notification;
 
 import com.neuronest.backend.booking.Booking;
+import com.neuronest.backend.booking.PaymentAmounts;
 import com.neuronest.backend.professional.AvailabilityService;
 import com.neuronest.backend.professional.Professional;
 import com.neuronest.backend.safety.CrisisResource;
@@ -46,8 +47,16 @@ public class BookingEmails {
         return build(type, b, p, List.of());
     }
 
-    /** {@code similar}: other professionals to suggest in the user's expiry email (names and profile links only). */
     public List<BookingEmail> build(BookingEvent.Type type, Booking b, Professional p, List<Professional> similar) {
+        return build(type, b, p, similar, null);
+    }
+
+    /**
+     * {@code similar}: other professionals to suggest in the user's expiry email (names and profile links
+     * only). {@code amountPaidPaise}: the verified payment, shown in the user's confirmation; null if none.
+     */
+    public List<BookingEmail> build(BookingEvent.Type type, Booking b, Professional p, List<Professional> similar,
+                                    Long amountPaidPaise) {
         return switch (type) {
             case REQUEST_CREATED -> List.of(
                     toProfessional(p, new Message("NeuroNest: a new request is waiting")
@@ -58,11 +67,31 @@ public class BookingEmails {
                             .paragraph("Your request was sent to " + p.getFullName() + ". They have 72 hours to reply.")
                             .paragraph("Requested time: " + time(b.getPreferredDatetime()) + ".")
                             .link("See your requests", settings.link("/appointments"))));
+            // Before payment: no meeting link or address for the user, no contact details for the
+            // professional, and nothing says the appointment is confirmed.
+            case AWAITING_PAYMENT -> {
+                Instant at = b.scheduledTime() != null ? b.scheduledTime() : b.getPreferredDatetime();
+                Message user = new Message("NeuroNest: your request was accepted")
+                        .paragraph(p.getFullName() + " accepted your request for " + time(at) + ".")
+                        .paragraph("Please pay by " + time(b.getPaymentDueAt()) + " to confirm your slot. If the payment "
+                                + "is not made by then, the time is released.");
+                PaymentAmounts.fromFee(p).ifPresent(amount ->
+                        user.paragraph("Amount to pay: " + rupees(amount.paise()) + "."));
+                user.link("Pay now", settings.link("/appointments"));
+                yield List.of(
+                        toUser(b, user),
+                        toProfessional(p, new Message("NeuroNest: a request was accepted")
+                                .paragraph("You accepted the request from " + b.getContactName() + " for " + time(at)
+                                        + ". It is waiting for their payment, due by " + time(b.getPaymentDueAt())
+                                        + ". NeuroNest will email you again once it is paid.")
+                                .link("Open the request", settings.link("/pro/requests/" + b.getId()))));
+            }
             case CONFIRMED -> {
                 Instant at = b.scheduledTime() != null ? b.scheduledTime() : b.getPreferredDatetime();
                 Message user = new Message("NeuroNest: your appointment is confirmed")
                         .paragraph("Your appointment with " + p.getFullName() + " is confirmed.")
                         .paragraph("Time: " + time(at) + ".");
+                if (amountPaidPaise != null) user.paragraph("Amount paid: " + rupees(amountPaidPaise) + ".");
                 switch (b.getMeetingMethod() == null ? "" : b.getMeetingMethod()) {
                     case "PHONE" -> user.paragraph(PHONE_SENTENCE);
                     case "VIDEO" -> user.link("Video call link", b.getMeetingLink());
@@ -94,8 +123,12 @@ public class BookingEmails {
             case EXPIRED -> List.of(
                     expiredToUser(b, p, similar),
                     toProfessional(p, new Message("NeuroNest: a request expired")
-                            .paragraph("A request from " + b.getContactName()
-                                    + " expired because it was not answered. Open NeuroNest to see your requests.")
+                            .paragraph(unpaid(b)
+                                    ? "A request from " + b.getContactName() + " for " + time(b.getPreferredDatetime())
+                                            + " expired because the payment was not made in time. The time is free "
+                                            + "again. Open NeuroNest to see your requests."
+                                    : "A request from " + b.getContactName()
+                                            + " expired because it was not answered. Open NeuroNest to see your requests.")
                             .link("See your appointment requests", settings.link("/pro/requests"))));
             case EXPIRY_RETRY -> List.of(expiredToUser(b, p, similar));
             // The admin's note is never included.
@@ -112,11 +145,19 @@ public class BookingEmails {
         };
     }
 
-    // No note and nothing about the professional's reasons: only that it was not answered in time.
+    // A booking that was agreed and then expired: its payment was not made by payment_due_at.
+    private static boolean unpaid(Booking b) {
+        return b.getPaymentDueAt() != null;
+    }
+
+    // No note and nothing about the professional's reasons: only that it was not answered, or not paid, in time.
     private BookingEmail expiredToUser(Booking b, Professional p, List<Professional> similar) {
         Message m = new Message("NeuroNest: an update on your request")
-                .paragraph("Your request to " + p.getFullName() + " expired because it was not answered in time. "
-                        + "This is not a reflection on you.")
+                .paragraph(unpaid(b)
+                        ? "Your booking with " + p.getFullName() + " for " + time(b.getPreferredDatetime())
+                                + " was released because the payment was not made by " + time(b.getPaymentDueAt()) + "."
+                        : "Your request to " + p.getFullName() + " expired because it was not answered in time. "
+                                + "This is not a reflection on you.")
                 .link("Find another professional", settings.link("/professionals"));
         List<Link> others = similar.stream()
                 .filter(other -> other.getId() != null && !other.getId().equals(p.getId()))
@@ -131,6 +172,11 @@ public class BookingEmails {
     /** "KIRAN Mental Health Helpline: 1800-599-0019 (Toll-free, 24/7, available in 13 languages)". */
     static String supportLine(CrisisResource r) {
         return r.name() + ": " + r.phone() + " (" + r.availability() + ")";
+    }
+
+    /** 150000 paise: "₹1,500.00" (whole rupees grouped in thousands). */
+    static String rupees(long paise) {
+        return String.format(Locale.ENGLISH, "\u20B9%,d.%02d", paise / 100, paise % 100);
     }
 
     static String time(Instant instant) {

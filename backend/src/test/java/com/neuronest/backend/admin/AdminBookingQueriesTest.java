@@ -7,6 +7,7 @@ import com.neuronest.backend.admin.AdminBookingDtos.ResponsivenessItem;
 import com.neuronest.backend.config.ApiValidationException;
 import com.neuronest.backend.config.ConflictException;
 import com.neuronest.backend.notification.BookingEvent;
+import com.neuronest.backend.payment.PaymentReportQueries;
 import com.neuronest.backend.professional.AvailabilityService;
 import com.neuronest.backend.professional.PublicProfessionalRepository;
 import org.junit.jupiter.api.BeforeAll;
@@ -85,17 +86,18 @@ class AdminBookingQueriesTest {
                   contact_name text not null, contact_email text not null, contact_phone text,
                   preferred_mode text, preferred_method text, preferred_datetime timestamptz, alternate_datetime timestamptz,
                   proposed_datetime timestamptz, note text, professional_note text, admin_note text,
-                  status text not null check (status in ('PENDING','CONFIRMED','DECLINED','ALTERNATE_PROPOSED','CANCELLED','EXPIRED')),
+                  status text not null check (status in
+                    ('PENDING','AWAITING_PAYMENT','CONFIRMED','DECLINED','ALTERNATE_PROPOSED','CANCELLED','EXPIRED')),
                   responded_at timestamptz, responded_by text check (responded_by in ('PROFESSIONAL','ADMIN','USER')),
                   expires_at timestamptz, created_at timestamptz not null, updated_at timestamptz not null default now(),
                   meeting_link text, meeting_address text, shared_assessment jsonb,
-                  admin_nudged_at timestamptz)""");
+                  admin_nudged_at timestamptz, payment_due_at timestamptz, payment_expired_at timestamptz)""");
     }
 
     @BeforeEach
     void clean() {
         jdbc.execute("truncate booking_requests, professional_accounts, professionals cascade");
-        service = new AdminBookingService(queries, publisher, CLOCK);
+        service = new AdminBookingService(queries, publisher, new PaymentReportQueries(new NamedParameterJdbcTemplate(dataSource)), CLOCK);
     }
 
     private UUID professional(String name, String status, boolean active, boolean sample) {
@@ -294,6 +296,7 @@ class AdminBookingQueriesTest {
 
         // 12 hours later it may be sent again.
         AdminBookingService later = new AdminBookingService(queries, publisher,
+                new PaymentReportQueries(new NamedParameterJdbcTemplate(dataSource)),
                 Clock.fixed(NOW.plus(Duration.ofHours(12)), AvailabilityService.ZONE));
         later.nudge(pending);
         assertThat(events).hasSize(2);

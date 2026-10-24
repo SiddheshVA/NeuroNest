@@ -11,6 +11,7 @@ import com.neuronest.backend.notification.EmailSender;
 import com.neuronest.backend.notification.MailRetryScheduler;
 import com.neuronest.backend.notification.MailSettings;
 import com.neuronest.backend.notification.OutgoingEmail;
+import com.neuronest.backend.payment.PaymentRepository;
 import com.neuronest.backend.professional.AvailabilityService;
 import com.neuronest.backend.professional.CredentialType;
 import com.neuronest.backend.professional.Professional;
@@ -120,12 +121,28 @@ class BackgroundJobsTest {
         }
 
         @Override
+        public synchronized List<UUID> expireUnpaidBookings(Instant now, Instant cutoff, int limit) {
+            List<UUID> claimed = new ArrayList<>();
+            for (Booking b : rows.values()) {
+                if (b.getStatus() == BookingStatus.AWAITING_PAYMENT && b.getPaymentDueAt().isBefore(cutoff)
+                        && claimed.size() < limit) {
+                    b.setStatus(BookingStatus.EXPIRED);
+                    b.setPaymentExpiredAt(now);
+                    claimed.add(b.getId());
+                }
+            }
+            return claimed;
+        }
+
+        @Override
         public synchronized List<UUID> claimExpiryEmailRetries(Instant now, Instant since, Instant before, int limit) {
             List<UUID> claimed = new ArrayList<>();
             for (Booking b : rows.values()) {
-                if (b.getStatus() == BookingStatus.EXPIRED && b.getExpiryNotifiedAt() == null && b.getRespondedBy() == null
-                        && b.getRespondedAt() != null && !b.getRespondedAt().isBefore(since)
-                        && b.getRespondedAt().isBefore(before) && claimed.size() < limit) {
+                Instant expiredAt = b.getPaymentExpiredAt() != null ? b.getPaymentExpiredAt()
+                        : b.getRespondedBy() == null ? b.getRespondedAt() : null;
+                if (b.getStatus() == BookingStatus.EXPIRED && b.getExpiryNotifiedAt() == null
+                        && expiredAt != null && !expiredAt.isBefore(since)
+                        && expiredAt.isBefore(before) && claimed.size() < limit) {
                     b.setExpiryNotifiedAt(now);
                     claimed.add(b.getId());
                 }
@@ -181,7 +198,7 @@ class BackgroundJobsTest {
     // The listener is called directly where Spring would call it after the commit.
     private BackgroundJobs newJobs() {
         BookingNotificationListener listener = new BookingNotificationListener(bookings, professionals, directory,
-                new BookingEmails(settings), sender, settings, mock(MailRetryScheduler.class));
+                new BookingEmails(settings), sender, settings, mock(MailRetryScheduler.class), mock(PaymentRepository.class));
         ApplicationEventPublisher publisher = event -> {
             published.add((BookingEvent) event);
             listener.onBookingEvent((BookingEvent) event);
@@ -215,6 +232,56 @@ class BackgroundJobsTest {
         b.setExpiresAt(clock.instant().plus(expiresIn));
         store.rows.put(b.getId(), b);
         return b;
+    }
+
+    // ---- expiring unpaid bookings ----
+
+    private Booking awaitingPayment(Duration dueIn) {
+        Booking b = request(BookingStatus.AWAITING_PAYMENT, Duration.ofHours(30));
+        b.setPaymentDueAt(clock.instant().plus(dueIn));
+        b.setRespondedBy("PROFESSIONAL");
+        b.setRespondedAt(START.minus(Duration.ofHours(20)));
+        return b;
+    }
+
+    @Test
+    void anUnpaidBookingExpiresOnlyAfterTheGracePeriodAndBothSidesAreEmailed() {
+        // Due 10 minutes ago: still inside the 15-minute grace period.
+        Booking b = awaitingPayment(Duration.ofMinutes(-10));
+        Booking notDue = awaitingPayment(Duration.ofHours(2));
+
+        jobs.runOnce();
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.AWAITING_PAYMENT);
+        assertThat(sender.sent).isEmpty();
+
+        clock.advance(Duration.ofMinutes(6));
+        jobs.runOnce();
+
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.EXPIRED);
+        assertThat(b.getPaymentExpiredAt()).isEqualTo(clock.instant());
+        // The acceptance stays, for the admin's response metrics.
+        assertThat(b.getRespondedBy()).isEqualTo("PROFESSIONAL");
+        assertThat(b.getRespondedAt()).isEqualTo(START.minus(Duration.ofHours(20)));
+        assertThat(notDue.getStatus()).isEqualTo(BookingStatus.AWAITING_PAYMENT);
+        assertThat(published).containsExactly(new BookingEvent(BookingEvent.Type.EXPIRED, b.getId()));
+        assertThat(sender.sent).extracting(OutgoingEmail::to).containsExactly(USER_EMAIL, PRO_EMAIL);
+        assertThat(sender.to(USER_EMAIL).get(0).text()).contains("was released because the payment was not made by");
+        assertThat(sender.to(PRO_EMAIL).get(0).text()).contains("expired because the payment was not made in time");
+    }
+
+    @Test
+    void theGracePeriodComesFromTheSettingAndAPaidBookingIsNeverExpired() {
+        Booking paid = awaitingPayment(Duration.ofHours(-5));
+        paid.setStatus(BookingStatus.CONFIRMED);
+        Booking unpaid = awaitingPayment(Duration.ofMinutes(-2));
+        BackgroundJobs noGrace = new BackgroundJobs(store, event -> published.add((BookingEvent) event),
+                TransactionOperations.withoutTransaction(), clock, Duration.ZERO);
+
+        noGrace.runOnce();
+
+        assertThat(unpaid.getStatus()).isEqualTo(BookingStatus.EXPIRED);
+        assertThat(paid.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(published).containsExactly(new BookingEvent(BookingEvent.Type.EXPIRED, unpaid.getId()));
     }
 
     // ---- expiring requests ----

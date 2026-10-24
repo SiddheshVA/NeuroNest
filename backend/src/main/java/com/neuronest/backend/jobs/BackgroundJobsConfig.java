@@ -29,8 +29,10 @@ public class BackgroundJobsConfig {
     @Bean
     @ConditionalOnProperty(name = "jobs.enabled", havingValue = "true")
     public BackgroundJobs backgroundJobs(BookingJobStore store, ApplicationEventPublisher events,
-                                         PlatformTransactionManager transactionManager) {
-        return new BackgroundJobs(store, events, new TransactionTemplate(transactionManager), Clock.systemUTC());
+                                         PlatformTransactionManager transactionManager,
+                                         @Value("${bookings.payment-grace-minutes:15}") long paymentGraceMinutes) {
+        return new BackgroundJobs(store, events, new TransactionTemplate(transactionManager), Clock.systemUTC(),
+                Duration.ofMinutes(Math.max(0, paymentGraceMinutes)));
     }
 
     @Bean

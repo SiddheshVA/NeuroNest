@@ -121,6 +121,15 @@ public class Booking {
     @Column(name = "admin_nudged_at")
     private Instant adminNudgedAt;
 
+    // The user's deadline to pay while the booking is AWAITING_PAYMENT (V10).
+    @Column(name = "payment_due_at")
+    private Instant paymentDueAt;
+
+    // When the background jobs expired it unpaid (V12). responded_at / responded_by keep the professional's
+    // (or the user's) acceptance.
+    @Column(name = "payment_expired_at")
+    private Instant paymentExpiredAt;
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
@@ -134,11 +143,11 @@ public class Booking {
     }
 
     /**
-     * When a CONFIRMED booking takes place: the time the professional proposed, if any, otherwise the
-     * time the user asked for. Null for every other status, which never blocks a slot.
+     * When an AWAITING_PAYMENT or CONFIRMED booking takes place: the time the professional proposed, if
+     * any, otherwise the time the user asked for. Null for every other status, which never blocks a slot.
      */
     public Instant scheduledTime() {
-        if (status != BookingStatus.CONFIRMED) return null;
+        if (!BookingStatus.BLOCKS_SLOT.contains(status)) return null;
         return proposedDatetime != null ? proposedDatetime : preferredDatetime;
     }
 
@@ -235,4 +244,10 @@ public class Booking {
 
     public Instant getAdminNudgedAt() { return adminNudgedAt; }
     public void setAdminNudgedAt(Instant adminNudgedAt) { this.adminNudgedAt = adminNudgedAt; }
+
+    public Instant getPaymentDueAt() { return paymentDueAt; }
+    public void setPaymentDueAt(Instant paymentDueAt) { this.paymentDueAt = paymentDueAt; }
+
+    public Instant getPaymentExpiredAt() { return paymentExpiredAt; }
+    public void setPaymentExpiredAt(Instant paymentExpiredAt) { this.paymentExpiredAt = paymentExpiredAt; }
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, ExternalLink, Leaf, LifeBuoy, Phone, User } from "lucide-react";
 
+import { getCrisisResources } from "@/lib/ai/crisis-resources";
 import { cn } from "@/lib/utils";
 import { formatMessageTime } from "@/lib/nuro-dates";
 import type { CrisisContact, MessageRole, NuroRecommendation } from "@/lib/nuro-client";
@@ -40,6 +41,29 @@ function TypingDots() {
  * Helplines from the backend's crisis resources. "alert": shown the moment this message is
  * flagged as a crisis. "calm": offered alongside a failed reply, without alarm.
  */
+/**
+ * Under a Find Professional card: a booking isn't instant, Tele-MANAS is. Numbers come from
+ * crisis-resources.ts, never typed here.
+ */
+function TeleManasLine() {
+  const teleManas = getCrisisResources().helplines.find((helpline) => helpline.label === "Tele-MANAS");
+  if (!teleManas) return null;
+  return (
+    <p className="flex flex-wrap items-center gap-x-1.5 px-1 text-xs text-muted-foreground">
+      <Phone className="size-3 shrink-0" aria-hidden="true" />
+      <span>Need support right now? {teleManas.label} (24/7):</span>
+      {teleManas.numbers.map((number, index) => (
+        <span key={number}>
+          {index > 0 ? "/ " : null}
+          <a href={`tel:${number.replace(/[^\d+]/g, "")}`} className="font-medium underline underline-offset-2">
+            {number}
+          </a>
+        </span>
+      ))}
+    </p>
+  );
+}
+
 function CrisisContacts({ contacts, tone }: { contacts: CrisisContact[]; tone: "alert" | "calm" }) {
   const isAlert = tone === "alert";
   return (
@@ -156,6 +180,7 @@ export function NuroMessageBubble({
                 <p className="text-xs text-muted-foreground">{rec.description}</p>
               </Link>
             ))}
+            {recommendations.some((rec) => rec.type === "PROFESSIONAL") ? <TeleManasLine /> : null}
           </div>
         ) : null}
         {createdAt ? (

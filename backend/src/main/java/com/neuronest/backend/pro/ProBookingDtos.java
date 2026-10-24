@@ -54,7 +54,10 @@ public final class ProBookingDtos {
             Instant respondedAt,
             // Only for a CONFIRMED booking whose scheduled time is at most 7 days in the past; null otherwise.
             String contactEmail,
-            String contactPhone) {
+            String contactPhone,
+            // The person's deadline to pay while AWAITING_PAYMENT; on an EXPIRED booking it means the payment
+            // window ended unpaid (an unanswered request has none). Null for every other status.
+            Instant paymentDueAt) {
 
         static ProBookingView from(Booking b, Instant now) {
             boolean contactVisible = contactVisible(b, now);
@@ -65,7 +68,9 @@ public final class ProBookingDtos {
                     b.getSharedAssessment(), b.getAssessmentSharedAt(),
                     b.getMeetingMethod(), b.getMeetingLink(), b.getMeetingAddress(), b.getRespondedAt(),
                     contactVisible ? b.getContactEmail() : null,
-                    contactVisible ? b.getContactPhone() : null);
+                    contactVisible ? b.getContactPhone() : null,
+                    b.getStatus() == BookingStatus.AWAITING_PAYMENT || b.getStatus() == BookingStatus.EXPIRED
+                            ? b.getPaymentDueAt() : null);
         }
 
         static boolean contactVisible(Booking b, Instant now) {

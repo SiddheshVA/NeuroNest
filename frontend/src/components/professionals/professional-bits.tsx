@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { BadgeCheck, FlaskConical, Info, ShieldCheck } from "lucide-react";
+import { BadgeCheck, FlaskConical, Info, ShieldCheck, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { PublicProfessional } from "@/lib/professionals-client";
+import { formatRating, type PublicProfessional } from "@/lib/professionals-client";
 
 /** Small building blocks shared by the directory cards and the profile page. */
 
@@ -81,6 +81,8 @@ function CredentialsChip({
 const ENDORSEMENT_DISCLAIMER =
   "Listings are not an endorsement. NeuroNest does not recommend any individual professional.";
 const NOT_EMERGENCY_DISCLAIMER = "This directory is not an emergency service.";
+const RATINGS_DISCLAIMER =
+  "Ratings come from clients who booked through NeuroNest and are not a clinical measure.";
 
 /** Both directory disclaimers, shown above the listings so they are seen before any card. */
 function DirectoryDisclaimer({ className }: { className?: string }) {
@@ -94,10 +96,69 @@ function DirectoryDisclaimer({ className }: { className?: string }) {
       <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <div className="flex flex-col gap-0.5">
         <p>{ENDORSEMENT_DISCLAIMER}</p>
+        <p>{RATINGS_DISCLAIMER}</p>
         <p className="font-medium text-foreground">{NOT_EMERGENCY_DISCLAIMER}</p>
       </div>
     </div>
   );
 }
 
-export { CredentialsChip, DirectoryDisclaimer, ProfessionalAvatar };
+/**
+ * Five stars for a rating, rounded to the nearest whole star. Decorative: the number is always given as
+ * text next to it (or by the caller's own label).
+ */
+function StarRow({ rating, className }: { rating: number; className?: string }) {
+  const filled = Math.round(rating);
+  return (
+    <span className={cn("inline-flex items-center gap-0.5", className)} aria-hidden="true">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <Star
+          key={n}
+          className={cn("size-4 shrink-0", n <= filled ? "fill-amber-500 text-amber-600" : "text-muted-foreground/50")}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** "★★★★★ 4.8 (52 reviews)", or a "New" chip for a listing without reviews yet. */
+function RatingSummary({
+  ratingAvg,
+  ratingCount,
+  className,
+}: {
+  ratingAvg: number | null;
+  ratingCount: number;
+  className?: string;
+}) {
+  if (!ratingCount || ratingAvg === null) {
+    return (
+      <span
+        className={cn(
+          "inline-flex w-fit items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground",
+          className,
+        )}
+      >
+        New
+        <span className="sr-only">: no reviews yet</span>
+      </span>
+    );
+  }
+  const reviews = `${ratingCount} ${ratingCount === 1 ? "review" : "reviews"}`;
+  return (
+    <span className={cn("inline-flex flex-wrap items-center gap-1.5 text-sm", className)}>
+      <StarRow rating={ratingAvg} />
+      <span className="font-semibold text-foreground" aria-hidden="true">
+        {formatRating(ratingAvg)}
+      </span>
+      <span className="text-muted-foreground" aria-hidden="true">
+        ({reviews})
+      </span>
+      <span className="sr-only">
+        Rated {formatRating(ratingAvg)} out of 5 from {reviews}
+      </span>
+    </span>
+  );
+}
+
+export { CredentialsChip, DirectoryDisclaimer, ProfessionalAvatar, RatingSummary, StarRow };

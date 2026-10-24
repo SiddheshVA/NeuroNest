@@ -75,10 +75,12 @@ class JdbcBookingJobStoreTest {
         jdbc.execute("""
                 create table booking_requests (
                   id uuid primary key default gen_random_uuid(), professional_id uuid not null references professionals(id),
-                  status text not null check (status in ('PENDING','CONFIRMED','DECLINED','ALTERNATE_PROPOSED','CANCELLED','EXPIRED')),
+                  status text not null check (status in
+                    ('PENDING','AWAITING_PAYMENT','CONFIRMED','DECLINED','ALTERNATE_PROPOSED','CANCELLED','EXPIRED')),
                   responded_at timestamptz, responded_by text check (responded_by in ('PROFESSIONAL','ADMIN','USER')),
                   expires_at timestamptz, updated_at timestamptz not null default now(),
-                  reminder_sent_at timestamptz null, expiry_notified_at timestamptz null)""");
+                  reminder_sent_at timestamptz null, expiry_notified_at timestamptz null,
+                  payment_due_at timestamptz null, payment_expired_at timestamptz null)""");
         jdbc.execute("create index idx_booking_requests_status_expires_at on booking_requests (status, expires_at)");
     }
 

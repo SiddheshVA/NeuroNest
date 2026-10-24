@@ -29,9 +29,10 @@ public class PublicProfessionalController {
             @RequestParam(required = false) String language,
             @RequestParam(required = false) String mode,
             @RequestParam(required = false) String q,
+            @RequestParam(required = false) String sort,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "" + PublicProfessionalService.DEFAULT_PAGE_SIZE) int size) {
-        return service.search(credentialType, city, language, mode, q, page, size);
+        return service.search(credentialType, city, language, mode, q, sort, page, size);
     }
 
     // Declared before /{id} for readability; Spring prefers the literal path either way.

@@ -52,6 +52,8 @@ class BookingSummarySecurityTest {
     @MockitoBean
     private BookingService service;
     @MockitoBean
+    private BookingPaymentService payments;
+    @MockitoBean
     private ClerkTokenVerifier clerkTokenVerifier;
     @MockitoBean
     private ClerkUserService clerkUserService;
@@ -79,7 +81,7 @@ class BookingSummarySecurityTest {
         when(clerkUserService.provision(eq("user_clerk"), any(), any())).thenReturn(user(userId));
         when(clerkUserService.provision(eq("pro_clerk"), any(), any())).thenReturn(user(professionalsOwnUserId));
         when(adminJwtService.verify(ADMIN_TOKEN)).thenReturn(Optional.of("admin"));
-        when(service.summary(any())).thenReturn(new BookingSummary(null, 0, 0));
+        when(service.summary(any())).thenReturn(new BookingSummary(null, List.of(), 0, 0));
         when(service.summary(userId)).thenReturn(summaryWithEverythingPrivateSetOnTheEntities());
     }
 
@@ -107,7 +109,7 @@ class BookingSummarySecurityTest {
         b.setPreferredDatetime(Instant.parse("2026-10-14T12:30:00Z"));
         b.setMeetingMethod("VIDEO");
         b.setMeetingLink("https://meet.example.com/room");
-        return new BookingSummary(NextAppointment.from(b, p), 2, 1);
+        return new BookingSummary(NextAppointment.from(b, p), List.of(), 2, 1);
     }
 
     @Test
@@ -127,7 +129,7 @@ class BookingSummarySecurityTest {
         verify(service).summary(userId);
         JsonNode json = JsonMapper.builder().build().readTree(body);
         assertThat(new ArrayList<>(json.propertyNames()))
-                .containsExactlyInAnyOrder("nextAppointment", "waitingForProfessional", "needsYourAnswer");
+                .containsExactlyInAnyOrder("nextAppointment", "awaitingPayment", "waitingForProfessional", "needsYourAnswer");
         assertThat(new ArrayList<>(json.get("nextAppointment").propertyNames())).containsExactlyInAnyOrder("id",
                 "scheduledTime", "preferredMode", "meetingMethod", "meetingLink", "meetingAddress", "professional");
         assertThat(new ArrayList<>(json.get("nextAppointment").get("professional").propertyNames()))
@@ -149,7 +151,7 @@ class BookingSummarySecurityTest {
 
         verify(service).summary(professionalsOwnUserId);
         verify(service, never()).summary(userId);
-        assertThat(body).isEqualTo("{\"nextAppointment\":null,\"waitingForProfessional\":0,\"needsYourAnswer\":0}");
+        assertThat(body).isEqualTo("{\"nextAppointment\":null,\"awaitingPayment\":[],\"waitingForProfessional\":0,\"needsYourAnswer\":0}");
         assertThat(List.of(body)).noneMatch(b -> b.contains("Asha"));
     }
 }

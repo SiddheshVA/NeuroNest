@@ -96,6 +96,11 @@ export function DashboardPage() {
               label="Upcoming confirmed appointments"
               link={{ to: "/admin/bookings?status=CONFIRMED", label: "See confirmed appointments" }}
             />
+            <StatCard
+              value={s.awaitingPaymentTotal}
+              label="Accepted, awaiting payment"
+              link={{ to: "/admin/bookings?status=AWAITING_PAYMENT", label: "See bookings awaiting payment" }}
+            />
           </Group>
 
           <Group title="Professionals">

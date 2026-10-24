@@ -233,7 +233,8 @@ public class ChatService {
         }
         SafetyAssessment a = collected.assessment;
         return new ChatAiResponse(collected.reply.toString(), a.riskFlag(), a.riskReason(),
-                a.recommendationTier(), a.recommendedAction(), a.recommendedInstrument(), a.crisisResources());
+                a.recommendationTier(), a.recommendedAction(), a.recommendedInstrument(), a.crisisResources(),
+                a.professionalType());
     }
 
     public List<ChatMessage> getHistory(UUID sessionId, UUID currentUserId) {

@@ -66,6 +66,29 @@ class ReplyPromptsTest {
     }
 
     @Test
+    void professionalHelpRulesSitInTheTierFourGuidanceOnly() {
+        String prompt = ReplyPrompts.systemPrompt(List.of(), null, false, false);
+
+        assertThat(prompt).contains(ReplyHeader.PRO_FIELD,
+                "tier 4 -> [[RISK:0|TIER:4|INSTR:PHQ9, GAD7, PSS10 or NONE|ACT:PRO|PRO:PSYCHIATRIST, PSYCHOLOGIST, COUNSELLOR or NONE]]",
+                "PROFESSIONAL HELP (tier 4 only)", "Do not default to counsellor",
+                "\"Doctor\" usually means psychiatrist", "Always give the reason in your reply",
+                "Never name a specific doctor, clinic or hospital", "never call anyone \"the best\"",
+                "Recommend a professional once", "keep it unless what they've said",
+                "Itne hafton se neend aur bhook");
+        int tier4 = prompt.indexOf("Tier 4. Reply with");
+        int block = prompt.indexOf("PROFESSIONAL HELP (tier 4 only)");
+        int tier5 = prompt.indexOf("Tier 5. For greetings");
+        assertThat(List.of(tier4, block, tier5)).isSorted();
+        // Each other tier says PRO is NONE; the crisis header itself is unchanged.
+        assertThat(prompt.split("PRO is NONE", -1)).hasSize(5);
+        assertThat(prompt).contains("tier 1 -> [[RISK:1|TIER:1|INSTR:NONE|ACT:NONE]]");
+        // The shared tier definitions (also used by the fallback classifier) don't carry it.
+        assertThat(SafetyRules.TIER_DEFINITIONS).doesNotContain("PRO:", "PROFESSIONAL HELP", "PSYCHIATRIST");
+        assertThat(SafetyCheckService.SYSTEM_PROMPT).doesNotContain("PROFESSIONAL HELP");
+    }
+
+    @Test
     void tiersAreCheckedInTheOrderOneFourTwoThreeFive() {
         for (String prompt : List.of(ReplyPrompts.systemPrompt(List.of(), null, false, false),
                 SafetyCheckService.SYSTEM_PROMPT)) {

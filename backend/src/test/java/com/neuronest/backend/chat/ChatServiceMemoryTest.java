@@ -262,6 +262,28 @@ class ChatServiceMemoryTest {
     }
 
     @Test
+    void tierFourHeaderPassesTheProfessionalTypeToMetaAndResponse() {
+        reply("[[RISK:0|TIER:4|INSTR:NONE|ACT:PRO|PRO:COUNSELLOR]]\nExams piling up is a lot.");
+
+        RecordingListener listener = run("Exams are killing me, I just want someone to talk it through with");
+
+        assertThat(listener.meta.recommendedAction()).isEqualTo("find_professional");
+        assertThat(listener.meta.professionalType()).isEqualTo("COUNSELOR");
+        assertThat(listener.text()).isEqualTo("Exams piling up is a lot.");
+    }
+
+    @Test
+    void nonStreamedResponseCarriesTheProfessionalType() {
+        givenSessionOwnedBy(null);
+        reply("[[RISK:0|TIER:4|INSTR:NONE|ACT:PRO|PRO:PSYCHIATRIST]]\nWeeks without proper sleep is hard.");
+
+        ChatAiResponse response = chatService.sendMessage(sessionId, "I haven't slept properly for weeks", null);
+
+        assertThat(response.recommendedAction()).isEqualTo("find_professional");
+        assertThat(response.professionalType()).isEqualTo("PSYCHIATRIST");
+    }
+
+    @Test
     void crisisHeaderSendsCrisisResourcesFirst() {
         reply(CRISIS, "I'm really glad ", "you told me.");
 

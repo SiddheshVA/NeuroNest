@@ -1,5 +1,6 @@
 package com.neuronest.backend.chat;
 
+import com.neuronest.backend.professional.CredentialType;
 import com.neuronest.backend.safety.CrisisResources;
 
 import java.util.Locale;
@@ -101,6 +102,31 @@ final class SafetyRules {
     // Set.of(...).contains(null) throws, and the instrument is often null.
     private static boolean isConcernInstrument(String instrument) {
         return instrument != null && CONCERN_INSTRUMENTS.contains(instrument);
+    }
+
+    /**
+     * Keeps the header's PRO value only on a no-risk tier 4 verdict, mapped to the directory's
+     * {@link CredentialType} name; anything else (other tiers, NONE, unknown values) means none.
+     */
+    static SafetyAssessment withProfessionalType(SafetyAssessment assessment, String rawType) {
+        if (assessment.riskFlag() || assessment.recommendationTier() != 4) {
+            return assessment;
+        }
+        CredentialType type = professionalType(rawType);
+        return assessment.withProfessionalType(type == null ? null : type.name());
+    }
+
+    /** The one place model wording maps to directory types: "COUNSELLOR" -> COUNSELOR; NONE/unknown -> null. */
+    static CredentialType professionalType(String value) {
+        if (value == null) {
+            return null;
+        }
+        return switch (value.replaceAll("[^A-Za-z]", "").toUpperCase(Locale.ROOT)) {
+            case "PSYCHIATRIST" -> CredentialType.PSYCHIATRIST;
+            case "PSYCHOLOGIST" -> CredentialType.PSYCHOLOGIST;
+            case "COUNSELLOR", "COUNSELOR" -> CredentialType.COUNSELOR;
+            default -> null;
+        };
     }
 
     /** "PHQ-9", "phq9 " -> "PHQ9"; "NONE"/blank -> null. */

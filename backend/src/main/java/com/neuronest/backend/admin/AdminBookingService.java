@@ -3,12 +3,17 @@ package com.neuronest.backend.admin;
 import com.neuronest.backend.admin.AdminBookingDtos.AdminBookingItem;
 import com.neuronest.backend.admin.AdminBookingDtos.CloseRequest;
 import com.neuronest.backend.admin.AdminBookingDtos.DashboardSummary;
+import com.neuronest.backend.admin.AdminBookingDtos.PaymentSummary;
+import com.neuronest.backend.admin.AdminBookingDtos.RefundNeededItem;
 import com.neuronest.backend.admin.AdminBookingDtos.ResponsivenessItem;
 import com.neuronest.backend.admin.AdminProfessionalDtos.PageResponse;
 import com.neuronest.backend.booking.BookingStatus;
 import com.neuronest.backend.config.ApiValidationException;
 import com.neuronest.backend.config.ConflictException;
 import com.neuronest.backend.notification.BookingEvent;
+import com.neuronest.backend.payment.PaymentPeriods;
+import com.neuronest.backend.payment.PaymentReportQueries;
+import com.neuronest.backend.payment.PaymentReportQueries.AdminPaymentRow;
 import com.neuronest.backend.professional.AvailabilityService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
@@ -39,16 +44,20 @@ public class AdminBookingService {
 
     private final AdminBookingQueries queries;
     private final ApplicationEventPublisher events;
+    private final PaymentReportQueries payments;
     private final Clock clock;
 
     @Autowired
-    public AdminBookingService(AdminBookingQueries queries, ApplicationEventPublisher events) {
-        this(queries, events, Clock.system(AvailabilityService.ZONE));
+    public AdminBookingService(AdminBookingQueries queries, ApplicationEventPublisher events,
+                               PaymentReportQueries payments) {
+        this(queries, events, payments, Clock.system(AvailabilityService.ZONE));
     }
 
-    AdminBookingService(AdminBookingQueries queries, ApplicationEventPublisher events, Clock clock) {
+    AdminBookingService(AdminBookingQueries queries, ApplicationEventPublisher events, PaymentReportQueries payments,
+                        Clock clock) {
         this.queries = queries;
         this.events = events;
+        this.payments = payments;
         this.clock = clock;
     }
 
@@ -70,6 +79,31 @@ public class AdminBookingService {
         Instant now = clock.instant();
         Instant waitingSince = unansweredOver == null ? null : now.minus(Duration.ofHours(unansweredOver));
         var result = queries.list(statusFilter, waitingSince, professionalId, now, page, size);
+        return new PageResponse<>(result.items(), page, size, result.total(), totalPages(result.total(), size));
+    }
+
+    // ---- Payments and commission (read-only) ----
+
+    @Transactional(readOnly = true)
+    public PaymentSummary paymentSummary() {
+        PaymentPeriods periods = PaymentPeriods.at(clock.instant());
+        return new PaymentSummary(periods.month().toString(), payments.totals(null, null, null),
+                payments.totals(null, periods.monthStart(), periods.monthEnd()));
+    }
+
+    /** Every PAID payment, newest first; counted is false for one whose booking is not CONFIRMED. */
+    @Transactional(readOnly = true)
+    public PageResponse<AdminPaymentRow> payments(int page, int size) {
+        checkPage(page, size);
+        var result = payments.adminPayments(page, size);
+        return new PageResponse<>(result.items(), page, size, result.total(), totalPages(result.total(), size));
+    }
+
+    // Read-only: refunds are made by hand in the Razorpay dashboard.
+    @Transactional(readOnly = true)
+    public PageResponse<RefundNeededItem> refundsNeeded(int page, int size) {
+        checkPage(page, size);
+        var result = queries.refundsNeeded(page, size);
         return new PageResponse<>(result.items(), page, size, result.total(), totalPages(result.total(), size));
     }
 

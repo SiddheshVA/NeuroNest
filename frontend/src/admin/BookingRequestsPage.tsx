@@ -29,7 +29,7 @@ import Typography from "@mui/material/Typography";
 import StickyNote2Outlined from "@mui/icons-material/StickyNote2Outlined";
 import { AdminApiError, closeBooking, listBookings, nudgeBooking } from "./admin-api";
 import { BookingStatusChip } from "./BookingStatusChip";
-import { displayStatus, formatIstDateTime, hoursAsText } from "./format";
+import { displayStatus, formatIstDateTime, hoursAsText, isUnpaidExpiry } from "./format";
 import { NoteActionDialog } from "./NoteActionDialog";
 import {
   BOOKING_STATUS_LABELS,
@@ -263,7 +263,7 @@ export function BookingRequestsPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {data?.items.map((row) => {
+              {(data?.items ?? []).map((row) => {
                 const shown = displayStatus(row, loaded.loadedAt);
                 const canNudge = shown === "PENDING";
                 const canClose = shown === "PENDING" || shown === "ALTERNATE_PROPOSED";
@@ -278,6 +278,11 @@ export function BookingRequestsPage() {
                     <TableCell>
                       <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
                         <BookingStatusChip status={shown} />
+                        {isUnpaidExpiry(row, shown) && (
+                          <Typography variant="body2" color="text.secondary">
+                            Expired: not paid
+                          </Typography>
+                        )}
                         {row.adminNote && (
                           <Tooltip title={`Admin note: ${row.adminNote}`}>
                             <IconButton size="small" aria-label={`Admin note: ${row.adminNote}`}>
@@ -292,6 +297,11 @@ export function BookingRequestsPage() {
                       {row.status === "ALTERNATE_PROPOSED" && row.proposedDatetime && (
                         <Typography variant="body2" color="text.secondary">
                           Suggested: {formatIstDateTime(row.proposedDatetime)}
+                        </Typography>
+                      )}
+                      {shown === "AWAITING_PAYMENT" && row.paymentDueAt && (
+                        <Typography variant="body2" color="text.secondary">
+                          Pay by: {formatIstDateTime(row.paymentDueAt)}
                         </Typography>
                       )}
                     </TableCell>

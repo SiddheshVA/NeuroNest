@@ -27,15 +27,32 @@ public class JdbcBookingJobStore implements BookingJobStore {
                AND status IN ('PENDING', 'ALTERNATE_PROPOSED') AND expires_at < :now
             RETURNING id""";
 
-    // responded_by NULL with responded_at set is what the jobs' own expiry looks like (the table allows no
-    // other value for a system action).
+    // The same claim for agreed bookings that were not paid: AWAITING_PAYMENT with payment_due_at before
+    // the cutoff (now minus the grace period). A verify holds this row's lock while it confirms, so SKIP
+    // LOCKED passes over it, and the repeated status check leaves a booking that was just paid alone.
+    // responded_at / responded_by are left as they are (the acceptance); payment_expired_at records this.
+    static final String EXPIRE_UNPAID = """
+            UPDATE booking_requests
+               SET status = 'EXPIRED', payment_expired_at = :now, updated_at = :now
+             WHERE id IN (SELECT id FROM booking_requests
+                           WHERE status = 'AWAITING_PAYMENT' AND payment_due_at < :cutoff
+                           ORDER BY payment_due_at, id
+                           LIMIT :limit
+                           FOR UPDATE SKIP LOCKED)
+               AND status = 'AWAITING_PAYMENT' AND payment_due_at < :cutoff
+            RETURNING id""";
+
+    // The jobs' own expiries: an unanswered request (responded_by NULL with responded_at set; the table
+    // allows no other value for a system action) or an unpaid booking (payment_expired_at set).
     static final String CLAIM_EXPIRY_RETRIES = """
             UPDATE booking_requests
                SET expiry_notified_at = :now
              WHERE id IN (SELECT id FROM booking_requests
-                           WHERE status = 'EXPIRED' AND expiry_notified_at IS NULL AND responded_by IS NULL
-                             AND responded_at >= :since AND responded_at < :before
-                           ORDER BY responded_at, id
+                           WHERE status = 'EXPIRED' AND expiry_notified_at IS NULL
+                             AND ((responded_by IS NULL AND payment_expired_at IS NULL
+                                   AND responded_at >= :since AND responded_at < :before)
+                               OR (payment_expired_at >= :since AND payment_expired_at < :before))
+                           ORDER BY coalesce(payment_expired_at, responded_at), id
                            LIMIT :limit
                            FOR UPDATE SKIP LOCKED)
                AND status = 'EXPIRED' AND expiry_notified_at IS NULL
@@ -87,6 +104,13 @@ public class JdbcBookingJobStore implements BookingJobStore {
     public List<UUID> expireOverdueRequests(Instant now, int limit) {
         return jdbc.queryForList(EXPIRE_REQUESTS, new MapSqlParameterSource()
                 .addValue("now", Timestamp.from(now)).addValue("limit", limit), UUID.class);
+    }
+
+    @Override
+    public List<UUID> expireUnpaidBookings(Instant now, Instant cutoff, int limit) {
+        return jdbc.queryForList(EXPIRE_UNPAID, new MapSqlParameterSource()
+                .addValue("now", Timestamp.from(now)).addValue("cutoff", Timestamp.from(cutoff))
+                .addValue("limit", limit), UUID.class);
     }
 
     @Override
