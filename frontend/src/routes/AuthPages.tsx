@@ -10,7 +10,7 @@ import { safeRedirectPath } from "@/lib/safe-redirect";
 function ProfessionalAccent() {
   return (
     <AccentLink to="/pro/join" icon={Stethoscope}>
-      Are you a licensed professional? Sign in or apply to be listed here.
+      Are you a licensed mental health professional? Sign in or apply to be listed here.
     </AccentLink>
   );
 }

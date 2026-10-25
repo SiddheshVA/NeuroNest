@@ -7,7 +7,7 @@ import { CopyButton, ProSnackbar } from "@/components/pro/pro-feedback";
 import { ProPortalFrame } from "@/components/pro/pro-portal-nav";
 import { DisabledAccountNotice, ErrorNotice, LoadingBlock, secondaryButtonClass } from "@/components/pro/pro-ui";
 import { METHOD_LABELS } from "@/lib/bookings-client";
-import { formatIstDateTime, todayInIndia } from "@/lib/ist-time";
+import { formatMeetingTime, todayInIndia } from "@/lib/ist-time";
 import { ProApiError, useProApi } from "@/lib/pro-client";
 import type { ProAppointment, ProAppointmentPage } from "@/lib/pro-home";
 import { cn } from "@/lib/utils";
@@ -54,7 +54,7 @@ function AppointmentItem({
       </div>
 
       <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Detail label="Date and time" value={formatIstDateTime(a.scheduledTime)} />
+        <Detail label="Date and time" value={formatMeetingTime(a.scheduledTime, a.endDatetime, a.sessionCount)} />
         {mode ? <Detail label="Mode" value={mode} /> : null}
         {a.meetingMethod ? <Detail label="How you meet" value={METHOD_LABELS[a.meetingMethod]} /> : null}
         {a.meetingMethod === "VIDEO" && a.meetingLink ? (

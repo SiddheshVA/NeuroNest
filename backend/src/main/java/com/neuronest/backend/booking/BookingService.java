@@ -18,11 +18,13 @@ import com.neuronest.backend.professional.Professional;
 import com.neuronest.backend.professional.ProfessionalAccountRepository;
 import com.neuronest.backend.professional.ProfessionalRepository;
 import com.neuronest.backend.professional.PublicProfessionalService;
+import com.neuronest.backend.professional.SessionGrid;
 import com.neuronest.backend.professional.WeeklyHours;
 import com.neuronest.backend.notification.BookingEvent;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -46,8 +48,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-// A signed-in user's booking requests: creating one for an exact free slot, listing and reading their
-// own, cancelling, and accepting a time the professional suggested. Nothing here logs request bodies,
+// A signed-in user's bookings: booking one or more consecutive free sessions (held for 10 minutes while
+// the user pays, then CONFIRMED by BookingPaymentService), listing and reading their own, cancelling, and
+// accepting a time the professional suggested (older requests only). Nothing here logs request bodies,
 // notes, phone numbers or assessment data.
 @Service
 public class BookingService {
@@ -57,11 +60,17 @@ public class BookingService {
     static final int MIN_NAME = 2;
     static final int MAX_NAME = 80;
     static final int MAX_NOTE = 500;
-    static final int MAX_OPEN_PER_USER = 3;
-    static final int MAX_OPEN_PER_PROFESSIONAL = 1;
     static final int MAX_NEW_PER_DAY = 5;
-    static final Duration EXPIRES_AFTER = Duration.ofHours(72);
+    /** Bookings one user may hold unpaid at once, in total and with one professional. */
+    static final int MAX_HOLDS_PER_USER = 2;
+    static final int MAX_HOLDS_PER_PROFESSIONAL = 1;
+    /** Consecutive sessions in one booking (the booking_requests_session_count_check constraint). */
+    public static final int MAX_SESSIONS = 4;
     static final String TAKEN_MESSAGE = "This time is no longer available. Please choose another time.";
+    static final String NOT_CONSECUTIVE_MESSAGE = "The sessions you choose must follow one another on the same day. "
+            + "Please choose fewer sessions or another start time.";
+    /** How long a new booking holds its slots while the user pays (bookings.payment-hold-minutes). */
+    public static final Duration DEFAULT_PAYMENT_HOLD = Duration.ofMinutes(10);
     static final String PROPOSAL_TAKEN_MESSAGE = "This time is no longer available.";
     /** The user's time to pay once a time is agreed (bookings.payment-window-hours). */
     public static final Duration DEFAULT_PAYMENT_WINDOW = Duration.ofHours(24);
@@ -80,6 +89,7 @@ public class BookingService {
     private final PaymentAmounts amounts;
     private final Clock clock;
     private Duration paymentWindow = DEFAULT_PAYMENT_WINDOW;
+    private Duration paymentHold = DEFAULT_PAYMENT_HOLD;
 
     @Autowired
     public BookingService(BookingRepository bookings, SlotService slots, PublicProfessionalService directory,
@@ -111,6 +121,11 @@ public class BookingService {
         this.paymentWindow = Duration.ofHours(hours);
     }
 
+    @Autowired
+    void setPaymentHoldMinutes(@Value("${bookings.payment-hold-minutes:10}") long minutes) {
+        this.paymentHold = Duration.ofMinutes(Math.max(1, minutes));
+    }
+
     // ---- Creating ----
 
     @Transactional
@@ -134,14 +149,16 @@ public class BookingService {
         ConsultationMode mode = preferredMode(r.preferredMode());
         String method = preferredMethod(mode, r.preferredMethod());
         Instant slotStart = slotTime("slotStart", r.slotStart(), true);
-        Instant alternateStart = slotTime("alternateSlotStart", r.alternateSlotStart(), false);
-        if (alternateStart != null && alternateStart.equals(slotStart)) {
-            throw new ApiValidationException("alternateSlotStart must be different from slotStart.");
-        }
+        int sessionCount = sessionCount(r.sessionCount());
 
         User user = users.findById(userId).orElseThrow(BookingExceptions.NotSignedInException::new);
         String professionalId = trimToNull(r.professionalId());
-        Professional p = (professionalId == null ? Optional.<Professional>empty() : directory.findVisible(professionalId))
+        Professional visible = (professionalId == null ? Optional.<Professional>empty() : directory.findVisible(professionalId))
+                .orElseThrow(() -> new BookingExceptions.NotFoundException("This professional was not found."));
+        // The professional row is locked (the same lock the professional's confirm and the proposal accept
+        // take), so two users booking the same time are handled one after the other and the second sees the
+        // first one's hold. The database's no-overlap constraint is the last guard (see the save below).
+        Professional p = professionals.findByIdForUpdate(visible.getId())
                 .orElseThrow(() -> new BookingExceptions.NotFoundException("This professional was not found."));
         if (p.isSampleData()) {
             throw new ConflictException("This is a sample listing and cannot be booked.");
@@ -150,7 +167,7 @@ public class BookingService {
                 .filter(account -> p.getId().equals(account.getProfessionalId())).isPresent()) {
             throw new ConflictException("You cannot book your own professional listing.");
         }
-        if (p.getSessionMinutes() == null || !WeeklyHours.hasAnyRange(p.getWeeklyHours())) {
+        if (!WeeklyHours.hasAnyRange(p.getWeeklyHours())) {
             throw new ConflictException("This professional has not set their availability yet.");
         }
         if (p.getConsultationMode() != ConsultationMode.BOTH && p.getConsultationMode() != mode) {
@@ -160,22 +177,22 @@ public class BookingService {
         }
 
         ZonedDateTime now = ZonedDateTime.now(clock);
-        checkSlot(p, "slotStart", slotStart, now);
-        if (alternateStart != null) checkSlot(p, "alternateSlotStart", alternateStart, now);
+        checkSlots(p, slotStart, sessionCount, now);
 
         Instant nowInstant = now.toInstant();
         if (bookings.countByUserIdAndCreatedAtAfter(userId, nowInstant.minus(Duration.ofHours(24))) >= MAX_NEW_PER_DAY) {
-            throw new BookingExceptions.TooManyRequestsException("You have sent " + MAX_NEW_PER_DAY + " booking requests "
+            throw new BookingExceptions.TooManyRequestsException("You have made " + MAX_NEW_PER_DAY + " bookings "
                     + "in the last 24 hours. Please try again later.");
         }
-        if (bookings.countOpenByUser(userId, BookingStatus.OPEN, nowInstant) >= MAX_OPEN_PER_USER) {
-            throw new ConflictException("You already have " + MAX_OPEN_PER_USER + " open booking requests. Please wait "
-                    + "for a reply or cancel one before you send another.");
+        if (bookings.countByUserIdAndProfessionalIdAndStatusAndPaymentDueAtAfter(userId, p.getId(),
+                BookingStatus.AWAITING_PAYMENT, nowInstant) >= MAX_HOLDS_PER_PROFESSIONAL) {
+            throw new ConflictException("You already have a booking with this professional waiting for payment. "
+                    + "Please pay for it or cancel it before you book again.");
         }
-        if (bookings.countOpenByUserAndProfessional(userId, p.getId(), BookingStatus.OPEN, nowInstant)
-                >= MAX_OPEN_PER_PROFESSIONAL) {
-            throw new ConflictException("You already have an open request with this professional. Please wait for a "
-                    + "reply or cancel it before you send another.");
+        if (bookings.countByUserIdAndStatusAndPaymentDueAtAfter(userId, BookingStatus.AWAITING_PAYMENT, nowInstant)
+                >= MAX_HOLDS_PER_USER) {
+            throw new ConflictException("You already have " + MAX_HOLDS_PER_USER + " bookings waiting for payment. "
+                    + "Please pay for one or cancel it before you book again.");
         }
 
         // Only read when the user ticked it, and only results under sessions the user owns.
@@ -198,38 +215,64 @@ public class BookingService {
         b.setPreferredMode(mode.name());
         b.setPreferredMethod(method);
         b.setPreferredDatetime(slotStart);
-        b.setAlternateDatetime(alternateStart);
+        b.setSessionCount(sessionCount);
+        // One meeting of sessionCount sessions; the breaks it skipped are blocked after it.
+        b.setEndsAt(SessionGrid.current().meetingEnd(slotStart, sessionCount));
+        b.setBlockedUntil(SessionGrid.current().blockedUntil(slotStart, sessionCount));
         b.setNote(note);
-        b.setStatus(BookingStatus.PENDING);
+        // Consent for WhatsApp updates, stored now and used once that channel is turned on.
+        b.setWhatsappOptIn(Boolean.TRUE.equals(r.whatsappUpdates()));
+        // No approval step: a paid booking holds its slots for paymentHold while the user pays and becomes
+        // CONFIRMED once the payment is verified; a free session is CONFIRMED straight away.
+        boolean paid = BookingPaymentService.requiresPayment(p);
+        b.setStatus(paid ? BookingStatus.AWAITING_PAYMENT : BookingStatus.CONFIRMED);
+        b.setPaymentDueAt(paid ? nowInstant.plus(paymentHold) : null);
         b.setRespondedBy(null);
         b.setCreatedAt(nowInstant);
-        b.setExpiresAt(nowInstant.plus(EXPIRES_AFTER));
         b.setConsentGivenAt(nowInstant);
         b.setSharedAssessment(shared);
         b.setAssessmentSharedAt(shared == null ? null : nowInstant);
-        Booking saved = bookings.saveAndFlush(b);
-        // Emails go out only after this transaction commits (BookingNotificationListener).
-        events.publishEvent(new BookingEvent(BookingEvent.Type.REQUEST_CREATED, saved.getId()));
-        return BookingView.from(saved, p);
+        Booking saved;
+        try {
+            saved = bookings.saveAndFlush(b);
+        } catch (DataIntegrityViolationException e) {
+            // The booking_requests_no_overlap constraint: another booking took this time first.
+            throw new ConflictException(TAKEN_MESSAGE);
+        }
+        // Emails go out only after this transaction commits (BookingNotificationListener). A held booking
+        // sends nothing yet: the confirmation goes out once it is paid.
+        if (!paid) events.publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, saved.getId()));
+        return view(saved, p);
     }
 
-    // The start time must be exactly one of the professional's free slots.
-    private void checkSlot(Professional p, String field, Instant start, ZonedDateTime now) {
+    // The start time must be one of the professional's free slots, and each further session the next free
+    // slot straight after it on the same day.
+    private void checkSlots(Professional p, Instant start, int count, ZonedDateTime now) {
         if (start.isBefore(now.plusHours(AvailabilityService.MIN_NOTICE_HOURS).toInstant())) {
-            throw new ApiValidationException(field + " must be at least " + AvailabilityService.MIN_NOTICE_HOURS
+            throw new ApiValidationException("slotStart must be at least " + AvailabilityService.MIN_NOTICE_HOURS
                     + " hours from now.");
         }
         LocalDate lastDate = now.toLocalDate().plusDays(AvailabilityService.MAX_DAYS_AHEAD);
         if (start.atZone(AvailabilityService.ZONE).toLocalDate().isAfter(lastDate)) {
-            throw new ApiValidationException(field + " must be within the next " + AvailabilityService.MAX_DAYS_AHEAD
+            throw new ApiValidationException("slotStart must be within the next " + AvailabilityService.MAX_DAYS_AHEAD
                     + " days.");
         }
-        switch (slots.check(p, start, now)) {
+        switch (slots.checkRun(p, start, count, now)) {
             case FREE -> { }
             case TAKEN, DAY_OFF -> throw new ConflictException(TAKEN_MESSAGE);
-            case NOT_A_SLOT -> throw new ApiValidationException(field + " is not one of this professional's available "
+            case NOT_CONSECUTIVE -> throw new ApiValidationException(NOT_CONSECUTIVE_MESSAGE);
+            case NOT_A_SLOT -> throw new ApiValidationException("slotStart is not one of this professional's available "
                     + "times. Please choose a time from their availability.");
         }
+    }
+
+    // 1 when not given; otherwise 1 to MAX_SESSIONS.
+    private static int sessionCount(Integer value) {
+        if (value == null) return 1;
+        if (value < 1 || value > MAX_SESSIONS) {
+            throw new ApiValidationException("sessionCount must be between 1 and " + MAX_SESSIONS + ".");
+        }
+        return value;
     }
 
     // ---- Reading ----
@@ -302,11 +345,13 @@ public class BookingService {
             throw new ConflictException("This booking request can no longer be cancelled. Its status is "
                     + b.getStatus().name() + ".");
         }
+        boolean wasHold = b.getStatus() == BookingStatus.AWAITING_PAYMENT;
         b.setStatus(BookingStatus.CANCELLED);
         b.setRespondedBy("USER");
         b.setRespondedAt(clock.instant());
         Booking saved = bookings.saveAndFlush(b);
-        events.publishEvent(new BookingEvent(BookingEvent.Type.CANCELLED_BY_USER, saved.getId()));
+        // An unpaid hold was never a booking for the professional, so they are not emailed about it.
+        if (!wasHold) events.publishEvent(new BookingEvent(BookingEvent.Type.CANCELLED_BY_USER, saved.getId()));
         return BookingView.from(saved, professionals.findById(saved.getProfessionalId()).orElse(null));
     }
 

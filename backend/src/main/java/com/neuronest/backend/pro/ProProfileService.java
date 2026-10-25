@@ -21,6 +21,7 @@ import com.neuronest.backend.professional.ProfessionalDocument;
 import com.neuronest.backend.professional.ProfessionalDocumentRepository;
 import com.neuronest.backend.professional.ProfessionalRepository;
 import com.neuronest.backend.professional.RegistrationBody;
+import com.neuronest.backend.professional.SessionGrid;
 import com.neuronest.backend.professional.VerificationLogEntry;
 import com.neuronest.backend.professional.VerificationLogRepository;
 import com.neuronest.backend.professional.VerificationStatus;
@@ -249,15 +250,16 @@ public class ProProfileService {
         }
         if (b.has("photoUrl")) { String v = photoUrl(b.text("photoUrl")); changes.add(() -> p.setPhotoUrl(v)); }
         if (b.has("contactPhone")) { String v = phone(b.text("contactPhone")); changes.add(() -> p.setContactPhone(v)); }
-        // Weekly hours, session length and buffer are soft fields: editable in any status, and they never
-        // send a listing back for review. Hours are checked against the session length that will apply,
-        // so changing either one re-checks the pair.
+        // Weekly hours are a soft field: editable in any status, and they never send a listing back for
+        // review. Each range must fit at least one session of the global grid (SessionGrid). sessionMinutes
+        // and bufferMinutes are still accepted from older forms and stored, but no longer shape the slots.
         if (b.has("weeklyHours") || b.has("sessionMinutes")) {
             Map<String, List<Map<String, String>>> hours = b.has("weeklyHours")
                     ? WeeklyHours.fromJson(b.raw("weeklyHours")) : p.getWeeklyHours();
             Integer session = b.has("sessionMinutes")
                     ? WeeklyHours.sessionMinutes(b.integer("sessionMinutes")) : p.getSessionMinutes();
-            Map<String, List<Map<String, String>>> normalized = WeeklyHours.validate(hours, session);
+            Map<String, List<Map<String, String>>> normalized =
+                    WeeklyHours.validate(hours, SessionGrid.current().sessionMinutes());
             changes.add(() -> {
                 p.setWeeklyHours(normalized);
                 p.setSessionMinutes(session);

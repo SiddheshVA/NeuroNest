@@ -13,10 +13,10 @@ const JOIN_PATH = "/pro/join";
 const HOME_PATH = "/pro/dashboard";
 
 const STEPS: { icon: LucideIcon; title: string; text: string }[] = [
-  { icon: UserPlus, title: "Create an account", text: "You sign in to NeuroNest and create your professional account." },
-  { icon: ClipboardCheck, title: "Add your details", text: "You fill in your qualifications, registration and practice details." },
+  { icon: UserPlus, title: "Create an account", text: "You sign in to NeuroNest and create your account." },
+  { icon: ClipboardCheck, title: "Add your details", text: "You fill in your qualifications, registration / license number and practice details." },
   { icon: FileUp, title: "Upload your proof", text: "You upload proof of your registration and identity, which is stored privately." },
-  { icon: ShieldCheck, title: "Review and approval", text: "The NeuroNest team reviews your details, and you are listed only after approval." },
+  { icon: ShieldCheck, title: "Review and approval", text: "Your profile shows as Pending verification while the NeuroNest team reviews it. You are listed only after approval." },
 ];
 
 function ProcessExplainer() {
@@ -102,7 +102,11 @@ function ProJoin() {
             List your practice on NeuroNest
           </h1>
           <p className="max-w-2xl text-base leading-relaxed text-muted-foreground">
-            Licensed counselors, psychologists and psychiatrists can apply to appear in the NeuroNest directory.
+            Licensed mental health professionals (psychologists, psychiatrists and registered counsellors) can apply
+            to appear in the NeuroNest directory.
+          </p>
+          <p className="max-w-2xl text-sm font-medium text-foreground">
+            Teachers, trainers and coaches are not eligible.
           </p>
         </header>
 
@@ -121,7 +125,7 @@ function ProJoin() {
             <SignInOrUp />
             <div className="flex justify-center">
               <AccentLink to="/login" icon={UserRound}>
-                Not a professional? Go back to user login.
+                Not a licensed mental health professional? Go back to user login.
               </AccentLink>
             </div>
           </div>

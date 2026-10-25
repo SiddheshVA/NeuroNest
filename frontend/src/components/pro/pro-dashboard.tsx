@@ -7,7 +7,7 @@ import { AlertTriangle, CalendarClock, CalendarOff, Clock, CreditCard, Inbox, Oc
 import { ProPortalFrame } from "@/components/pro/pro-portal-nav";
 import { ProStatusBanner } from "@/components/pro/pro-status-banner";
 import { DisabledAccountNotice, ErrorNotice, LoadingBlock } from "@/components/pro/pro-ui";
-import { formatIstDate, formatIstDateTime } from "@/lib/ist-time";
+import { formatIstDate, formatIstDateTime, formatMeetingTime } from "@/lib/ist-time";
 import { ProApiError, useProApi, type ProMe } from "@/lib/pro-client";
 import type { ProAwaitingPaymentItem, ProDashboard, ProWarning } from "@/lib/pro-home";
 import { cn } from "@/lib/utils";
@@ -157,7 +157,7 @@ function DashboardContent({ me, summary: s }: { me: ProMe; summary: ProDashboard
           {s.nextAppointment ? (
             <>
               <p className="text-base font-semibold text-foreground">{s.nextAppointment.contactName}</p>
-              <p className="text-sm text-foreground">{formatIstDateTime(s.nextAppointment.scheduledTime)}</p>
+              <p className="text-sm text-foreground">{formatMeetingTime(s.nextAppointment.scheduledTime, s.nextAppointment.endDatetime, s.nextAppointment.sessionCount)}</p>
               <p className="text-sm text-muted-foreground">{meetingText(s.nextAppointment.meetingMethod)}</p>
               <Link href="/pro/appointments" className="w-fit text-sm font-medium text-primary underline-offset-4 hover:underline">
                 View
@@ -192,6 +192,16 @@ function DashboardContent({ me, summary: s }: { me: ProMe; summary: ProDashboard
             <p className="text-sm text-muted-foreground">No registration expiry date is recorded.</p>
           )}
         </Card>
+
+        <Card title="Block slots">
+          <p className="text-sm text-foreground">
+            Need a time off for an emergency, a meeting or an event? Block any of your free times in the next 7 days so
+            clients cannot book them.
+          </p>
+          <Link href="/pro/block-slots" className="w-fit text-sm font-medium text-primary underline-offset-4 hover:underline">
+            Block slots
+          </Link>
+        </Card>
       </div>
     </>
   );
@@ -216,7 +226,9 @@ function AwaitingPaymentCard({ items }: { items: ProAwaitingPaymentItem[] }) {
             >
               {item.contactName}
             </Link>
-            {item.scheduledTime ? <p className="text-sm text-foreground">{formatIstDateTime(item.scheduledTime)}</p> : null}
+            {item.scheduledTime ? (
+              <p className="text-sm text-foreground">{formatMeetingTime(item.scheduledTime, item.endDatetime, item.sessionCount)}</p>
+            ) : null}
             <p className="text-sm text-muted-foreground">{meetingText(item.meetingMethod)}</p>
             {item.paymentDueAt ? (
               <p className="text-sm text-foreground">Pay by {formatIstDateTime(item.paymentDueAt)}</p>

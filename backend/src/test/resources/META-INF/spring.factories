@@ -1,0 +1,2 @@
+# Test classpath only: keeps every test's Spring context away from the real database and its credentials.
+org.springframework.boot.EnvironmentPostProcessor=com.neuronest.backend.TestDatabaseIsolation

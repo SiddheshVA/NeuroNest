@@ -31,6 +31,11 @@ import com.neuronest.backend.memory.MemoryRepository;
 import com.neuronest.backend.payment.PaymentReportQueries;
 import com.neuronest.backend.payment.PaymentRepository;
 import com.neuronest.backend.payment.RazorpayGateway;
+import com.neuronest.backend.payment.RazorpayWebhookVerifier;
+import com.neuronest.backend.booking.RazorpayWebhookService;
+import com.neuronest.backend.pro.CloudinaryClient;
+import com.neuronest.backend.pro.ProBlockedSlotService;
+import com.neuronest.backend.pro.ProPhotoService;
 import com.neuronest.backend.pro.ClerkBackendClient;
 import com.neuronest.backend.pro.ProBookingService;
 import com.neuronest.backend.pro.ProDocumentService;
@@ -95,7 +100,10 @@ import java.util.UUID;
         ProBookingService.class, ProHomeService.class, ProProfileService.class, ProDocumentService.class,
         ProDocumentStorage.class, ProRegistrationRateLimiter.class,
         AdminProfessionalService.class, AdminVerificationService.class, AdminBookingService.class,
-        AdminBookingQueries.class, AdminSuspensionService.class, ReviewService.class, SecuritySuiteBase.SuiteBeans.class})
+        AdminBookingQueries.class, AdminSuspensionService.class, ReviewService.class,
+        ProPhotoService.class, CloudinaryClient.class, RazorpayWebhookService.class, RazorpayWebhookVerifier.class,
+        ProBlockedSlotService.class,
+        SecuritySuiteBase.SuiteBeans.class})
 abstract class SecuritySuiteBase {
 
     @DynamicPropertySource

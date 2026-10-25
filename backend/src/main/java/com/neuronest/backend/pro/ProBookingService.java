@@ -110,7 +110,8 @@ public class ProBookingService {
                 ? bookings.findByProfessionalId(professionalId, pageRequest)
                 : bookings.findByProfessionalIdAndStatus(professionalId, filter, pageRequest);
         Instant now = clock.instant();
-        return new ProBookingPage(result.getContent().stream().map(b -> ProBookingView.from(b, now)).toList(),
+        Professional p = professionals.findById(professionalId).orElse(null);
+        return new ProBookingPage(result.getContent().stream().map(b -> ProBookingView.from(b, p, now)).toList(),
                 page, size, result.getTotalElements(), result.getTotalPages());
     }
 
@@ -130,7 +131,7 @@ public class ProBookingService {
         UUID professionalId = professionalId(principal);
         Booking b = parseId(id).flatMap(uuid -> bookings.findByIdAndProfessionalId(uuid, professionalId))
                 .orElseThrow(ProExceptions.BookingNotFoundException::new);
-        return ProBookingView.from(b, clock.instant());
+        return ProBookingView.from(b, professionals.findById(professionalId).orElse(null), clock.instant());
     }
 
     // ---- Replying ----
@@ -218,7 +219,7 @@ public class ProBookingService {
     private ProBookingView saved(Booking b, BookingEvent.Type type, Instant now) {
         Booking saved = bookings.saveAndFlush(b);
         events.publishEvent(new BookingEvent(type, saved.getId()));
-        return ProBookingView.from(saved, now);
+        return ProBookingView.from(saved, professionals.findById(saved.getProfessionalId()).orElse(null), now);
     }
 
     // ---- Checks ----

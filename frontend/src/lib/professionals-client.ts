@@ -18,7 +18,7 @@ export type ConsultationMode = SearchMode | "BOTH";
 export const CREDENTIAL_TYPE_LABELS: Record<CredentialType, string> = {
   PSYCHOLOGIST: "Psychologist",
   PSYCHIATRIST: "Psychiatrist",
-  COUNSELOR: "Counselor",
+  COUNSELOR: "Registered counsellor",
 };
 
 export const CONSULTATION_MODE_LABELS: Record<ConsultationMode, string> = {
@@ -84,10 +84,13 @@ export interface ReviewPage {
 
 export const REVIEWS_PAGE_SIZE = 5;
 
-/** GET /api/professionals/{id}/availability. Slots are ISO date-times with the +05:30 offset. */
+/**
+ * GET /api/professionals/{id}/availability. Slots are ISO date-times with the +05:30 offset, one every
+ * sessionMinutes + breakMinutes (the same grid for every professional).
+ */
 export interface ProfessionalAvailability {
   sessionMinutes: number | null;
-  bufferMinutes: number;
+  breakMinutes: number;
   timezone: string;
   days: { date: string; slots: string[] }[];
 }

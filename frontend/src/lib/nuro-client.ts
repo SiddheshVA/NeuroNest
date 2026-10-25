@@ -259,8 +259,8 @@ function professionalCard(professionalType: string | null | undefined): NuroReco
   }
   return {
     type: "PROFESSIONAL",
-    title: "Find a professional",
-    description: "Counsellors, psychologists and psychiatrists who can support you.",
+    title: "Find a licensed mental health professional",
+    description: "Psychologists, psychiatrists and registered counsellors who can support you.",
     route: "/find-professional",
     priority: 0,
   };

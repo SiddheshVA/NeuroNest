@@ -24,14 +24,17 @@ public final class ProHomeDtos {
     public record DayOffCreated(UUID id, LocalDate dateFrom, LocalDate dateTo, String reason, Instant createdAt,
                                 long affectedConfirmed, long affectedAwaitingPayment, long affectedPending) {}
 
-    public record NextAppointment(UUID id, String contactName, OffsetDateTime scheduledTime, String meetingMethod) {}
+    // sessionCount and endDatetime: the whole meeting (never the break after it); endDatetime is null when
+    // no end is stored.
+    public record NextAppointment(UUID id, String contactName, OffsetDateTime scheduledTime, String meetingMethod,
+                                  int sessionCount, OffsetDateTime endDatetime) {}
 
     /**
      * A booking the professional accepted that is waiting for the user's payment. No contact details:
      * those follow ProBookingView.contactVisible (CONFIRMED only).
      */
     public record AwaitingPaymentItem(UUID id, String contactName, OffsetDateTime scheduledTime, String meetingMethod,
-                                      Instant paymentDueAt) {}
+                                      Instant paymentDueAt, int sessionCount, OffsetDateTime endDatetime) {}
 
     public record Warning(String code, String message) {}
 

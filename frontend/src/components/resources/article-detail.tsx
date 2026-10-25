@@ -157,7 +157,7 @@ function ArticleDetail({ article }: { article: Article }) {
           ) : null}
           <Link href={FIND_PROFESSIONAL_HREF} className={assessment ? secondaryButton : primaryButton}>
             <HeartHandshake className="size-4" aria-hidden="true" />
-            Find Professional
+            Find a licensed professional
           </Link>
         </div>
       </ArticleSection>

@@ -20,7 +20,7 @@ const BACK_ROUTES: ({ pattern: string } & BackTarget)[] = [
   { pattern: "/appointments", parentPath: "/dashboard", label: "Dashboard" },
   { pattern: "/dashboard/check-ins/:id", parentPath: "/dashboard", label: "Dashboard" },
   { pattern: "/professionals", parentPath: "/", label: "Home" },
-  { pattern: "/professionals/:id", parentPath: "/professionals", label: "Find Professional" },
+  { pattern: "/professionals/:id", parentPath: "/professionals", label: "Find Licensed Professional" },
   { pattern: "/assessment", parentPath: "/", label: "Home" },
   { pattern: "/assessment/result/:type", parentPath: "/assessment", label: "Assessment" },
   { pattern: "/assessment/:test", parentPath: "/assessment", label: "Assessment" },

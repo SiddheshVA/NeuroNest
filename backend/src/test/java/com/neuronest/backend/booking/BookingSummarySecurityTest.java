@@ -131,14 +131,18 @@ class BookingSummarySecurityTest {
         assertThat(new ArrayList<>(json.propertyNames()))
                 .containsExactlyInAnyOrder("nextAppointment", "awaitingPayment", "waitingForProfessional", "needsYourAnswer");
         assertThat(new ArrayList<>(json.get("nextAppointment").propertyNames())).containsExactlyInAnyOrder("id",
-                "scheduledTime", "preferredMode", "meetingMethod", "meetingLink", "meetingAddress", "professional");
+                "scheduledTime", "preferredMode", "meetingMethod", "meetingLink", "meetingAddress", "professional",
+                "sessionCount", "endDatetime", "professionalEmail", "professionalPhone");
         assertThat(new ArrayList<>(json.get("nextAppointment").get("professional").propertyNames()))
                 .containsExactlyInAnyOrder("id", "fullName", "credentialType", "city");
         assertThat(json.get("waitingForProfessional").asLong()).isEqualTo(2);
         assertThat(json.get("needsYourAnswer").asLong()).isEqualTo(1);
         assertThat(json.get("nextAppointment").get("scheduledTime").asString()).isEqualTo("2026-10-14T18:00:00+05:30");
-        assertThat(body).doesNotContain("PRIVATE", "9876543210", "9812345678", "PHQ", "score", "userId", "sessionId",
-                "contactEmail", "contactPhone", "Note", "note");
+        // The appointment is CONFIRMED, so the professional's contact details are shared; nothing else private is.
+        assertThat(json.get("nextAppointment").get("professionalEmail").asString()).isEqualTo("PRIVATE-pro@example.com");
+        assertThat(json.get("nextAppointment").get("professionalPhone").asString()).isEqualTo("+919812345678");
+        assertThat(body).doesNotContain("PRIVATE-user", "PRIVATE-REQUEST", "PRIVATE-PROFESSIONAL", "PRIVATE-ADMIN",
+                "9876543210", "PHQ", "score", "userId", "sessionId", "contactEmail", "contactPhone", "Note", "note");
     }
 
     @Test

@@ -24,6 +24,8 @@ interface RazorpayOptions {
   description: string;
   handler: (response: RazorpaySuccess) => void;
   modal: { ondismiss: () => void };
+  /** Seconds before Checkout closes itself; set to what is left of the booking's payment hold. */
+  timeout?: number;
 }
 
 interface RazorpayInstance {
@@ -53,6 +55,13 @@ export const UNVERIFIED_MESSAGE =
   "Refresh this page in a minute to see your booking.";
 
 let checkoutScript: Promise<void> | null = null;
+
+// Whole seconds left until the payment deadline, or undefined when there is none (at least 60, Razorpay's minimum).
+function holdSeconds(paymentDueAt?: string | null): number | undefined {
+  if (!paymentDueAt) return undefined;
+  const seconds = Math.floor((new Date(paymentDueAt).getTime() - Date.now()) / 1000);
+  return Number.isFinite(seconds) ? Math.max(60, seconds) : undefined;
+}
 
 // Loaded on first use and only once; a failed load can be tried again.
 function loadCheckout(): Promise<void> {
@@ -105,7 +114,11 @@ async function verifyWithRetry(bookingId: string, response: RazorpaySuccess): Pr
  * Starts or resumes paying for one booking. Throws a BookingApiError when the order cannot be made (for
  * example the deadline passed) or Checkout cannot be loaded; otherwise resolves once the window closes.
  */
-export async function payForBooking(bookingId: string, professionalName: string): Promise<PaymentResult> {
+export async function payForBooking(
+  bookingId: string,
+  professionalName: string,
+  paymentDueAt?: string | null,
+): Promise<PaymentResult> {
   const order = await createPaymentOrder(bookingId);
   try {
     await loadCheckout();
@@ -134,6 +147,8 @@ export async function payForBooking(bookingId: string, professionalName: string)
       description: `Session with ${professionalName}`,
       handler: (response) => finish(verifyWithRetry(bookingId, response)),
       modal: { ondismiss: () => finish({ outcome: attemptFailed ? "failed" : "dismissed" }) },
+      // Checkout closes when the hold ends, so nobody pays for a time that was already released.
+      ...(holdSeconds(paymentDueAt) ? { timeout: holdSeconds(paymentDueAt) } : {}),
     });
     // Checkout stays open after a failed attempt so the user can retry; only the close settles it.
     checkout.on("payment.failed", () => {

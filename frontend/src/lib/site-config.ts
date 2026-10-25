@@ -16,7 +16,7 @@ export const mainNavLinks: NavLink[] = [
   { label: "Assessments", href: "/assessment" },
   { label: "Relaxation", href: "/relaxation" },
   { label: "Resources", href: "/resources" },
-  { label: "Find Professional", href: "/professionals" },
+  { label: "Find Licensed Professional", href: "/professionals" },
 ];
 
 /** True when `pathname` is `href` itself or a page nested under it. */

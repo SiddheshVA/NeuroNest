@@ -179,10 +179,11 @@ function ProfessionalsDirectory() {
 
         <header className="flex flex-col gap-2">
           <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-            Find a Professional
+            Find a Licensed Mental Health Professional
           </h1>
           <p className="max-w-2xl text-base leading-relaxed text-muted-foreground">
-            Browse counselors, psychologists and psychiatrists, and filter by city, language and how they consult.
+            Browse verified psychologists, psychiatrists and registered counsellors, and filter by city, language and
+            how they consult.
           </p>
         </header>
 
@@ -190,7 +191,7 @@ function ProfessionalsDirectory() {
 
         <p className="-mt-3 text-sm text-muted-foreground">
           <Link to="/pro/join" className="font-medium text-primary underline-offset-4 hover:underline">
-            Are you a licensed professional? List your practice on NeuroNest.
+            Are you a licensed mental health professional? List your practice on NeuroNest.
           </Link>
         </p>
 

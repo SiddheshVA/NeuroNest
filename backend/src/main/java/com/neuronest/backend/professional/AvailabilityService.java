@@ -48,10 +48,7 @@ public class AvailabilityService {
                                                          LocalDate from, LocalDate to, ZonedDateTime now,
                                                          Set<ZonedDateTime> taken, Collection<DateRange> daysOff) {
         Map<LocalDate, List<ZonedDateTime>> result = new TreeMap<>();
-        if (sessionMinutes == null || sessionMinutes <= 0 || from == null || to == null || now == null
-                || to.isBefore(from)) {
-            return result;
-        }
+        if (from == null || to == null || now == null) return result;
         ZonedDateTime nowInIndia = now.withZoneSameInstant(ZONE);
         ZonedDateTime earliest = nowInIndia.plusHours(MIN_NOTICE_HOURS);
         LocalDate lastDate = nowInIndia.toLocalDate().plusDays(MAX_DAYS_AHEAD);
@@ -59,18 +56,38 @@ public class AvailabilityService {
         // Compared as instants, so a taken slot given in any zone matches.
         Set<Instant> takenInstants = taken == null ? Set.of()
                 : taken.stream().map(ZonedDateTime::toInstant).collect(Collectors.toSet());
+        gridSlots(weeklyHours, sessionMinutes, bufferMinutes, from, end, daysOff).forEach((date, grid) -> {
+            List<ZonedDateTime> slots = grid.stream()
+                    .filter(slot -> !slot.isBefore(earliest) && !takenInstants.contains(slot.toInstant()))
+                    .toList();
+            if (!slots.isEmpty()) result.put(date, slots);
+        });
+        return result;
+    }
+
+    /**
+     * Every slot start on the grid per date, from and to included: a slot at each range start and every
+     * sessionMinutes + bufferMinutes after it, as long as the session ends by the range end. Days off are
+     * left out; nothing else is (no notice period, no limit ahead, nothing taken). Only dates with at least
+     * one slot are returned, in date order.
+     */
+    public Map<LocalDate, List<ZonedDateTime>> gridSlots(Map<String, List<Map<String, String>>> weeklyHours,
+                                                         Integer sessionMinutes, int bufferMinutes,
+                                                         LocalDate from, LocalDate to, Collection<DateRange> daysOff) {
+        Map<LocalDate, List<ZonedDateTime>> result = new TreeMap<>();
+        if (sessionMinutes == null || sessionMinutes <= 0 || from == null || to == null || to.isBefore(from)) {
+            return result;
+        }
         int step = sessionMinutes + Math.max(0, bufferMinutes);
         var rangesByDay = WeeklyHours.ranges(weeklyHours);
 
-        for (LocalDate date = from; !date.isAfter(end); date = date.plusDays(1)) {
+        for (LocalDate date = from; !date.isAfter(to); date = date.plusDays(1)) {
             List<WeeklyHours.Range> ranges = rangesByDay.get(date.getDayOfWeek());
             if (ranges == null || isDayOff(date, daysOff)) continue;
             List<ZonedDateTime> slots = new ArrayList<>();
             for (WeeklyHours.Range range : ranges) {
                 for (int start = range.startMinute(); start + sessionMinutes <= range.endMinute(); start += step) {
-                    ZonedDateTime slot = ZonedDateTime.of(date, LocalTime.of(start / 60, start % 60), ZONE);
-                    if (slot.isBefore(earliest) || takenInstants.contains(slot.toInstant())) continue;
-                    slots.add(slot);
+                    slots.add(ZonedDateTime.of(date, LocalTime.of(start / 60, start % 60), ZONE));
                 }
             }
             if (!slots.isEmpty()) result.put(date, slots);

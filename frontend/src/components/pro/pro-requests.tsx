@@ -17,7 +17,7 @@ import {
   secondaryButtonClass,
 } from "@/components/pro/pro-ui";
 import { displayStatus, METHOD_LABELS, type BookingStatus } from "@/lib/bookings-client";
-import { formatIstDate, formatIstDateTime, formatRelative } from "@/lib/ist-time";
+import { formatIstDate, formatIstDateTime, formatMeetingTime, formatRelative } from "@/lib/ist-time";
 import { ProApiError, useProApi } from "@/lib/pro-client";
 import {
   isAgreed,
@@ -125,7 +125,7 @@ function RequestRow({ booking: b, now }: { booking: ProBooking; now: number }) {
             {b.preferredDatetime ? (
               <Detail
                 label={isAgreed(b) ? "Appointment time" : "Requested time"}
-                value={formatIstDateTime(b.preferredDatetime)}
+                value={formatMeetingTime(b.preferredDatetime, b.endDatetime, b.sessionCount)}
               />
             ) : null}
             {b.alternateDatetime && !isAgreed(b) ? (
@@ -475,7 +475,7 @@ export function ProRequestPage() {
           {b.preferredDatetime ? (
             <Detail
               label={isAgreed(b) ? "Appointment time" : "Requested time"}
-              value={formatIstDateTime(b.preferredDatetime)}
+              value={formatMeetingTime(b.preferredDatetime, b.endDatetime, b.sessionCount)}
             />
           ) : null}
           {b.alternateDatetime && !isAgreed(b) ? (

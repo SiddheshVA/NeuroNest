@@ -136,10 +136,8 @@ public final class SubmissionChecklist {
         if (p.getConsultationFee() == null) {
             missing.add(new MissingItem("consultationFee", "Add your consultation fee. Enter 0 if you do not charge a fee."));
         }
-        // The availability note is optional; the weekly hours and session length are what booking uses.
-        if (p.getSessionMinutes() == null) {
-            missing.add(new MissingItem("sessionMinutes", "Choose how long one session lasts: 30, 45 or 60 minutes."));
-        }
+        // The availability note is optional; the weekly hours are what booking uses (the session length is
+        // the same for everyone, see SessionGrid).
         if (!WeeklyHours.hasAnyRange(p.getWeeklyHours())) {
             missing.add(new MissingItem("weeklyHours", "Add at least one time range to your weekly hours."));
         }
@@ -162,8 +160,12 @@ public final class SubmissionChecklist {
                     ? "Add the name of your registration body."
                     : "Add the council that issued your registration."));
         }
+        // Every listed professional is licensed, so the registration / license number is needed for all
+        // credential types, counselors included.
+        if (type != null && blank(p.getRegistrationNumber())) {
+            missing.add(new MissingItem("registrationNumber", "Add your registration / license number."));
+        }
         if (isRegistered(type)) {
-            if (blank(p.getRegistrationNumber())) missing.add(new MissingItem("registrationNumber", "Add your registration number."));
             if (p.getRegistrationYear() == null) missing.add(new MissingItem("registrationYear", "Add your registration year."));
             if (p.getRegistrationExpiry() == null) {
                 missing.add(new MissingItem("registrationExpiry", "Add your registration expiry date."));

@@ -10,32 +10,43 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
+    /** A span of time a booking blocks, from its scheduled start to its blocked_until (breaks included). */
+    record BookedRange(Instant start, Instant end) {
+        public boolean overlaps(Instant otherStart, Instant otherEnd) {
+            return start.isBefore(otherEnd) && otherStart.isBefore(end);
+        }
+    }
+
+    /** How far back a booking's start can be and still reach into a window (4 sessions of up to 2 hours). */
+    Duration LONGEST_BOOKING = Duration.ofHours(8);
+
     /**
-     * THE taken-slot query, used by the public availability endpoint, the booking check and the
-     * professional's confirm, propose and accept checks (all through SlotService): the
-     * scheduled times (see {@link Booking#scheduledTime()}) of this professional's AWAITING_PAYMENT and
-     * CONFIRMED bookings ({@link BookingStatus#BLOCKS_SLOT}) in [from, to). PENDING and ALTERNATE_PROPOSED
-     * requests never block a slot. The database narrows the rows to the window; which rows count is
-     * decided here, in one place.
+     * THE taken-time query for multi-session bookings: the spans of this professional's AWAITING_PAYMENT and
+     * CONFIRMED bookings that reach into [from, to). A booking's span ends at blocked_until (ends_at for a
+     * row from before V16 that somehow lacks it); an older one with neither blocks {@code defaultOccupied}.
      */
-    default List<Instant> findBookedScheduledTimes(UUID professionalId, Instant from, Instant to) {
-        return findInWindow(professionalId, BookingStatus.BLOCKS_SLOT, from, to).stream()
-                .map(Booking::scheduledTime)
-                .filter(Objects::nonNull)
-                .filter(time -> !time.isBefore(from) && time.isBefore(to))
+    default List<BookedRange> findBookedRanges(UUID professionalId, Instant from, Instant to,
+                                               Duration defaultOccupied) {
+        return findInWindow(professionalId, BookingStatus.BLOCKS_SLOT, from.minus(LONGEST_BOOKING), to).stream()
+                .filter(b -> b.scheduledTime() != null)
+                .map(b -> new BookedRange(b.scheduledTime(),
+                        b.getBlockedUntil() != null ? b.getBlockedUntil()
+                                : b.getEndsAt() != null ? b.getEndsAt() : b.scheduledTime().plus(defaultOccupied)))
+                .filter(range -> range.overlaps(from, to))
                 .toList();
     }
 
-    // Candidates for findBookedScheduledTimes only; use that method instead.
+    // Candidates for findBookedRanges only; use that method instead. PENDING and ALTERNATE_PROPOSED
+    // requests never block a slot.
     @Query("""
             select b from Booking b
             where b.professionalId = :professionalId and b.status in :statuses
@@ -136,6 +147,12 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                                         @Param("now") Instant now);
 
     long countByUserIdAndCreatedAtAfter(UUID userId, Instant since);
+
+    /** Bookings this user is still holding (AWAITING_PAYMENT before its payment deadline). */
+    long countByUserIdAndStatusAndPaymentDueAtAfter(UUID userId, BookingStatus status, Instant now);
+
+    long countByUserIdAndProfessionalIdAndStatusAndPaymentDueAtAfter(UUID userId, UUID professionalId,
+                                                                     BookingStatus status, Instant now);
 
     // Set once the professional's "new request" email has been sent. Only this column changes.
     @Modifying

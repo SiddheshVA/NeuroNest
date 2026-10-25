@@ -256,7 +256,7 @@ class ProProfileServiceTest {
                 .isInstanceOfSatisfying(ProExceptions.SubmissionIncompleteException.class, e ->
                         assertThat(e.missing()).extracting(MissingItem::item).containsExactly(
                                 "dateOfBirth", "qualifications", "state", "city", "languages", "specialties", "bio",
-                                "yearsExperience", "consultationFee", "sessionMinutes", "weeklyHours", "contactPhone",
+                                "yearsExperience", "consultationFee", "weeklyHours", "contactPhone",
                                 "registrationBody", "registrationCouncil", "registrationYear", "registrationExpiry",
                                 "document:REGISTRATION_CERTIFICATE", "document:DEGREE_CERTIFICATE",
                                 "document:ID_PROOF", "declaration"));
@@ -462,7 +462,7 @@ class ProProfileServiceTest {
     }
 
     @Test
-    void weeklyHoursAreSoftFieldsCheckedAgainstTheSessionLength() {
+    void weeklyHoursAreSoftFieldsCheckedAgainstTheGlobalSessionLength() {
         existing(VerificationStatus.VERIFIED, CredentialType.PSYCHOLOGIST);
         professional.setVerified(true);
         professional.setActive(true);
@@ -472,14 +472,17 @@ class ProProfileServiceTest {
         // Editing hours on a VERIFIED listing keeps it verified and listed.
         assertThat(me.profile().verificationStatus()).isEqualTo("VERIFIED");
         assertThat(me.profile().active()).isTrue();
-        assertThat(me.profile().sessionMinutes()).isEqualTo(45);
+        // Older forms may still send a session length and buffer; the profile shows the global grid.
+        assertThat(me.profile().sessionMinutes()).isEqualTo(60);
         assertThat(me.profile().bufferMinutes()).isEqualTo(15);
         // Sorted by start, and empty days left out.
         assertThat(me.profile().weeklyHours()).containsOnlyKeys("SAT");
         assertThat(me.profile().weeklyHours().get("SAT")).extracting(r -> r.get("start")).containsExactly("09:00", "14:00");
         verify(log, never()).save(any());
 
-        // A longer session is checked against the hours already saved.
+        // Every range must fit one 60-minute session.
+        assertThatThrownBy(() -> put("{\"weeklyHours\":{\"MON\":[{\"start\":\"09:00\",\"end\":\"09:45\"}]}}"))
+                .hasMessage("weeklyHours: Monday 09:00 to 09:45 is shorter than one 60-minute session.");
         professional.setWeeklyHours(Map.of("TUE", List.of(Map.of("start", "18:00", "end", "18:45"))));
         assertThatThrownBy(() -> put("{\"sessionMinutes\":60}"))
                 .hasMessage("weeklyHours: Tuesday 18:00 to 18:45 is shorter than one 60-minute session.");
@@ -487,11 +490,11 @@ class ProProfileServiceTest {
         assertThatThrownBy(() -> put("{\"bufferMinutes\":7}")).hasMessage("bufferMinutes must be 0, 5, 10 or 15.");
         assertThat(put("{\"weeklyHours\":null,\"sessionMinutes\":null}").profile().weeklyHours()).isEmpty();
 
-        // Submit lists both when missing.
+        // Submit asks for weekly hours only; the session length is the same for everyone.
         existing(VerificationStatus.DRAFT, CredentialType.COUNSELOR);
-        assertThat(service.me(principal).missingForSubmit()).extracting(MissingItem::message).contains(
-                "Choose how long one session lasts: 30, 45 or 60 minutes.",
-                "Add at least one time range to your weekly hours.");
+        assertThat(service.me(principal).missingForSubmit()).extracting(MissingItem::message)
+                .contains("Add at least one time range to your weekly hours.")
+                .noneMatch(message -> message.startsWith("Choose how long one session lasts"));
     }
 
     @Test

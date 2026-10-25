@@ -95,7 +95,7 @@ public class BookingPaymentService {
         Optional<Payment> unpaid = amounts.unpaidOrder(b);
         if (unpaid.isPresent()) return order(unpaid.get());
 
-        PaymentAmounts.Amount amount = PaymentAmounts.fromFee(professionals.findById(b.getProfessionalId()).orElse(null))
+        PaymentAmounts.Amount amount = PaymentAmounts.forBooking(b, professionals.findById(b.getProfessionalId()).orElse(null))
                 .orElseThrow(() -> new ConflictException(NO_FEE_MESSAGE));
         String orderId = gateway.createOrder(amount.paise(), amount.currency(), b.getId().toString());
         return order(payments.saveAndFlush(new Payment(b.getId(), orderId, amount.paise(), amount.currency(), now)));
@@ -134,11 +134,63 @@ public class BookingPaymentService {
                         paymentId, orderId, b.getId());
                 throw new ConflictException("This booking has already been paid.");
             }
-            // The same call again: answer as the first one did.
+            // The same call again (or the webhook got there first): answer as the first one did.
             if (b.getStatus() == BookingStatus.CONFIRMED) return view(b);
             throw new BookingExceptions.PaidButNotConfirmedException();
         }
 
+        Booking saved = markPaidAndConfirm(b, payment, paymentId);
+        if (saved == null) throw new BookingExceptions.PaidButNotConfirmedException();
+        return view(saved);
+    }
+
+    // ---- The Razorpay webhook (RazorpayWebhookService; the signature is already checked) ----
+
+    /**
+     * A captured payment reported by Razorpay's webhook, so a paid booking is confirmed even when the
+     * checkout tab was closed before its callback ran. Takes the same locks in the same order as verify
+     * (booking, then payment), so the two can never both confirm; a repeated or late call changes nothing.
+     */
+    @Transactional
+    public void confirmFromWebhook(String orderId, String paymentId) {
+        if (orderId == null || paymentId == null) return;
+        Optional<UUID> bookingId = payments.findBookingIdByRazorpayOrderId(orderId);
+        if (bookingId.isEmpty()) {
+            log.warn("Razorpay webhook: payment {} for unknown order {}", paymentId, orderId);
+            return;
+        }
+        Booking b = bookings.findByIdForUpdate(bookingId.get()).orElse(null);
+        Payment payment = payments.findByRazorpayOrderIdForUpdate(orderId).orElse(null);
+        if (b == null || payment == null) return;
+        if (payment.getStatus() == PaymentStatus.PAID) {
+            if (!paymentId.equals(payment.getRazorpayPaymentId())) {
+                log.warn("MANUAL REFUND NEEDED: second payment {} on already paid order {} for booking {}",
+                        paymentId, orderId, b.getId());
+            }
+            return;
+        }
+        markPaidAndConfirm(b, payment, paymentId);
+    }
+
+    /**
+     * A failed payment attempt reported by the webhook: the order is marked FAILED (a later successful
+     * attempt on it still confirms the booking). The hold itself is released by the user cancelling or
+     * by the hold-release job once payment_due_at has passed.
+     */
+    @Transactional
+    public void recordFailedFromWebhook(String orderId) {
+        if (orderId == null) return;
+        payments.findByRazorpayOrderIdForUpdate(orderId)
+                .filter(p -> p.getStatus() == PaymentStatus.CREATED)
+                .ifPresent(p -> {
+                    p.setStatus(PaymentStatus.FAILED);
+                    payments.saveAndFlush(p);
+                });
+    }
+
+    // Marks the locked payment PAID and, if the booking is still held, CONFIRMED. Returns the confirmed
+    // booking, or null when the payment arrived after the hold ended (kept PAID for a manual refund).
+    private Booking markPaidAndConfirm(Booking b, Payment payment, String paymentId) {
         Instant now = clock.instant();
         // The commission is fixed now, at the configured percent, and stored with the payment.
         CommissionSplit.Split split = commission.split(payment.getAmountPaise());
@@ -147,15 +199,15 @@ public class BookingPaymentService {
 
         if (b.getStatus() != BookingStatus.AWAITING_PAYMENT) {
             log.warn("MANUAL REFUND NEEDED: payment {} (order {}) for booking {} arrived while the booking was {}",
-                    paymentId, orderId, b.getId(), b.getStatus().name());
-            throw new BookingExceptions.PaidButNotConfirmedException();
+                    paymentId, payment.getRazorpayOrderId(), b.getId(), b.getStatus().name());
+            return null;
         }
         b.setStatus(BookingStatus.CONFIRMED);
         Booking saved = bookings.saveAndFlush(b);
-        // Only here, where the booking actually becomes CONFIRMED: a repeated verify returns earlier, so
-        // the confirmation emails go out once (after the commit, BookingNotificationListener).
+        // Only here, where the booking actually becomes CONFIRMED: a repeated verify or webhook returns
+        // earlier, so the confirmation emails go out once (after the commit, BookingNotificationListener).
         events.publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, saved.getId()));
-        return view(saved);
+        return saved;
     }
 
     // ---- Lookups ----

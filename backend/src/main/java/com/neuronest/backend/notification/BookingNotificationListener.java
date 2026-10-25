@@ -3,9 +3,6 @@ package com.neuronest.backend.notification;
 import com.neuronest.backend.booking.Booking;
 import com.neuronest.backend.booking.BookingRepository;
 import com.neuronest.backend.notification.BookingEmails.BookingEmail;
-import com.neuronest.backend.payment.Payment;
-import com.neuronest.backend.payment.PaymentRepository;
-import com.neuronest.backend.payment.PaymentStatus;
 import com.neuronest.backend.professional.Professional;
 import com.neuronest.backend.professional.ProfessionalRepository;
 import com.neuronest.backend.professional.PublicProfessionalService;
@@ -24,7 +21,8 @@ import java.util.Optional;
 
 /**
  * Sends the booking emails after the booking change has committed, on the small mail executor, so mail
- * can never fail, roll back or slow a booking request. Every failure is caught and logged as one line
+ * can never fail, roll back or slow a booking request. A confirmation goes to both sides through every
+ * enabled channel (SessionMessages, NotificationService); every other event is an email (BookingEmails). Every failure is caught and logged as one line
  * with the event type and the exception class only: never an address, a subject, a body or an
  * exception message. A failed email is retried once, 30 seconds later.
  */
@@ -43,20 +41,23 @@ public class BookingNotificationListener {
     private final EmailSender sender;
     private final MailSettings settings;
     private final MailRetryScheduler retries;
-    private final PaymentRepository payments;
+    private final SessionMessages sessionMessages;
+    private final NotificationService notifications;
     private final Clock clock;
 
     @Autowired
     public BookingNotificationListener(BookingRepository bookings, ProfessionalRepository professionals,
                                        PublicProfessionalService directory, BookingEmails emails, EmailSender sender,
-                                       MailSettings settings, MailRetryScheduler retries, PaymentRepository payments) {
-        this(bookings, professionals, directory, emails, sender, settings, retries, payments, Clock.systemUTC());
+                                       MailSettings settings, MailRetryScheduler retries,
+                                       SessionMessages sessionMessages, NotificationService notifications) {
+        this(bookings, professionals, directory, emails, sender, settings, retries, sessionMessages, notifications,
+                Clock.systemUTC());
     }
 
     BookingNotificationListener(BookingRepository bookings, ProfessionalRepository professionals,
                                 PublicProfessionalService directory, BookingEmails emails, EmailSender sender,
-                                MailSettings settings, MailRetryScheduler retries, PaymentRepository payments,
-                                Clock clock) {
+                                MailSettings settings, MailRetryScheduler retries,
+                                SessionMessages sessionMessages, NotificationService notifications, Clock clock) {
         this.bookings = bookings;
         this.professionals = professionals;
         this.directory = directory;
@@ -64,7 +65,8 @@ public class BookingNotificationListener {
         this.sender = sender;
         this.settings = settings;
         this.retries = retries;
-        this.payments = payments;
+        this.sessionMessages = sessionMessages;
+        this.notifications = notifications;
         this.clock = clock;
     }
 
@@ -83,9 +85,12 @@ public class BookingNotificationListener {
                 log.warn("Email skipped: booking not found ({})", type);
                 return;
             }
+            if (type == BookingEvent.Type.CONFIRMED) {
+                notifications.send(sessionMessages.confirmed(booking.get(), professional.get()));
+                return;
+            }
             List<Professional> similar = sendsExpiryEmail(type) ? similarTo(professional.get(), type) : List.of();
-            Long amountPaid = type == BookingEvent.Type.CONFIRMED ? amountPaid(event) : null;
-            for (BookingEmail email : emails.build(type, booking.get(), professional.get(), similar, amountPaid)) {
+            for (BookingEmail email : emails.build(type, booking.get(), professional.get(), similar)) {
                 if (!settings.enabled()) {
                     log.info("Email skipped: mail not configured ({})", type);
                 } else if (email.email().to() == null || email.email().to().isBlank()) {
@@ -107,17 +112,6 @@ public class BookingNotificationListener {
     // The events that send the user the expiry email (with similar professionals and support lines).
     private static boolean sendsExpiryEmail(BookingEvent.Type type) {
         return isExpiry(type) || type == BookingEvent.Type.CLOSED_BY_ADMIN;
-    }
-
-    // The verified payment for the user's confirmation. Optional: the email goes out without it.
-    private Long amountPaid(BookingEvent event) {
-        try {
-            return payments.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(event.bookingId(), PaymentStatus.PAID)
-                    .map(Payment::getAmountPaise).orElse(null);
-        } catch (RuntimeException e) {
-            log.warn("Amount paid not loaded ({}): {}", event.type(), e.getClass().getName());
-            return null;
-        }
     }
 
     // Suggestions are optional: if they cannot be loaded the email goes out without them.

@@ -14,6 +14,7 @@ import com.neuronest.backend.professional.Professional;
 import com.neuronest.backend.professional.ProfessionalAccountRepository;
 import com.neuronest.backend.professional.ProfessionalRepository;
 import com.neuronest.backend.professional.RegistrationBody;
+import com.neuronest.backend.professional.SessionGrid;
 import com.neuronest.backend.professional.VerificationLogEntry;
 import com.neuronest.backend.professional.VerificationLogRepository;
 import com.neuronest.backend.professional.VerificationStatus;
@@ -228,7 +229,7 @@ public class AdminProfessionalService {
                 ? WeeklyHours.sessionMinutes(r.sessionMinutes()) : p.getSessionMinutes();
         Map<String, List<Map<String, String>>> weeklyHours = hoursGiven || r.sessionMinutes() != null
                 ? WeeklyHours.validate(hoursGiven ? WeeklyHours.fromJson(r.weeklyHours()) : p.getWeeklyHours(),
-                        sessionMinutes)
+                        SessionGrid.current().sessionMinutes())
                 : p.getWeeklyHours();
         int bufferMinutes = r.bufferMinutes() != null ? WeeklyHours.bufferMinutes(r.bufferMinutes()) : p.getBufferMinutes();
 

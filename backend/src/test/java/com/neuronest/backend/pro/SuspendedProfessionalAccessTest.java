@@ -43,6 +43,8 @@ class SuspendedProfessionalAccessTest {
     @MockitoBean
     private ProDocumentService documents;
     @MockitoBean
+    private ProPhotoService photos;
+    @MockitoBean
     private ProfessionalAccountRepository accounts;
     @MockitoBean
     private ClerkTokenVerifier clerkTokenVerifier;

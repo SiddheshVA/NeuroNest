@@ -37,8 +37,13 @@ class ReviewRulesTest {
         assertThat(ReviewService.sessionEnded(b, fifty, START.plus(Duration.ofMinutes(49)))).isFalse();
         assertThat(ReviewService.sessionEnded(b, fifty, START.plus(Duration.ofMinutes(50)))).isTrue();
         assertThat(ReviewService.sessionEnded(b, fifty, START.plus(Duration.ofDays(30)))).isTrue();
-        // No session length: from the start time.
-        assertThat(ReviewService.sessionEnded(b, sessionOf(null), START)).isTrue();
+        // No session length chosen: one session of the global grid (60 minutes).
+        assertThat(ReviewService.sessionEnded(b, sessionOf(null), START.plus(Duration.ofMinutes(59)))).isFalse();
+        assertThat(ReviewService.sessionEnded(b, sessionOf(null), START.plus(Duration.ofMinutes(60)))).isTrue();
+        // A booking that stores its meeting end (two sessions until START + 120 minutes) uses it.
+        b.setEndsAt(START.plus(Duration.ofMinutes(120)));
+        assertThat(ReviewService.sessionEnded(b, fifty, START.plus(Duration.ofMinutes(119)))).isFalse();
+        assertThat(ReviewService.sessionEnded(b, fifty, START.plus(Duration.ofMinutes(120)))).isTrue();
     }
 
     @Test

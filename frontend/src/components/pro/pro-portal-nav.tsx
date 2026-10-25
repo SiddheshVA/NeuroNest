@@ -71,6 +71,7 @@ export function ProPortalNav() {
     tabs.push(
       { href: "/pro/appointments", label: "Appointments" },
       { href: "/pro/days-off", label: "Days off" },
+      { href: "/pro/block-slots", label: "Block slots" },
       { href: "/pro/earnings", label: "Earnings" },
       { href: "/pro/reviews", label: "Reviews" },
     );

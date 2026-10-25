@@ -21,6 +21,9 @@ export interface ProBooking {
   preferredMethod: PreferredMethod | null;
   /** ISO date-times with the +05:30 offset. For a CONFIRMED booking, preferredDatetime is the appointment time. */
   preferredDatetime: string | null;
+  /** How many sessions in a row, and when the meeting ends (never the break after it); null without a stored end. */
+  sessionCount: number;
+  endDatetime: string | null;
   alternateDatetime: string | null;
   proposedDatetime: string | null;
   note: string | null;

@@ -31,7 +31,7 @@ class PublicProfessionalServiceTest {
     private final PublicProfessionalService service = new PublicProfessionalService(repository,
             new com.neuronest.backend.booking.SlotService(new AvailabilityService(),
                     mock(com.neuronest.backend.booking.BookingRepository.class),
-                    mock(ProfessionalDayOffRepository.class)), CLOCK);
+                    mock(ProfessionalDayOffRepository.class), mock(ProfessionalBlockedSlotRepository.class)), CLOCK);
 
     private static Professional professional(CredentialType type, boolean sample) {
         Professional p = new Professional();
@@ -149,7 +149,7 @@ class PublicProfessionalServiceTest {
         p.setSessionMinutes(60);
         p.setBufferMinutes(0);
         // 13 Oct 2026 (today in India) is a Tuesday.
-        p.setWeeklyHours(java.util.Map.of("WED", List.of(java.util.Map.of("start", "18:00", "end", "20:00"))));
+        p.setWeeklyHours(java.util.Map.of("WED", List.of(java.util.Map.of("start", "18:00", "end", "20:30"))));
         return p;
     }
 
@@ -161,14 +161,16 @@ class PublicProfessionalServiceTest {
         PublicProfessionalDtos.PublicAvailability a = service.availability(id.toString(), null, null);
 
         assertThat(a.timezone()).isEqualTo("Asia/Kolkata");
+        // The global grid: 60-minute sessions, a 15-minute break after each.
         assertThat(a.sessionMinutes()).isEqualTo(60);
-        // The buffer between sessions is private: it is not part of the public availability.
+        assertThat(a.breakMinutes()).isEqualTo(15);
+        // A professional's own old buffer setting is not part of the public availability.
         assertThat(java.util.Arrays.stream(PublicProfessionalDtos.PublicAvailability.class.getRecordComponents())
                 .map(java.lang.reflect.RecordComponent::getName)).doesNotContain("bufferMinutes");
         // 13 to 27 Oct: Wednesdays 14, 21 (the 28th is outside the default range).
         assertThat(a.days()).extracting(PublicProfessionalDtos.AvailabilityDay::date)
                 .containsExactly(LocalDate.of(2026, 10, 14), LocalDate.of(2026, 10, 21));
-        assertThat(a.days().get(0).slots()).containsExactly("2026-10-14T18:00:00+05:30", "2026-10-14T19:00:00+05:30");
+        assertThat(a.days().get(0).slots()).containsExactly("2026-10-14T18:00:00+05:30", "2026-10-14T19:15:00+05:30");
     }
 
     @Test
@@ -200,9 +202,10 @@ class PublicProfessionalServiceTest {
         p.setActive(true);
         assertThat(PublicProfessional.from(p).bookable()).isTrue();
 
+        // No session length of their own is fine: everyone uses the global grid.
         p.setSessionMinutes(null);
-        assertThat(PublicProfessional.from(p).bookable()).isFalse();
-        p.setSessionMinutes(60);
+        assertThat(PublicProfessional.from(p).bookable()).isTrue();
+        assertThat(PublicProfessional.from(p).sessionMinutes()).isEqualTo(60);
         p.setWeeklyHours(java.util.Map.of());
         assertThat(PublicProfessional.from(p).bookable()).isFalse();
         p.setWeeklyHours(withHours().getWeeklyHours());

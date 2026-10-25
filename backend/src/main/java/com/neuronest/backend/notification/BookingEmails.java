@@ -1,6 +1,7 @@
 package com.neuronest.backend.notification;
 
 import com.neuronest.backend.booking.Booking;
+import com.neuronest.backend.booking.MeetingTimes;
 import com.neuronest.backend.booking.PaymentAmounts;
 import com.neuronest.backend.professional.AvailabilityService;
 import com.neuronest.backend.professional.Professional;
@@ -29,7 +30,6 @@ public class BookingEmails {
     public record BookingEmail(Recipient recipient, OutgoingEmail email) {}
 
     static final String FOOTER = "This message was sent by NeuroNest. NeuroNest is not an emergency service.";
-    static final String PHONE_SENTENCE = "The professional will call you on the phone number you gave.";
     static final String SUPPORT_INTRO = "If you need support right now:";
 
     private static final DateTimeFormatter TIME =
@@ -47,16 +47,12 @@ public class BookingEmails {
         return build(type, b, p, List.of());
     }
 
-    public List<BookingEmail> build(BookingEvent.Type type, Booking b, Professional p, List<Professional> similar) {
-        return build(type, b, p, similar, null);
-    }
-
     /**
      * {@code similar}: other professionals to suggest in the user's expiry email (names and profile links
-     * only). {@code amountPaidPaise}: the verified payment, shown in the user's confirmation; null if none.
+     * only). CONFIRMED builds nothing here: the confirmation goes to both sides through every enabled channel
+     * (SessionMessages and NotificationService).
      */
-    public List<BookingEmail> build(BookingEvent.Type type, Booking b, Professional p, List<Professional> similar,
-                                    Long amountPaidPaise) {
+    public List<BookingEmail> build(BookingEvent.Type type, Booking b, Professional p, List<Professional> similar) {
         return switch (type) {
             case REQUEST_CREATED -> List.of(
                     toProfessional(p, new Message("NeuroNest: a new request is waiting")
@@ -81,31 +77,13 @@ public class BookingEmails {
                 yield List.of(
                         toUser(b, user),
                         toProfessional(p, new Message("NeuroNest: a request was accepted")
-                                .paragraph("You accepted the request from " + b.getContactName() + " for " + time(at)
+                                .paragraph("You accepted the request from " + b.getContactName() + " for "
+                                        + MeetingTimes.describe(b, p)
                                         + ". It is waiting for their payment, due by " + time(b.getPaymentDueAt())
                                         + ". NeuroNest will email you again once it is paid.")
                                 .link("Open the request", settings.link("/pro/requests/" + b.getId()))));
             }
-            case CONFIRMED -> {
-                Instant at = b.scheduledTime() != null ? b.scheduledTime() : b.getPreferredDatetime();
-                Message user = new Message("NeuroNest: your appointment is confirmed")
-                        .paragraph("Your appointment with " + p.getFullName() + " is confirmed.")
-                        .paragraph("Time: " + time(at) + ".");
-                if (amountPaidPaise != null) user.paragraph("Amount paid: " + rupees(amountPaidPaise) + ".");
-                switch (b.getMeetingMethod() == null ? "" : b.getMeetingMethod()) {
-                    case "PHONE" -> user.paragraph(PHONE_SENTENCE);
-                    case "VIDEO" -> user.link("Video call link", b.getMeetingLink());
-                    case "IN_PERSON" -> user.paragraph("Address: " + b.getMeetingAddress());
-                    default -> { }
-                }
-                user.link("See your appointments", settings.link("/appointments"));
-                yield List.of(
-                        toUser(b, user),
-                        toProfessional(p, new Message("NeuroNest: an appointment is confirmed")
-                                .paragraph("The appointment with " + b.getContactName() + " on " + time(at)
-                                        + " is confirmed. Open NeuroNest to see the contact details.")
-                                .link("Open the appointment", settings.link("/pro/requests/" + b.getId()))));
-            }
+            case CONFIRMED -> List.of();
             // The meeting link or address is not included until the person accepts.
             case PROPOSED -> List.of(toUser(b, new Message("NeuroNest: an update on your request")
                     .paragraph(p.getFullName() + " suggested another time: " + time(b.getProposedDatetime())
@@ -118,13 +96,14 @@ public class BookingEmails {
                     .lines(SUPPORT_INTRO, CrisisResources.INDIA_RESOURCES.stream().map(BookingEmails::supportLine).toList())));
             case CANCELLED_BY_USER -> List.of(toProfessional(p, new Message("NeuroNest: a request was cancelled")
                     .paragraph(b.getContactName() + " cancelled the appointment request for "
-                            + time(b.getPreferredDatetime()) + ".")
+                            + MeetingTimes.describe(b, p) + ".")
                     .link("See your appointment requests", settings.link("/pro/requests"))));
-            case EXPIRED -> List.of(
+            // A payment hold that ended unpaid was never a booking for the professional: only the user is told.
+            case EXPIRED -> unpaid(b) ? List.of(expiredToUser(b, p, similar)) : List.of(
                     expiredToUser(b, p, similar),
                     toProfessional(p, new Message("NeuroNest: a request expired")
                             .paragraph(unpaid(b)
-                                    ? "A request from " + b.getContactName() + " for " + time(b.getPreferredDatetime())
+                                    ? "A request from " + b.getContactName() + " for " + MeetingTimes.describe(b, p)
                                             + " expired because the payment was not made in time. The time is free "
                                             + "again. Open NeuroNest to see your requests."
                                     : "A request from " + b.getContactName()

@@ -41,8 +41,8 @@ const QUICK_ACTIONS: { href: string; icon: LucideIcon; title: string; descriptio
   {
     href: "/professionals",
     icon: HeartHandshake,
-    title: "Find Professional",
-    description: "Verified counsellors, psychologists and psychiatrists",
+    title: "Find a Licensed Professional",
+    description: "Verified psychologists, psychiatrists and registered counsellors",
   },
 ];
 

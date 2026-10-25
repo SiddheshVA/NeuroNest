@@ -4,6 +4,7 @@ import com.neuronest.backend.pro.ProExceptions.MissingItem;
 import com.neuronest.backend.professional.Professional;
 import com.neuronest.backend.professional.ProfessionalAccount;
 import com.neuronest.backend.professional.ProfessionalDocument;
+import com.neuronest.backend.professional.SessionGrid;
 import com.neuronest.backend.professional.WeeklyHours;
 
 import java.time.Instant;
@@ -73,7 +74,9 @@ public final class ProDtos {
                     p.getConsultationMode().name(), p.getConsultationFee(), p.getYearsExperience(),
                     p.getContactEmail(), p.getContactPhone(), p.getAvailabilityNote(), p.getPhotoUrl(),
                     p.getDateOfBirth(), new LinkedHashMap<>(p.getSocialLinks()), WeeklyHours.copy(p.getWeeklyHours()),
-                    p.getSessionMinutes(), p.getBufferMinutes(), p.getVerificationStatus().name(),
+                    // The global grid, the same for every professional (SessionGrid).
+                    SessionGrid.current().sessionMinutes(), SessionGrid.current().breakMinutes(),
+                    p.getVerificationStatus().name(),
                     p.isVerified(), p.isActive(), p.getSubmittedAt(), p.getVerifiedAt(),p.getNextRecheckDate(), p.getCreatedAt(), p.getUpdatedAt());
         }
     }

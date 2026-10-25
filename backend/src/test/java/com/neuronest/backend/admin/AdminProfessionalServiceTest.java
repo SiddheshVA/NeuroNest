@@ -198,8 +198,9 @@ class AdminProfessionalServiceTest {
         assertThat(result.reReviewRequired()).isFalse();
         assertThat(p.getVerificationStatus()).isEqualTo(VerificationStatus.VERIFIED);
         assertThat(result.professional().weeklyHours()).containsOnlyKeys("TUE");
+        // The admin sees the global grid (60-minute sessions, 15-minute break), whatever is stored.
         assertThat(result.professional().sessionMinutes()).isEqualTo(60);
-        assertThat(result.professional().bufferMinutes()).isEqualTo(10);
+        assertThat(result.professional().bufferMinutes()).isEqualTo(15);
 
         // A request without them (as the current admin form sends) keeps what is stored.
         service.update(id, valid(), "Admin");
@@ -210,7 +211,7 @@ class AdminProfessionalServiceTest {
         assertThatThrownBy(() -> service.update(id,
                 withHours("{\"MON\":[{\"start\":\"09:00\",\"end\":\"09:30\"}]}", 45, null), "Admin"))
                 .isInstanceOf(ApiValidationException.class)
-                .hasMessage("weeklyHours: Monday 09:00 to 09:30 is shorter than one 45-minute session.");
+                .hasMessage("weeklyHours: Monday 09:00 to 09:30 is shorter than one 60-minute session.");
         assertThatThrownBy(() -> service.update(id, withHours(null, null, 7), "Admin"))
                 .hasMessage("bufferMinutes must be 0, 5, 10 or 15.");
         verify(log, never()).save(any());

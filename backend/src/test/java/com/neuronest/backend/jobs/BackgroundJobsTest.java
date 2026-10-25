@@ -7,11 +7,13 @@ import com.neuronest.backend.booking.SharedAssessment;
 import com.neuronest.backend.notification.BookingEmails;
 import com.neuronest.backend.notification.BookingEvent;
 import com.neuronest.backend.notification.BookingNotificationListener;
+import com.neuronest.backend.notification.EmailChannel;
 import com.neuronest.backend.notification.EmailSender;
 import com.neuronest.backend.notification.MailRetryScheduler;
 import com.neuronest.backend.notification.MailSettings;
+import com.neuronest.backend.notification.NotificationService;
 import com.neuronest.backend.notification.OutgoingEmail;
-import com.neuronest.backend.payment.PaymentRepository;
+import com.neuronest.backend.notification.SessionMessages;
 import com.neuronest.backend.professional.AvailabilityService;
 import com.neuronest.backend.professional.CredentialType;
 import com.neuronest.backend.professional.Professional;
@@ -151,6 +153,22 @@ class BackgroundJobsTest {
         }
 
         @Override
+        public synchronized List<UUID> claimSessionReminders(Instant now, Instant from, Instant to, long leadMinutes,
+                                                             int limit) {
+            List<UUID> claimed = new ArrayList<>();
+            for (Booking b : rows.values()) {
+                Instant start = b.getPreferredDatetime();
+                if (b.getStatus() == BookingStatus.CONFIRMED && !b.isSessionReminderSent() && start.isAfter(from)
+                        && !start.isAfter(to) && !b.getCreatedAt().isAfter(start.minus(Duration.ofMinutes(leadMinutes)))
+                        && claimed.size() < limit) {
+                    b.setSessionReminderSent(true);
+                    claimed.add(b.getId());
+                }
+            }
+            return claimed;
+        }
+
+        @Override
         public synchronized List<UUID> claimReminders(Instant now, Instant until, int limit) {
             List<UUID> claimed = new ArrayList<>();
             for (Booking b : rows.values()) {
@@ -197,8 +215,10 @@ class BackgroundJobsTest {
 
     // The listener is called directly where Spring would call it after the commit.
     private BackgroundJobs newJobs() {
+        MailRetryScheduler retries = mock(MailRetryScheduler.class);
         BookingNotificationListener listener = new BookingNotificationListener(bookings, professionals, directory,
-                new BookingEmails(settings), sender, settings, mock(MailRetryScheduler.class), mock(PaymentRepository.class));
+                new BookingEmails(settings), sender, settings, retries, new SessionMessages(settings),
+                new NotificationService(List.of(new EmailChannel(sender, settings)), retries));
         ApplicationEventPublisher publisher = event -> {
             published.add((BookingEvent) event);
             listener.onBookingEvent((BookingEvent) event);
@@ -245,7 +265,7 @@ class BackgroundJobsTest {
     }
 
     @Test
-    void anUnpaidBookingExpiresOnlyAfterTheGracePeriodAndBothSidesAreEmailed() {
+    void anUnpaidBookingExpiresOnlyAfterTheGracePeriodAndOnlyTheUserIsEmailed() {
         // Due 10 minutes ago: still inside the 15-minute grace period.
         Booking b = awaitingPayment(Duration.ofMinutes(-10));
         Booking notDue = awaitingPayment(Duration.ofHours(2));
@@ -264,9 +284,8 @@ class BackgroundJobsTest {
         assertThat(b.getRespondedAt()).isEqualTo(START.minus(Duration.ofHours(20)));
         assertThat(notDue.getStatus()).isEqualTo(BookingStatus.AWAITING_PAYMENT);
         assertThat(published).containsExactly(new BookingEvent(BookingEvent.Type.EXPIRED, b.getId()));
-        assertThat(sender.sent).extracting(OutgoingEmail::to).containsExactly(USER_EMAIL, PRO_EMAIL);
+        assertThat(sender.sent).extracting(OutgoingEmail::to).containsExactly(USER_EMAIL);
         assertThat(sender.to(USER_EMAIL).get(0).text()).contains("was released because the payment was not made by");
-        assertThat(sender.to(PRO_EMAIL).get(0).text()).contains("expired because the payment was not made in time");
     }
 
     @Test

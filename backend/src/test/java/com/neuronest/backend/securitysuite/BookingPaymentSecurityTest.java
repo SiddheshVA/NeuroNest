@@ -5,6 +5,7 @@ import com.neuronest.backend.booking.Booking;
 import com.neuronest.backend.booking.BookingStatus;
 import com.neuronest.backend.payment.PaymentStatus;
 import com.neuronest.backend.professional.Professional;
+import com.neuronest.backend.professional.AvailabilityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -14,6 +15,7 @@ import tools.jackson.databind.JsonNode;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -71,6 +73,49 @@ class BookingPaymentSecurityTest extends SecuritySuiteBase {
         when(razorpay.keyId()).thenReturn("rzp_test_suite");
         when(razorpay.createOrder(anyLong(), anyString(), anyString())).thenReturn("order_E2E");
         when(razorpay.isValidSignature("order_E2E", "pay_E2E", "sig_E2E")).thenReturn(true);
+    }
+
+    @Test
+    void aNewBookingIsHeldForPaymentAndCanBePaidStraightAway() throws Exception {
+        configured();
+        // The shared fixture's own unpaid booking with this professional would hit the one-hold limit.
+        ofOwner.setStatus(BookingStatus.CANCELLED);
+        bookings.saveAndFlush(ofOwner);
+        // Two consecutive sessions three days ahead on the global grid: 09:00 and 10:15, one meeting until 11:00.
+        LocalDate day = LocalDate.now(AvailabilityService.ZONE).plusDays(3);
+        String slot = day + "T09:00:00+05:30";
+        String body = """
+                {"professionalId":"%s","preferredMode":"ONLINE","preferredMethod":"VIDEO","contactName":"Ravi Kumar",
+                 "contactPhone":"9876543210","slotStart":"%s","sessionCount":2,"consentGiven":true}"""
+                .formatted(asha.getId(), slot);
+        Instant before = Instant.now();
+
+        MvcResult created = as(ownerToken, post("/api/bookings").contentType(MediaType.APPLICATION_JSON).content(body));
+
+        assertThat(created.getResponse().getStatus()).as(created.getResponse().getContentAsString()).isEqualTo(201);
+        JsonNode view = JSON.readTree(created.getResponse().getContentAsString());
+        assertThat(view.get("status").asString()).isEqualTo("AWAITING_PAYMENT");
+        assertThat(view.get("amount").asLong()).isEqualTo(240_000);
+        UUID id = UUID.fromString(view.get("id").asString());
+
+        // As stored: held, never PENDING, with a 10-minute deadline (an instant, so no time zone shift).
+        Booking stored = bookings.findById(id).orElseThrow();
+        assertThat(stored.getStatus()).isEqualTo(BookingStatus.AWAITING_PAYMENT);
+        assertThat(stored.getSessionCount()).isEqualTo(2);
+        Instant start = java.time.OffsetDateTime.parse(slot).toInstant();
+        assertThat(stored.getEndsAt()).isEqualTo(start.plus(Duration.ofMinutes(120)));
+        assertThat(stored.getBlockedUntil()).isEqualTo(start.plus(Duration.ofMinutes(150)));
+        assertThat(stored.getExpiresAt()).isNull();
+        assertThat(stored.getPaymentDueAt()).isBetween(before.plus(Duration.ofMinutes(10)).minusSeconds(1),
+                Instant.now().plus(Duration.ofMinutes(10)).plusSeconds(1));
+
+        // Paying right away works: the order is for both sessions.
+        MvcResult order = as(ownerToken, order(id));
+        assertThat(order.getResponse().getStatus()).as(order.getResponse().getContentAsString()).isEqualTo(200);
+        JsonNode orderJson = JSON.readTree(order.getResponse().getContentAsString());
+        assertThat(orderJson.get("razorpayOrderId").asString()).isEqualTo("order_E2E");
+        assertThat(orderJson.get("amount").asLong()).isEqualTo(240_000);
+        verify(razorpay).createOrder(240_000, "INR", id.toString());
     }
 
     @Test

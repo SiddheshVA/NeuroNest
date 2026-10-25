@@ -17,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -43,9 +44,15 @@ class BookingServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-12T04:30:00Z");
     private static final LocalDate TODAY = LocalDate.of(2026, 10, 12);
     private static final Clock CLOCK = Clock.fixed(NOW, AvailabilityService.ZONE);
-    // The professional works Wednesdays 18:00 to 20:00 in 60-minute sessions: slots 18:00 and 19:00.
+    // The professional works Wednesdays 18:00 to 20:30. On the global grid (60-minute sessions, each with a
+    // 15-minute break after it) the slots are 18:00 and 19:15.
     private static final String WED_18 = "2026-10-14T18:00:00+05:30";
-    private static final String WED_19 = "2026-10-14T19:00:00+05:30";
+    private static final String WED_1915 = "2026-10-14T19:15:00+05:30";
+    private static final Map<String, List<Map<String, String>>> WED_HOURS =
+            Map.of("WED", List.of(Map.of("start", "18:00", "end", "20:30")));
+    // A longer Wednesday, 18:00 to 23:00: slots 18:00, 19:15, 20:30 and 21:45 (the last meeting ends 22:45).
+    private static final Map<String, List<Map<String, String>>> LONG_WED_HOURS =
+            Map.of("WED", List.of(Map.of("start", "18:00", "end", "23:00")));
 
     private final PublicProfessionalRepository directoryRepository = mock(PublicProfessionalRepository.class);
     // Real default methods (the taken-slot rule), stubbed abstract queries.
@@ -55,7 +62,8 @@ class BookingServiceTest {
     private final UserRepository users = mock(UserRepository.class);
     private final AssessmentResultRepository assessments = mock(AssessmentResultRepository.class);
     private final ProfessionalDayOffRepository daysOff = mock(ProfessionalDayOffRepository.class);
-    private final SlotService slots = new SlotService(new AvailabilityService(), bookings, daysOff);
+    private final ProfessionalBlockedSlotRepository blocks = mock(ProfessionalBlockedSlotRepository.class);
+    private final SlotService slots = new SlotService(new AvailabilityService(), bookings, daysOff, blocks);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final PublicProfessionalService directory = new PublicProfessionalService(directoryRepository, slots, CLOCK);
     private final PaymentRepository paymentRepository = mock(PaymentRepository.class);
@@ -80,7 +88,7 @@ class BookingServiceTest {
         professional.setActive(true);
         professional.setSessionMinutes(60);
         professional.setBufferMinutes(0);
-        professional.setWeeklyHours(Map.of("WED", List.of(Map.of("start", "18:00", "end", "20:00"))));
+        professional.setWeeklyHours(WED_HOURS);
         when(directoryRepository.findVisibleById(eq(professionalId), any())).thenReturn(Optional.of(professional));
 
         User user = new User();
@@ -91,6 +99,7 @@ class BookingServiceTest {
         setUpBookingDefaults();
         when(accounts.findByClerkUserId(any())).thenReturn(Optional.empty());
         when(professionals.findById(any())).thenReturn(Optional.empty());
+        when(professionals.findByIdForUpdate(professionalId)).thenReturn(Optional.of(professional));
     }
 
     // Kept separate so a test can reset the booking repository and start again.
@@ -102,9 +111,9 @@ class BookingServiceTest {
         doReturn(0L).when(bookings).countOpenByUserAndProfessional(any(), any(), any(), any());
     }
 
-    private CreateBookingRequest request(String slot, String alternate, Boolean consent) {
+    private CreateBookingRequest request(String slot, Integer sessions, Boolean consent) {
         return new CreateBookingRequest(professionalId.toString(), "online", "  Ravi Kumar ", "098765 43210", slot,
-                alternate, " First session, please. ", consent, "VIDEO", null);
+                sessions, " First session, please. ", consent, "VIDEO", null);
     }
 
     private BookingView book(String slot) {
@@ -124,20 +133,32 @@ class BookingServiceTest {
     // ---- creating ----
 
     @Test
-    void aValidSlotIsAcceptedAndStoredAsPending() {
-        BookingView view = service.create(userId, request(WED_18, WED_19, true));
+    void twoConsecutiveSessionsAreHeldForTenMinutesAtTwiceTheFee() {
+        professional.setConsultationFee(1500);
+        when(paymentRepository.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(any(), any())).thenReturn(Optional.empty());
+        BookingView view = service.create(userId, request(WED_18, 2, true));
 
-        assertThat(view.status()).isEqualTo("PENDING");
+        assertThat(view.status()).isEqualTo("AWAITING_PAYMENT");
         assertThat(view.preferredDatetime()).isEqualTo(OffsetDateTime.parse(WED_18));
-        assertThat(view.alternateDatetime()).isEqualTo(OffsetDateTime.parse(WED_19));
-        assertThat(view.expiresAt()).isEqualTo(NOW.plusSeconds(72 * 3600));
+        assertThat(view.sessionCount()).isEqualTo(2);
+        assertThat(view.endDatetime()).isEqualTo(OffsetDateTime.parse("2026-10-14T20:00:00+05:30"));
+        assertThat(view.paymentDueAt()).isEqualTo(NOW.plusSeconds(10 * 60));
+        assertThat(view.amount()).isEqualTo(300_000L);
         assertThat(view.professional().fullName()).isEqualTo("Dr. Asha Rao");
+        // Held, not confirmed: no contact details and no email yet.
+        assertThat(view.professionalEmail()).isNull();
+        verify(events, never()).publishEvent(any(Object.class));
 
         ArgumentCaptor<Booking> saved = ArgumentCaptor.forClass(Booking.class);
         verify(bookings).saveAndFlush(saved.capture());
         Booking b = saved.getValue();
         assertThat(b.getUserId()).isEqualTo(userId);
         assertThat(b.getContactEmail()).isEqualTo("user@example.com");
+        assertThat(b.getSessionCount()).isEqualTo(2);
+        // One meeting of 2 x 60 minutes; the two breaks are blocked after it.
+        assertThat(b.getEndsAt()).isEqualTo(OffsetDateTime.parse("2026-10-14T20:00:00+05:30").toInstant());
+        assertThat(b.getBlockedUntil()).isEqualTo(OffsetDateTime.parse("2026-10-14T20:30:00+05:30").toInstant());
+        assertThat(b.getExpiresAt()).isNull();
         assertThat(b.getContactName()).isEqualTo("Ravi Kumar");
         assertThat(b.getContactPhone()).isEqualTo("+919876543210");
         assertThat(b.getNote()).isEqualTo("First session, please.");
@@ -153,13 +174,14 @@ class BookingServiceTest {
 
     @Test
     void aTimeThatIsNotOnTheWeeklyHoursIsRejected() {
+        // 19:00 was a slot on the old per-professional grid; on the 75-minute grid it is not.
         for (String notASlot : List.of("2026-10-14T17:00:00+05:30", "2026-10-14T18:30:00+05:30",
-                "2026-10-15T18:00:00+05:30", "2026-10-14T12:45:00Z")) {
+                "2026-10-14T19:00:00+05:30", "2026-10-15T18:00:00+05:30", "2026-10-14T12:45:00Z")) {
             assertThatThrownBy(() -> book(notASlot)).isInstanceOf(ApiValidationException.class)
                     .hasMessage("slotStart is not one of this professional's available times. Please choose a time from their availability.");
         }
-        // The same instant written in UTC (13:30Z is 19:00 in India) is the same slot.
-        assertThat(book("2026-10-14T13:30:00Z").status()).isEqualTo("PENDING");
+        // The same instant written in UTC (13:45Z is 19:15 in India) is the same slot.
+        assertThat(book("2026-10-14T13:45:00Z").status()).isEqualTo("CONFIRMED");
         assertThatThrownBy(() -> book("2026-10-14 18:00")).hasMessageStartingWith("slotStart must be a date and time with an offset");
         verify(bookings, times(1)).saveAndFlush(any());
     }
@@ -167,40 +189,41 @@ class BookingServiceTest {
     @Test
     void aTimeLessThan24HoursAheadOrBeyond60DaysIsRejected() {
         professional.setWeeklyHours(Map.of("TUE", List.of(Map.of("start", "09:00", "end", "12:00"))));
-        // Now + 24 hours is Tuesday 13 Oct 10:00: 09:00 is too soon, 10:00 is allowed.
+        // Now + 24 hours is Tuesday 13 Oct 10:00: 09:00 is too soon, the next slot (10:15) is allowed.
         assertThatThrownBy(() -> book("2026-10-13T09:00:00+05:30")).isInstanceOf(ApiValidationException.class)
                 .hasMessage("slotStart must be at least 24 hours from now.");
-        assertThat(book("2026-10-13T10:00:00+05:30").status()).isEqualTo("PENDING");
+        assertThat(book("2026-10-13T10:15:00+05:30").status()).isEqualTo("CONFIRMED");
         assertThatThrownBy(() -> book("2026-12-15T09:00:00+05:30")).hasMessage("slotStart must be within the next 60 days.");
     }
 
     @Test
     void aSlotOverlappingAConfirmedBookingIsRejectedAndLeavesTheAvailability() {
-        Booking confirmed = existing(BookingStatus.CONFIRMED, WED_19, null, UUID.randomUUID());
+        Booking confirmed = existing(BookingStatus.CONFIRMED, WED_1915, null, UUID.randomUUID());
         doReturn(List.of(confirmed)).when(bookings).findInWindow(eq(professionalId), eq(BookingStatus.BLOCKS_SLOT), any(), any());
 
-        assertThatThrownBy(() -> book(WED_19)).isInstanceOf(ConflictException.class)
+        assertThatThrownBy(() -> book(WED_1915)).isInstanceOf(ConflictException.class)
                 .hasMessage("This time is no longer available. Please choose another time.");
-        assertThatThrownBy(() -> service.create(userId, request(WED_18, WED_19, true)))
+        // Two sessions from 18:00 would run into the 19:15 booking.
+        assertThatThrownBy(() -> service.create(userId, request(WED_18, 2, true)))
                 .hasMessage("This time is no longer available. Please choose another time.");
 
         var availability = directory.availability(professionalId.toString(), "2026-10-14", "2026-10-14");
         assertThat(availability.days()).singleElement().satisfies(day ->
                 assertThat(day.slots()).containsExactly("2026-10-14T18:00:00+05:30"));
-        // 18:00 to 19:00 does not overlap a booking that starts at 19:00.
-        assertThat(book(WED_18).status()).isEqualTo("PENDING");
+        // 18:00 blocks until 19:15 (meeting and break), which does not overlap a booking that starts at 19:15.
+        assertThat(book(WED_18).status()).isEqualTo("CONFIRMED");
     }
 
     @Test
-    void theProposedTimeAndTheBufferDecideWhatAConfirmedBookingBlocks() {
-        // Confirmed for 18:00, but the professional proposed 19:00: only 19:00 is taken.
-        doReturn(List.of(existing(BookingStatus.CONFIRMED, WED_18, WED_19, UUID.randomUUID())))
+    void theProposedTimeAndTheOldBufferDecideWhatAnOldConfirmedBookingBlocks() {
+        // Confirmed for 18:00, but the professional proposed 19:15: only 19:15 is taken.
+        doReturn(List.of(existing(BookingStatus.CONFIRMED, WED_18, WED_1915, UUID.randomUUID())))
                 .when(bookings).findInWindow(any(), any(), any(), any());
         assertThat(directory.availability(professionalId.toString(), "2026-10-14", "2026-10-14").days().get(0).slots())
                 .containsExactly("2026-10-14T18:00:00+05:30");
 
-        // 45-minute sessions with a 15-minute buffer: slots 18:00 and 19:00. A booking at 18:45 occupies
-        // 18:45 to 19:45, which overlaps both.
+        // An old booking stored without an end, with a professional who had chosen 45-minute sessions and
+        // a 15-minute buffer: a booking at 18:45 still blocks 18:45 to 19:45, which overlaps both slots.
         professional.setSessionMinutes(45);
         professional.setBufferMinutes(15);
         doReturn(List.of(existing(BookingStatus.CONFIRMED, "2026-10-14T18:45:00+05:30", null, UUID.randomUUID())))
@@ -211,13 +234,13 @@ class BookingServiceTest {
     @Test
     void aPendingOrProposedRequestDoesNotRemoveTheSlot() {
         // Even if the database returned them, only AWAITING_PAYMENT and CONFIRMED bookings count.
-        doReturn(List.of(existing(BookingStatus.PENDING, WED_19, null, UUID.randomUUID()),
-                existing(BookingStatus.ALTERNATE_PROPOSED, WED_18, WED_19, UUID.randomUUID())))
+        doReturn(List.of(existing(BookingStatus.PENDING, WED_1915, null, UUID.randomUUID()),
+                existing(BookingStatus.ALTERNATE_PROPOSED, WED_18, WED_1915, UUID.randomUUID())))
                 .when(bookings).findInWindow(any(), any(), any(), any());
 
         assertThat(directory.availability(professionalId.toString(), "2026-10-14", "2026-10-14").days().get(0).slots())
-                .containsExactly("2026-10-14T18:00:00+05:30", "2026-10-14T19:00:00+05:30");
-        assertThat(book(WED_19).status()).isEqualTo("PENDING");
+                .containsExactly("2026-10-14T18:00:00+05:30", "2026-10-14T19:15:00+05:30");
+        assertThat(book(WED_1915).status()).isEqualTo("CONFIRMED");
         // And the query itself asks only for AWAITING_PAYMENT and CONFIRMED bookings.
         verify(bookings, atLeastOnce()).findInWindow(eq(professionalId), eq(BookingStatus.BLOCKS_SLOT), any(), any());
         assertThat(BookingStatus.BLOCKS_SLOT).containsExactlyInAnyOrder(BookingStatus.AWAITING_PAYMENT,
@@ -226,22 +249,52 @@ class BookingServiceTest {
 
     @Test
     void aBookingAwaitingPaymentBlocksItsSlot() {
-        doReturn(List.of(existing(BookingStatus.AWAITING_PAYMENT, WED_19, null, UUID.randomUUID())))
+        doReturn(List.of(existing(BookingStatus.AWAITING_PAYMENT, WED_1915, null, UUID.randomUUID())))
                 .when(bookings).findInWindow(eq(professionalId), eq(BookingStatus.BLOCKS_SLOT), any(), any());
 
         assertThat(directory.availability(professionalId.toString(), "2026-10-14", "2026-10-14").days().get(0).slots())
                 .containsExactly("2026-10-14T18:00:00+05:30");
-        assertThatThrownBy(() -> book(WED_19)).isInstanceOf(ConflictException.class)
+        assertThatThrownBy(() -> book(WED_1915)).isInstanceOf(ConflictException.class)
                 .hasMessage("This time is no longer available. Please choose another time.");
     }
 
     @Test
-    void anAlternateSlotEqualToTheFirstIsRejected() {
-        assertThatThrownBy(() -> service.create(userId, request(WED_18, "2026-10-14T12:30:00Z", true)))
-                .isInstanceOf(ApiValidationException.class)
-                .hasMessage("alternateSlotStart must be different from slotStart.");
-        assertThatThrownBy(() -> service.create(userId, request(WED_18, "2026-10-14T18:15:00+05:30", true)))
-                .hasMessageStartingWith("alternateSlotStart is not one of this professional's available times.");
+    void sessionsMustBeConsecutiveAndBetweenOneAndFour() {
+        // 19:15 is the last slot on Wednesday, so a second session after it does not exist.
+        assertThatThrownBy(() -> service.create(userId, request(WED_1915, 2, true)))
+                .isInstanceOf(ApiValidationException.class).hasMessage(BookingService.NOT_CONSECUTIVE_MESSAGE);
+        // Two ranges with a gap between them are not consecutive either.
+        professional.setWeeklyHours(Map.of("WED", List.of(Map.of("start", "18:00", "end", "19:00"),
+                Map.of("start", "19:30", "end", "20:30"))));
+        assertThatThrownBy(() -> service.create(userId, request(WED_18, 2, true)))
+                .hasMessage(BookingService.NOT_CONSECUTIVE_MESSAGE);
+        for (int bad : new int[]{0, 5, -1}) {
+            assertThatThrownBy(() -> service.create(userId, request(WED_18, bad, true)))
+                    .isInstanceOf(ApiValidationException.class).hasMessage("sessionCount must be between 1 and 4.");
+        }
+        verify(bookings, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void aMultiSessionHoldBlocksEverySlotItCovers() {
+        Booking hold = existing(BookingStatus.AWAITING_PAYMENT, WED_18, null, UUID.randomUUID());
+        hold.setSessionCount(2);
+        hold.setEndsAt(OffsetDateTime.parse("2026-10-14T20:00:00+05:30").toInstant());
+        hold.setBlockedUntil(OffsetDateTime.parse("2026-10-14T20:30:00+05:30").toInstant());
+        doReturn(List.of(hold)).when(bookings).findInWindow(eq(professionalId), eq(BookingStatus.BLOCKS_SLOT), any(), any());
+
+        assertThat(directory.availability(professionalId.toString(), "2026-10-14", "2026-10-14").days()).isEmpty();
+        assertThatThrownBy(() -> book(WED_1915)).isInstanceOf(ConflictException.class).hasMessage(BookingService.TAKEN_MESSAGE);
+    }
+
+    @Test
+    void theDatabaseNoOverlapConstraintBecomesTheSameConflict() {
+        // Another booking committed between the check and the save: the constraint refuses this one.
+        doThrow(new DataIntegrityViolationException("booking_requests_no_overlap")).when(bookings).saveAndFlush(any());
+
+        assertThatThrownBy(() -> book(WED_18)).isInstanceOf(ConflictException.class)
+                .hasMessage(BookingService.TAKEN_MESSAGE);
+        verify(events, never()).publishEvent(any(Object.class));
     }
 
     @Test
@@ -293,10 +346,7 @@ class BookingServiceTest {
         professional.setWeeklyHours(Map.of());
         assertThatThrownBy(() -> book(WED_18)).isInstanceOf(ConflictException.class)
                 .hasMessage("This professional has not set their availability yet.");
-        professional.setWeeklyHours(Map.of("WED", List.of(Map.of("start", "18:00", "end", "20:00"))));
-        professional.setSessionMinutes(null);
-        assertThatThrownBy(() -> book(WED_18)).hasMessage("This professional has not set their availability yet.");
-        professional.setSessionMinutes(60);
+        professional.setWeeklyHours(WED_HOURS);
 
         ProfessionalAccount own = new ProfessionalAccount(professionalId, "user@example.com", "user_clerk_1");
         when(accounts.findByClerkUserId("user_clerk_1")).thenReturn(Optional.of(own));
@@ -313,21 +363,141 @@ class BookingServiceTest {
     }
 
     @Test
-    void openAndDailyLimitsApply() {
+    void holdAndDailyLimitsApply() {
         doReturn(5L).when(bookings).countByUserIdAndCreatedAtAfter(eq(userId), eq(NOW.minusSeconds(24 * 3600)));
         assertThatThrownBy(() -> book(WED_18)).isInstanceOf(BookingExceptions.TooManyRequestsException.class)
-                .hasMessage("You have sent 5 booking requests in the last 24 hours. Please try again later.");
+                .hasMessage("You have made 5 bookings in the last 24 hours. Please try again later.");
         doReturn(4L).when(bookings).countByUserIdAndCreatedAtAfter(any(), any());
 
-        doReturn(3L).when(bookings).countOpenByUser(eq(userId), eq(BookingStatus.OPEN), eq(NOW));
+        doReturn(1L).when(bookings).countByUserIdAndProfessionalIdAndStatusAndPaymentDueAtAfter(userId, professionalId,
+                BookingStatus.AWAITING_PAYMENT, NOW);
         assertThatThrownBy(() -> book(WED_18)).isInstanceOf(ConflictException.class)
-                .hasMessageStartingWith("You already have 3 open booking requests.");
-        doReturn(2L).when(bookings).countOpenByUser(any(), any(), any());
+                .hasMessageStartingWith("You already have a booking with this professional waiting for payment.");
+        doReturn(0L).when(bookings).countByUserIdAndProfessionalIdAndStatusAndPaymentDueAtAfter(any(), any(), any(), any());
 
-        doReturn(1L).when(bookings).countOpenByUserAndProfessional(eq(userId), eq(professionalId), eq(BookingStatus.OPEN), eq(NOW));
+        doReturn(2L).when(bookings).countByUserIdAndStatusAndPaymentDueAtAfter(userId, BookingStatus.AWAITING_PAYMENT, NOW);
         assertThatThrownBy(() -> book(WED_18)).isInstanceOf(ConflictException.class)
-                .hasMessageStartingWith("You already have an open request with this professional.");
+                .hasMessageStartingWith("You already have 2 bookings waiting for payment.");
         verify(bookings, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void theWhatsAppConsentIsStoredOnlyWhenTicked() {
+        for (Boolean ticked : new Boolean[]{true, false, null}) {
+            reset(bookings);
+            setUpBookingDefaults();
+            service.create(userId, new CreateBookingRequest(professionalId.toString(), "online", "Ravi Kumar",
+                    "9876543210", WED_18, 1, null, true, "VIDEO", null, ticked));
+            assertThat(savedBooking().isWhatsappOptIn()).as(String.valueOf(ticked)).isEqualTo(Boolean.TRUE.equals(ticked));
+        }
+    }
+
+    // ---- the session grid ----
+
+    private Booking bookedFrom(String start, int sessions) {
+        Instant from = OffsetDateTime.parse(start).toInstant();
+        Booking b = existing(BookingStatus.CONFIRMED, start, null, UUID.randomUUID());
+        b.setSessionCount(sessions);
+        b.setEndsAt(SessionGrid.current().meetingEnd(from, sessions));
+        b.setBlockedUntil(SessionGrid.current().blockedUntil(from, sessions));
+        return b;
+    }
+
+    private List<String> slotsOn14th() {
+        var days = directory.availability(professionalId.toString(), "2026-10-14", "2026-10-14").days();
+        return days.isEmpty() ? List.of() : days.get(0).slots();
+    }
+
+    @Test
+    void slotsStartEvery75MinutesAndOneTwoOrFourSessionsAreOneMeetingWithTheBreaksBlockedAfterIt() {
+        professional.setWeeklyHours(LONG_WED_HOURS);
+        assertThat(slotsOn14th()).containsExactly("2026-10-14T18:00:00+05:30", "2026-10-14T19:15:00+05:30",
+                "2026-10-14T20:30:00+05:30", "2026-10-14T21:45:00+05:30");
+
+        // sessions -> meeting end, blocked until
+        Map<Integer, String[]> expected = Map.of(
+                1, new String[]{"2026-10-14T19:00:00+05:30", "2026-10-14T19:15:00+05:30"},
+                2, new String[]{"2026-10-14T20:00:00+05:30", "2026-10-14T20:30:00+05:30"},
+                4, new String[]{"2026-10-14T22:00:00+05:30", "2026-10-14T23:00:00+05:30"});
+        for (int sessions : new int[]{1, 2, 4}) {
+            reset(bookings);
+            setUpBookingDefaults();
+            BookingView view = service.create(userId, request(WED_18, sessions, true));
+
+            Booking b = savedBooking();
+            String label = sessions + " sessions";
+            assertThat(b.getSessionCount()).as(label).isEqualTo(sessions);
+            assertThat(b.getEndsAt()).as(label).isEqualTo(OffsetDateTime.parse(expected.get(sessions)[0]).toInstant());
+            assertThat(b.getBlockedUntil()).as(label).isEqualTo(OffsetDateTime.parse(expected.get(sessions)[1]).toInstant());
+            // The client sees the meeting only, never the break.
+            assertThat(view.endDatetime()).as(label).isEqualTo(OffsetDateTime.parse(expected.get(sessions)[0]));
+        }
+    }
+
+    @Test
+    void whenTheNextSlotIsAlreadyBookedOnlyOneSessionCanBeBooked() {
+        professional.setWeeklyHours(LONG_WED_HOURS);
+        doReturn(List.of(bookedFrom(WED_1915, 1))).when(bookings)
+                .findInWindow(eq(professionalId), eq(BookingStatus.BLOCKS_SLOT), any(), any());
+
+        assertThat(slotsOn14th()).containsExactly("2026-10-14T18:00:00+05:30", "2026-10-14T20:30:00+05:30",
+                "2026-10-14T21:45:00+05:30");
+        assertThatThrownBy(() -> service.create(userId, request(WED_18, 2, true))).isInstanceOf(ConflictException.class)
+                .hasMessage(BookingService.TAKEN_MESSAGE);
+        verify(bookings, never()).saveAndFlush(any());
+        assertThat(service.create(userId, request(WED_18, 1, true)).status()).isEqualTo("CONFIRMED");
+    }
+
+    @Test
+    void theLastSlotOfTheDayTakesOneSessionAndItsBreakMayRunPastTheHours() {
+        professional.setWeeklyHours(LONG_WED_HOURS);
+        assertThatThrownBy(() -> service.create(userId, request("2026-10-14T21:45:00+05:30", 2, true)))
+                .isInstanceOf(ApiValidationException.class).hasMessage(BookingService.NOT_CONSECUTIVE_MESSAGE);
+        assertThatThrownBy(() -> service.create(userId, request("2026-10-14T20:30:00+05:30", 3, true)))
+                .hasMessage(BookingService.NOT_CONSECUTIVE_MESSAGE);
+        verify(bookings, never()).saveAndFlush(any());
+
+        service.create(userId, request("2026-10-14T21:45:00+05:30", 1, true));
+        Booking b = savedBooking();
+        assertThat(b.getEndsAt()).isEqualTo(OffsetDateTime.parse("2026-10-14T22:45:00+05:30").toInstant());
+        assertThat(b.getBlockedUntil()).isEqualTo(OffsetDateTime.parse("2026-10-14T23:00:00+05:30").toInstant());
+    }
+
+    @Test
+    void theNextFreeSlotIsTheGridSlotRightWhereTheBookingStopsBlocking() {
+        professional.setWeeklyHours(LONG_WED_HOURS);
+        // Two sessions from 18:00: meeting until 20:00, blocked until 20:30.
+        doReturn(List.of(bookedFrom(WED_18, 2))).when(bookings)
+                .findInWindow(eq(professionalId), eq(BookingStatus.BLOCKS_SLOT), any(), any());
+
+        assertThat(slotsOn14th()).containsExactly("2026-10-14T20:30:00+05:30", "2026-10-14T21:45:00+05:30");
+        assertThatThrownBy(() -> book(WED_1915)).isInstanceOf(ConflictException.class).hasMessage(BookingService.TAKEN_MESSAGE);
+        // Starting exactly at blocked_until is fine, for one or more sessions.
+        assertThat(service.create(userId, request("2026-10-14T20:30:00+05:30", 2, true)).status()).isEqualTo("CONFIRMED");
+    }
+
+    @Test
+    void oldThirtyMinuteBookingsKeepTheirStoredTimesAndStillBlockThem() {
+        professional.setWeeklyHours(LONG_WED_HOURS);
+        professional.setSessionMinutes(30);
+        professional.setBufferMinutes(10);
+        // Made before the grid: 30 minutes plus a 10-minute buffer, so ends_at = blocked_until = 19:40.
+        Booking old = existing(BookingStatus.CONFIRMED, "2026-10-14T19:00:00+05:30", null, UUID.randomUUID());
+        old.setEndsAt(OffsetDateTime.parse("2026-10-14T19:40:00+05:30").toInstant());
+        old.setBlockedUntil(old.getEndsAt());
+        // Older still, with no end stored at all: it blocks the professional's own 30 + 10 minutes.
+        Booking older = existing(BookingStatus.CONFIRMED, "2026-10-14T22:30:00+05:30", null, UUID.randomUUID());
+        doReturn(List.of(old, older)).when(bookings)
+                .findInWindow(eq(professionalId), eq(BookingStatus.BLOCKS_SLOT), any(), any());
+
+        // 18:00 (blocked to 19:15) and 19:15 overlap 19:00 to 19:40; 21:45 (to 23:00) overlaps 22:30 to 23:10.
+        assertThat(slotsOn14th()).containsExactly("2026-10-14T20:30:00+05:30");
+        assertThatThrownBy(() -> book(WED_18)).isInstanceOf(ConflictException.class).hasMessage(BookingService.TAKEN_MESSAGE);
+        assertThatThrownBy(() -> book("2026-10-14T21:45:00+05:30")).hasMessage(BookingService.TAKEN_MESSAGE);
+
+        // Shown as before: the session ends at 19:30, without the old buffer.
+        assertThat(MeetingTimes.end(old, professional))
+                .isEqualTo(OffsetDateTime.parse("2026-10-14T19:30:00+05:30").toInstant());
     }
 
     // ---- reading and cancelling ----
@@ -353,11 +523,11 @@ class BookingServiceTest {
         assertThat(availability.toString()).doesNotContain("PRIVATE-REASON");
         assertThatThrownBy(() -> book(WED_18)).isInstanceOf(ConflictException.class)
                 .hasMessage(BookingService.TAKEN_MESSAGE);
-        assertThatThrownBy(() -> service.create(userId, request("2026-10-21T18:00:00+05:30", WED_19, true)))
+        assertThatThrownBy(() -> service.create(userId, request(WED_18, 2, true)))
                 .isInstanceOf(ConflictException.class).hasMessage(BookingService.TAKEN_MESSAGE);
         verify(bookings, never()).saveAndFlush(any());
         // The next Wednesday is still bookable.
-        assertThat(book("2026-10-21T18:00:00+05:30").status()).isEqualTo("PENDING");
+        assertThat(book("2026-10-21T18:00:00+05:30").status()).isEqualTo("CONFIRMED");
     }
 
     @Test
@@ -382,7 +552,9 @@ class BookingServiceTest {
         assertThat(summary.nextAppointment().scheduledTime()).isEqualTo(OffsetDateTime.parse(WED_18));
         assertThat(summary.nextAppointment().meetingAddress()).isEqualTo("Clinic 4, MG Road, Pune");
         assertThat(summary.nextAppointment().professional().fullName()).isEqualTo("Dr. Asha Rao");
-        assertThat(summary.toString()).doesNotContain("asha@example.com", "user@example.com");
+        // Confirmed: the professional's contact details are shared; the user's own are never in the summary.
+        assertThat(summary.nextAppointment().professionalEmail()).isEqualTo("asha@example.com");
+        assertThat(summary.toString()).doesNotContain("user@example.com");
 
         UUID otherUser = UUID.randomUUID();
         var empty = service.summary(otherUser);
@@ -408,7 +580,7 @@ class BookingServiceTest {
     }
 
     @Test
-    void aBookingAwaitingPaymentCanBeCancelledAndTheProfessionalIsTold() {
+    void aHeldBookingCanBeCancelledWithoutEmailingTheProfessional() {
         UUID bookingId = UUID.randomUUID();
         Booking mine = existing(BookingStatus.AWAITING_PAYMENT, WED_18, null, userId);
         mine.setPaymentDueAt(NOW.plusSeconds(3600));
@@ -420,9 +592,9 @@ class BookingServiceTest {
         assertThat(mine.getStatus()).isEqualTo(BookingStatus.CANCELLED);
         assertThat(mine.getRespondedBy()).isEqualTo("USER");
         assertThat(cancelled.paymentDueAt()).isNull();
-        verify(events).publishEvent(new BookingEvent(BookingEvent.Type.CANCELLED_BY_USER, mine.getId()));
+        verify(events, never()).publishEvent(any(Object.class));
         // A paid booking cannot be cancelled here.
-        Booking paid = existing(BookingStatus.CONFIRMED, WED_19, null, userId);
+        Booking paid = existing(BookingStatus.CONFIRMED, WED_1915, null, userId);
         UUID paidId = UUID.randomUUID();
         doReturn(Optional.of(paid)).when(bookings).findByIdForUpdate(paidId);
         assertThatThrownBy(() -> service.cancel(userId, paidId.toString())).isInstanceOf(ConflictException.class)
@@ -431,7 +603,7 @@ class BookingServiceTest {
 
     @Test
     void theSummaryListsBookingsAwaitingPaymentAsTheirOwnGroup() {
-        Booking unpaid = existing(BookingStatus.AWAITING_PAYMENT, WED_19, null, userId);
+        Booking unpaid = existing(BookingStatus.AWAITING_PAYMENT, WED_1915, null, userId);
         ReflectionTestUtils.setField(unpaid, "id", UUID.randomUUID());
         unpaid.setPreferredMode("ONLINE");
         unpaid.setMeetingMethod("VIDEO");
@@ -445,7 +617,7 @@ class BookingServiceTest {
 
         assertThat(summary.awaitingPayment()).singleElement().satisfies(a -> {
             assertThat(a.id()).isEqualTo(unpaid.getId());
-            assertThat(a.scheduledTime()).isEqualTo(OffsetDateTime.parse(WED_19));
+            assertThat(a.scheduledTime()).isEqualTo(OffsetDateTime.parse(WED_1915));
             assertThat(a.paymentDueAt()).isEqualTo(NOW.plusSeconds(6 * 3600));
             assertThat(a.professional().fullName()).isEqualTo("Dr. Asha Rao");
         });
@@ -461,7 +633,7 @@ class BookingServiceTest {
         professional.setConsultationFee(1500);
         when(professionals.findById(professionalId)).thenReturn(Optional.of(professional));
         when(professionals.findAllById(List.of(professionalId))).thenReturn(List.of(professional));
-        Booking unpaid = existing(BookingStatus.AWAITING_PAYMENT, WED_19, null, userId);
+        Booking unpaid = existing(BookingStatus.AWAITING_PAYMENT, WED_1915, null, userId);
         UUID id = UUID.randomUUID();
         ReflectionTestUtils.setField(unpaid, "id", id);
         unpaid.setPaymentDueAt(NOW.plusSeconds(3600));
@@ -490,7 +662,7 @@ class BookingServiceTest {
     @Test
     void aPaidConfirmedBookingShowsWhatWasPaidAndAnOlderOneShowsNothing() {
         when(professionals.findById(professionalId)).thenReturn(Optional.of(professional));
-        Booking paid = existing(BookingStatus.CONFIRMED, WED_19, null, userId);
+        Booking paid = existing(BookingStatus.CONFIRMED, WED_1915, null, userId);
         UUID paidId = UUID.randomUUID();
         ReflectionTestUtils.setField(paid, "id", paidId);
         doReturn(Optional.of(paid)).when(bookings).findByIdAndUserId(paidId, userId);
@@ -519,7 +691,7 @@ class BookingServiceTest {
 
     @Test
     void anExpiredUnpaidBookingKeepsItsPaymentDeadlineAndAnUnansweredOneHasNone() {
-        Booking unpaid = existing(BookingStatus.EXPIRED, WED_19, null, userId);
+        Booking unpaid = existing(BookingStatus.EXPIRED, WED_1915, null, userId);
         unpaid.setPaymentDueAt(NOW.minusSeconds(3600));
         Booking unanswered = existing(BookingStatus.EXPIRED, WED_18, null, userId);
 
@@ -702,16 +874,23 @@ class BookingServiceTest {
         verify(bookings, never()).saveAndFlush(any());
     }
 
-    // ---- no professional contact details in any booking response ----
+    // ---- the professional's contact details only once CONFIRMED ----
 
     @Test
-    void noBookingResponseContainsTheProfessionalsContactDetails() {
+    void theProfessionalsContactDetailsAreSharedOnlyOnceConfirmed() {
         professional.setContactEmail("asha.private@example.com");
         professional.setContactPhone("+919812345678");
+        professional.setConsultationFee(1500);
         when(professionals.findById(professionalId)).thenReturn(Optional.of(professional));
         when(professionals.findAllById(any())).thenReturn(List.of(professional));
+        JsonMapper mapper = JsonMapper.builder().build();
 
+        // Held for payment: no contact details yet.
         BookingView created = service.create(userId, withMethod("online", "VIDEO", null));
+        assertThat(created.status()).isEqualTo("AWAITING_PAYMENT");
+        assertThat(mapper.writeValueAsString(created)).contains("Dr. Asha Rao")
+                .doesNotContain("asha.private@example.com", "9812345678");
+
         Booking stored = savedBooking();
         stored.setStatus(BookingStatus.CONFIRMED);
         stored.setAdminNote("internal admin note");
@@ -719,12 +898,11 @@ class BookingServiceTest {
         doReturn(Optional.of(stored)).when(bookings).findByIdAndUserId(bookingId, userId);
         doReturn(new PageImpl<>(List.of(stored))).when(bookings).findByUserId(eq(userId), any());
 
-        JsonMapper mapper = JsonMapper.builder().build();
-        for (Object response : List.of(created, service.get(userId, bookingId.toString()), service.mine(userId, 0, 20))) {
+        for (Object response : List.of(service.get(userId, bookingId.toString()), service.mine(userId, 0, 20))) {
             String json = mapper.writeValueAsString(response);
-            assertThat(json).contains("Dr. Asha Rao");
-            assertThat(json).doesNotContain("asha.private@example.com", "9812345678", "contactEmail", "contactPhone",
-                    "adminNote", "internal admin note");
+            assertThat(json).contains("Dr. Asha Rao", "asha.private@example.com", "+919812345678");
+            // Never the user's own contact fields or the admin note.
+            assertThat(json).doesNotContain("contactEmail", "contactPhone", "adminNote", "internal admin note");
         }
     }
 }

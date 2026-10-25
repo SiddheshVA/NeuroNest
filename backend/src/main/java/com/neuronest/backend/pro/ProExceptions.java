@@ -39,6 +39,13 @@ public final class ProExceptions {
         }
     }
 
+    /** A missing blocked slot, or one that belongs to another professional: the same 404 for both. */
+    public static class BlockedSlotNotFoundException extends RuntimeException {
+        public BlockedSlotNotFoundException() {
+            super("This blocked time was not found. It may already be unblocked.");
+        }
+    }
+
     /** A missing booking request, or one that belongs to another professional: the same 404 for both. */
     public static class BookingNotFoundException extends RuntimeException {
         public BookingNotFoundException() {

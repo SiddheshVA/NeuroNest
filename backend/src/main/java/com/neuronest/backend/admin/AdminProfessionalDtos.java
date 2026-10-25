@@ -2,6 +2,7 @@ package com.neuronest.backend.admin;
 
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.neuronest.backend.professional.Professional;
+import com.neuronest.backend.professional.SessionGrid;
 import com.neuronest.backend.professional.WeeklyHours;
 import tools.jackson.databind.JsonNode;
 
@@ -121,7 +122,8 @@ public final class AdminProfessionalDtos {
                     p.getAvailabilityNote(), p.getPhotoUrl(), p.isSampleData(), p.isActive(),
                     p.getVerificationStatus().name(), p.isVerified(), p.getVerificationSource(), p.getVerifiedBy(),
                     p.getVerifiedAt(), p.getVerificationNotes(), p.getNextRecheckDate(), p.getSubmittedAt(),
-                    WeeklyHours.copy(p.getWeeklyHours()), p.getSessionMinutes(), p.getBufferMinutes(),
+                    WeeklyHours.copy(p.getWeeklyHours()), SessionGrid.current().sessionMinutes(),
+                    SessionGrid.current().breakMinutes(),
                     p.getDateOfBirth(), new LinkedHashMap<>(p.getSocialLinks()), p.getDeclarationAcceptedAt(),
                     p.getCreatedAt(), p.getUpdatedAt());
         }

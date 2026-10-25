@@ -32,8 +32,7 @@ class SimilarProfessionalsTest {
         p.setVerificationStatus(VerificationStatus.VERIFIED);
         p.setVerified(true);
         p.setActive(true);
-        p.setSessionMinutes(bookable ? 60 : null);
-        p.setWeeklyHours(Map.of("WED", List.of(Map.of("start", "18:00", "end", "20:00"))));
+        p.setWeeklyHours(bookable ? Map.of("WED", List.of(Map.of("start", "18:00", "end", "20:00"))) : Map.of());
         return p;
     }
 

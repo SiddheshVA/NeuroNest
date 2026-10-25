@@ -16,17 +16,22 @@ import {
 import { CrisisResourcesBox } from "@/components/shared/crisis-resources-box";
 import {
   BookingApiError,
+  cancelBooking,
   createBooking,
   getLatestAssessment,
   INSTRUMENT_LABELS,
   isIndianMobile,
   isSlotTaken,
+  MAX_SESSIONS,
   SLOT_TAKEN_MESSAGE,
+  type BookingView,
   type LatestAssessment,
   type PreferredMethod,
   type PreferredMode,
 } from "@/lib/bookings-client";
-import { addDays, formatIstDate, formatIstDay, formatIstTime, todayInIndia } from "@/lib/ist-time";
+import { addDays, formatIstDate, formatIstDateTime, formatIstDay, formatIstTime, todayInIndia } from "@/lib/ist-time";
+import { formatAmount } from "@/lib/money";
+import { payForBooking } from "@/lib/razorpay-checkout";
 import { getProfessionalAvailability, type PublicProfessional } from "@/lib/professionals-client";
 import { loginHref } from "@/lib/safe-redirect";
 import { cn } from "@/lib/utils";
@@ -103,7 +108,7 @@ export function BookingStatusCard({ professional: p }: { professional: PublicPro
   if (!isSignedIn) {
     return (
       <Card>
-        <p className="text-sm text-foreground">Sign in to see available times and request an appointment.</p>
+        <p className="text-sm text-foreground">Sign in to see available times and book a session.</p>
         <Link href={loginHref(bookingPath(p.id))} className={primaryButtonClass}>
           <LogIn className="size-4" aria-hidden="true" />
           Sign in
@@ -113,7 +118,7 @@ export function BookingStatusCard({ professional: p }: { professional: PublicPro
   }
   return (
     <Card>
-      <p className="text-sm text-foreground">Choose a time that suits you and send a request.</p>
+      <p className="text-sm text-foreground">Choose a time that suits you and book it.</p>
       <button
         type="button"
         id={TOGGLE_ID}
@@ -123,7 +128,7 @@ export function BookingStatusCard({ professional: p }: { professional: PublicPro
         className={cn(secondaryButtonClass, "cursor-pointer")}
       >
         <CalendarClock className="size-4" aria-hidden="true" />
-        Request appointment
+        Book a session
       </button>
     </Card>
   );
@@ -165,7 +170,7 @@ function OpenBookingSection({ professional, onClose }: { professional: PublicPro
       ref={sectionRef}
       id={FORM_ID}
       tabIndex={-1}
-      aria-label="Request an appointment"
+      aria-label="Book a session"
       className="relative scroll-mt-24 rounded-2xl bg-card p-6 ring-1 ring-foreground/10 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:p-8"
     >
       <button
@@ -173,7 +178,7 @@ function OpenBookingSection({ professional, onClose }: { professional: PublicPro
         onClick={onClose}
         className="absolute top-6 right-6 cursor-pointer rounded-sm text-sm font-medium text-primary underline-offset-4 outline-none transition-colors duration-150 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 sm:top-8 sm:right-8"
       >
-        Close<span className="sr-only"> the appointment request form</span>
+        Close<span className="sr-only"> the booking form</span>
       </button>
       <BookingForm professional={professional} />
     </section>
@@ -184,36 +189,73 @@ function OpenBookingSection({ professional, onClose }: { professional: PublicPro
 
 type Days = { date: string; slots: string[] }[];
 
-/** Loads [from, to] in pieces the availability endpoint accepts. */
-async function loadRange(id: string, from: string, to: string, signal?: AbortSignal): Promise<Days> {
+/**
+ * The session grid every professional uses, from the availability endpoint: how long one session lasts, and
+ * the minutes from one slot to the next (session plus break), which decides whether two slots are next to
+ * each other.
+ */
+type Grid = { sessionMinutes: number; stepMinutes: number };
+
+/** Loads [from, to] in pieces the availability endpoint accepts, with the session grid. */
+async function loadRange(
+  id: string,
+  from: string,
+  to: string,
+  signal?: AbortSignal,
+): Promise<{ days: Days; grid: Grid | null }> {
   const days: Days = [];
+  let grid: Grid | null = null;
   let start = from;
   while (start <= to) {
     const end = addDays(start, MAX_RANGE - 1) < to ? addDays(start, MAX_RANGE - 1) : to;
     const result = await getProfessionalAvailability(id, start, end, signal);
+    if (result.sessionMinutes) {
+      grid = { sessionMinutes: result.sessionMinutes, stepMinutes: result.sessionMinutes + Math.max(0, result.breakMinutes) };
+    }
     days.push(...result.days.filter((day) => day.slots.length > 0));
     start = addDays(end, 1);
   }
-  return days;
+  return { days, grid };
 }
 
+/**
+ * The free slots from `start` that `count` consecutive sessions would use: each the slot right after the one
+ * before on the same day. Shorter than `count` when a slot after `start` is taken or the day ends.
+ */
+function consecutiveRun(start: string, count: number, daySlots: string[], grid: Grid | null): string[] {
+  const run = [start];
+  if (!grid) return run;
+  const startMs = new Date(start).getTime();
+  for (let i = 1; i < count; i++) {
+    const nextMs = startMs + i * grid.stepMinutes * 60_000;
+    const next = daySlots.find((slot) => new Date(slot).getTime() === nextMs);
+    if (!next) break;
+    run.push(next);
+  }
+  return run;
+}
+
+/**
+ * Pick a day, then one start time, then how many sessions in a row (1 to MAX_SESSIONS). `value` is the slots
+ * the booking uses: the start and the free slots straight after it.
+ */
 function SlotPicker({
   days,
   value,
   onChange,
-  exclude,
+  grid,
   label,
   helper,
 }: {
   days: Days;
-  value: string;
-  onChange: (slot: string) => void;
-  exclude?: string;
+  value: string[];
+  onChange: (slots: string[]) => void;
+  grid: Grid | null;
   label: string;
   helper: string;
 }) {
-  const [day, setDay] = useState(() => days.find((d) => d.slots.includes(value))?.date ?? "");
-  const available = days.map((d) => ({ ...d, slots: d.slots.filter((slot) => slot !== exclude) }));
+  const [day, setDay] = useState(() => days.find((d) => value.length > 0 && d.slots.includes(value[0]))?.date ?? "");
+  const available = days;
   const chosenDay = available.find((d) => d.date === day);
 
   return (
@@ -229,7 +271,7 @@ function SlotPicker({
             aria-pressed={d.date === day}
             onClick={() => {
               setDay(d.date);
-              if (!d.slots.includes(value)) onChange("");
+              if (value.length > 0 && !d.slots.includes(value[0])) onChange([]);
             }}
             className={cn(
               "rounded-full px-3 py-1.5 text-sm ring-1 transition-colors disabled:cursor-not-allowed disabled:opacity-40",
@@ -249,11 +291,11 @@ function SlotPicker({
               <button
                 key={slot}
                 type="button"
-                aria-pressed={slot === value}
-                onClick={() => onChange(slot === value ? "" : slot)}
+                aria-pressed={value[0] === slot}
+                onClick={() => onChange(value[0] === slot ? [] : [slot])}
                 className={cn(
                   "rounded-full px-3 py-1.5 text-sm tabular-nums ring-1 transition-colors",
-                  slot === value
+                  value[0] === slot
                     ? "bg-primary text-primary-foreground ring-primary"
                     : "bg-card text-foreground ring-border hover:bg-muted",
                 )}
@@ -263,9 +305,95 @@ function SlotPicker({
             ))}
           </div>
           <p className="text-xs text-muted-foreground">Times are in Indian Standard Time.</p>
+          {value.length > 0 ? <SessionStepper value={value} onChange={onChange} daySlots={chosenDay.slots} grid={grid} /> : null}
         </div>
       ) : null}
     </fieldset>
+  );
+}
+
+/**
+ * "Sessions: - 1 +". More sessions run on straight after the first as one meeting; + is off when the next
+ * slot that day is taken or does not exist, or at MAX_SESSIONS.
+ */
+function SessionStepper({
+  value,
+  onChange,
+  daySlots,
+  grid,
+}: {
+  value: string[];
+  onChange: (slots: string[]) => void;
+  daySlots: string[];
+  grid: Grid | null;
+}) {
+  const count = value.length;
+  const canAdd = count < MAX_SESSIONS && consecutiveRun(value[0], count + 1, daySlots, grid).length > count;
+  const stepClass =
+    "flex size-8 items-center justify-center rounded-full bg-card text-base ring-1 ring-border transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40";
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-3" role="group" aria-label="Number of sessions">
+        <span className="text-sm font-medium text-foreground">Sessions:</span>
+        <button
+          type="button"
+          className={stepClass}
+          disabled={count <= 1}
+          onClick={() => onChange(value.slice(0, count - 1))}
+          aria-label="One session fewer"
+        >
+          −
+        </button>
+        <span className="min-w-4 text-center text-sm font-semibold tabular-nums" aria-live="polite">
+          {count}
+        </span>
+        <button
+          type="button"
+          className={stepClass}
+          disabled={!canAdd}
+          onClick={() => onChange(consecutiveRun(value[0], count + 1, daySlots, grid))}
+          aria-label="One session more"
+        >
+          +
+        </button>
+      </div>
+      {!canAdd && count < MAX_SESSIONS ? (
+        <p className="text-xs text-muted-foreground">The next time that day is not free, so no more sessions can follow.</p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * What the choice adds up to: how many sessions, the meeting from start to end (sessions back to back, the
+ * breaks are not shown), and the total price.
+ */
+function SelectionSummary({
+  slots,
+  grid,
+  professional: p,
+}: {
+  slots: string[];
+  grid: Grid | null;
+  professional: PublicProfessional;
+}) {
+  if (slots.length === 0 || !grid) return null;
+  const end = new Date(new Date(slots[0]).getTime() + slots.length * grid.sessionMinutes * 60_000).toISOString();
+  const fee = p.consultationFee ?? 0;
+  return (
+    <p className="rounded-xl bg-muted/60 px-4 py-3 text-sm text-foreground" aria-live="polite">
+      {slots.length} {slots.length === 1 ? "session" : "sessions"}, {formatIstDay(slots[0].slice(0, 10))},{" "}
+      {formatIstTime(slots[0])} to {formatIstTime(end)} IST.
+      {fee > 0 ? (
+        <>
+          {" "}
+          Total <span className="font-semibold">{formatAmount(fee * slots.length * 100, "INR")}</span>
+          {slots.length > 1 ? ` (${slots.length} × ${formatAmount(fee * 100, "INR")})` : ""}.
+        </>
+      ) : (
+        " This session is free."
+      )}
+    </p>
   );
 }
 
@@ -274,7 +402,17 @@ function SlotPicker({
 type Availability =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; days: Days; loadedTo: string; loadingMore: boolean };
+  | { status: "ready"; days: Days; grid: Grid | null; loadedTo: string; loadingMore: boolean };
+
+/**
+ * After "Book and pay": paid (or a free session) is done; held means the window was closed before paying,
+ * so the times stay held until the deadline and the person can pay again; unverified means Razorpay took a
+ * payment we could not confirm yet. A failed payment cancels the hold and goes back to the form.
+ */
+type Outcome =
+  | { status: "confirmed"; booking: BookingView }
+  | { status: "held"; booking: BookingView }
+  | { status: "unverified"; message: string };
 
 type ShareState =
   | { status: "idle" }
@@ -298,10 +436,10 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
 
   const [mode, setMode] = useState<PreferredMode | "">("");
   const [method, setMethod] = useState<PreferredMethod | "">("");
-  const [slot, setSlot] = useState("");
-  const [alternate, setAlternate] = useState("");
+  const [slots, setSlots] = useState<string[]>([]);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [whatsapp, setWhatsapp] = useState(false);
   const [note, setNote] = useState("");
   const [share, setShare] = useState(false);
   const [shareState, setShareState] = useState<ShareState>({ status: "idle" });
@@ -309,7 +447,8 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<{ message: string; retry: boolean } | null>(null);
-  const [sent, setSent] = useState(false);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [paying, setPaying] = useState(false);
   // Bumped after the slots are reloaded so the pickers start again from the fresh list.
   const [pickerKey, setPickerKey] = useState(0);
 
@@ -317,7 +456,7 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
     const controller = new AbortController();
     const to = addDays(today, FIRST_DAYS - 1);
     loadRange(p.id, today, to, controller.signal)
-      .then((days) => setAvailability({ status: "ready", days, loadedTo: to, loadingMore: false }))
+      .then(({ days, grid }) => setAvailability({ status: "ready", days, grid, loadedTo: to, loadingMore: false }))
       .catch(() => {
         if (controller.signal.aborted) return;
         setAvailability({ status: "error", message: "The available times could not be loaded. Please try again." });
@@ -333,7 +472,13 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
     setAvailability({ ...availability, loadingMore: true });
     loadRange(p.id, from, to)
       .then((more) =>
-        setAvailability({ status: "ready", days: [...availability.days, ...more], loadedTo: to, loadingMore: false }),
+        setAvailability({
+          status: "ready",
+          days: [...availability.days, ...more.days],
+          grid: availability.grid ?? more.grid,
+          loadedTo: to,
+          loadingMore: false,
+        }),
       )
       .catch(() => {
         setAvailability({ ...availability, loadingMore: false });
@@ -346,16 +491,15 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
     if (availability.status !== "ready") return;
     const loadedTo = availability.loadedTo;
     try {
-      const days = await loadRange(p.id, today, loadedTo);
+      const { days, grid } = await loadRange(p.id, today, loadedTo);
       const all = new Set(days.flatMap((d) => d.slots));
-      setAvailability({ status: "ready", days, loadedTo, loadingMore: false });
-      if (!all.has(slot)) setSlot("");
-      if (!all.has(alternate)) setAlternate("");
+      setAvailability({ status: "ready", days, grid, loadedTo, loadingMore: false });
+      if (!slots.every((s) => all.has(s))) setSlots([]);
       setPickerKey((k) => k + 1);
     } catch {
       setAvailability({ status: "error", message: "The available times could not be loaded. Please try again." });
     }
-  }, [availability, p.id, today, slot, alternate]);
+  }, [availability, p.id, today, slots]);
 
   const toggleShare = async (checked: boolean) => {
     setShare(checked);
@@ -389,8 +533,7 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
   const valid =
     mode !== "" &&
     (mode !== "ONLINE" || method !== "") &&
-    slot !== "" &&
-    alternate !== slot &&
+    slots.length > 0 &&
     nameValid &&
     phoneValid &&
     note.length <= MAX_NOTE &&
@@ -402,20 +545,21 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
     setSubmitting(true);
     setFormError(null);
     const sharing = share && shareState.status === "ready";
+    let booking: BookingView;
     try {
-      await createBooking({
+      booking = await createBooking({
         professionalId: p.id,
         preferredMode: mode,
         ...(mode === "ONLINE" && method ? { preferredMethod: method } : {}),
         contactName: trimmedName,
         contactPhone: phone.trim(),
-        slotStart: slot,
-        ...(alternate ? { alternateSlotStart: alternate } : {}),
+        slotStart: slots[0],
+        sessionCount: slots.length,
         ...(note.trim() ? { note: note.trim() } : {}),
         consentGiven: true,
         shareLatestAssessment: sharing,
+        whatsappUpdates: whatsapp,
       });
-      setSent(true);
     } catch (error) {
       if (error instanceof BookingApiError && error.status === 401) {
         navigate(loginHref(bookingPath(p.id)));
@@ -432,22 +576,102 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
           retry: true,
         });
       }
-    } finally {
       setSubmitting(false);
+      return;
+    }
+    setSubmitting(false);
+    // A free session is confirmed straight away; otherwise the times are held while the person pays.
+    if (booking.status === "CONFIRMED") {
+      setOutcome({ status: "confirmed", booking });
+    } else if (booking.status === "AWAITING_PAYMENT") {
+      await pay(booking);
+    } else {
+      // Only a held booking can be paid for. Any other answer means the server did not hold the time (for
+      // example an older server still making requests for approval), so checkout is never opened for it.
+      setFormError({
+        message: "Your booking could not be held for payment. Please refresh the page and try again.",
+        retry: false,
+      });
     }
   };
 
-  if (sent) {
+  // Opens Razorpay Checkout for the held booking. The server confirms it on a verified payment (and the
+  // Razorpay webhook does too, if this tab is closed first).
+  const pay = async (booking: BookingView) => {
+    setPaying(true);
+    setFormError(null);
+    try {
+      const result = await payForBooking(booking.id, p.fullName, booking.paymentDueAt);
+      if (result.outcome === "paid") {
+        setOutcome({ status: "confirmed", booking: result.booking });
+      } else if (result.outcome === "failed") {
+        // The payment failed: the hold is cancelled so the times are free again straight away.
+        await cancelBooking(booking.id).catch(() => undefined);
+        setOutcome(null);
+        await reloadSlots();
+        setFormError({
+          message: "The payment did not go through, so the time was released. Please choose a time and try again.",
+          retry: false,
+        });
+      } else if (result.outcome === "unverified") {
+        setOutcome({ status: "unverified", message: result.message });
+      } else {
+        setOutcome({ status: "held", booking });
+      }
+    } catch (error) {
+      setOutcome({ status: "held", booking });
+      setFormError({
+        message: error instanceof Error ? error.message : "The payment could not be started. Please try again.",
+        retry: false,
+      });
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  if (outcome?.status === "confirmed") {
+    const b = outcome.booking;
     return (
       <div className="flex flex-col items-start gap-3" role="status">
         <CheckCircle2 className="size-8 text-primary" aria-hidden="true" />
         <p className="text-base text-foreground">
-          Your request has been sent. The professional has 72 hours to respond. You can follow it under{" "}
+          Your {b.sessionCount > 1 ? `${b.sessionCount} sessions are` : "session is"} confirmed with {p.fullName}
+          {b.preferredDatetime ? ` for ${formatIstDateTime(b.preferredDatetime)} IST` : ""}. You can see the contact
+          details under{" "}
           <Link href="/appointments" className="font-medium text-primary underline underline-offset-4">
-            My appointment requests
+            My appointments
           </Link>
           .
         </p>
+      </div>
+    );
+  }
+  if (outcome?.status === "unverified") {
+    return (
+      <div role="alert">
+        <ErrorNotice message={outcome.message} />
+      </div>
+    );
+  }
+  if (outcome?.status === "held") {
+    const b = outcome.booking;
+    return (
+      <div className="flex flex-col items-start gap-3" role="status">
+        <p className="text-base text-foreground">
+          Your {b.sessionCount > 1 ? "times are" : "time is"} held
+          {b.paymentDueAt ? ` until ${formatIstTime(b.paymentDueAt)} IST` : ""}. Pay to confirm your booking. If it is
+          not paid by then, the time is released.
+        </p>
+        {formError ? <ErrorNotice message={formError.message} /> : null}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className={primaryButtonClass} disabled={paying} onClick={() => void pay(b)}>
+            {paying ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+            Pay {b.amount != null ? formatAmount(b.amount, b.currency) : "now"}
+          </button>
+          <Link href="/appointments" className={secondaryButtonClass}>
+            My appointments
+          </Link>
+        </div>
       </div>
     );
   }
@@ -462,7 +686,7 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
       }}
     >
       {/* Room on the right for the Close link. */}
-      <h2 className="pr-16 font-heading text-lg font-semibold text-foreground">Request an appointment</h2>
+      <h2 className="pr-16 font-heading text-lg font-semibold text-foreground">Book a session</h2>
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <SelectField
@@ -485,7 +709,7 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
               { value: "VIDEO", label: "Video call" },
             ]}
             onChange={(value) => setMethod(value as PreferredMethod | "")}
-            helper="Your choice is a request. The professional makes the final decision when confirming."
+            helper="The professional will contact you this way once your booking is confirmed."
           />
         ) : null}
       </div>
@@ -518,25 +742,17 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
             ) : (
               <>
                 <SlotPicker
-                  key={`first-${pickerKey}`}
+                  key={`slots-${pickerKey}`}
                   days={availability.days}
-                  value={slot}
-                  onChange={(value) => {
-                    setSlot(value);
-                    if (value && value === alternate) setAlternate("");
-                  }}
-                  label="First choice"
-                  helper="Choose a day, then a time."
+                  value={slots}
+                  onChange={setSlots}
+                  grid={availability.grid}
+                  label="Session time"
+                  helper={`Choose a day, a start time, then how many sessions. Each session lasts ${
+                    availability.grid?.sessionMinutes ?? p.sessionMinutes ?? 60
+                  } minutes; more than one run on as one meeting.`}
                 />
-                <SlotPicker
-                  key={`second-${pickerKey}`}
-                  days={availability.days}
-                  value={alternate}
-                  onChange={setAlternate}
-                  exclude={slot}
-                  label="Second choice"
-                  helper="Optional. Choose a different time as a second choice."
-                />
+                <SelectionSummary slots={slots} grid={availability.grid} professional={p} />
               </>
             )}
             {availability.loadedTo < lastDate ? (
@@ -572,7 +788,7 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
           value={phone}
           onChange={(value) => setPhone(value.replace(/[^0-9+\s()-]/g, "").slice(0, 20))}
           placeholder="9876543210"
-          helper="Your phone number is shared with the professional only after they confirm your appointment."
+          helper="Your phone number is shared with the professional only after your booking is paid and confirmed."
           error={
             phone.trim() !== "" && !phoneValid
               ? "Enter a 10-digit Indian mobile number starting with 6, 7, 8 or 9."
@@ -580,6 +796,11 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
           }
         />
       </div>
+      <CheckboxField
+        label="Send me updates on WhatsApp"
+        checked={whatsapp}
+        onChange={setWhatsapp}
+      />
 
       <TextAreaField
         label="Note"
@@ -623,7 +844,7 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
       </div>
 
       <CheckboxField
-        label="I agree that NeuroNest shares my name and note with this professional so they can respond to my request, and my email address and phone number once they confirm my appointment. I understand this is not an emergency service."
+        label="I agree that NeuroNest shares my name and note with this professional, and my email address and phone number once my booking is paid and confirmed. I understand this is not an emergency service."
         checked={consent}
         onChange={setConsent}
       />
@@ -636,10 +857,18 @@ function BookingForm({ professional: p }: { professional: PublicProfessional }) 
         </div>
       ) : null}
 
-      <button type="submit" className={cn(primaryButtonClass, "w-fit")} disabled={!valid || submitting}>
-        {submitting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-        Send request
-      </button>
+      <div className="flex flex-col gap-2">
+        <button type="submit" className={cn(primaryButtonClass, "w-fit")} disabled={!valid || submitting || paying}>
+          {submitting || paying ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+          {p.consultationFee ? "Book and pay" : "Book session"}
+        </button>
+        {p.consultationFee ? (
+          <p className="text-xs text-muted-foreground">
+            Your time is held for 10 minutes while you pay. Your booking is confirmed as soon as the payment goes
+            through.
+          </p>
+        ) : null}
+      </div>
     </form>
   );
 }

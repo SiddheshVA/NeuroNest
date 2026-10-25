@@ -80,7 +80,7 @@ class PrivateFieldsSecurityTest extends SecuritySuiteBase {
     // ---- The person's own bookings ----
 
     @Test
-    void thePersonsBookingResponsesCarryNoProfessionalContactOrAdminNote() throws Exception {
+    void thePersonsBookingResponsesShareProfessionalContactOnlyOnceConfirmedAndNeverTheAdminNote() throws Exception {
         Instant future = Instant.now().plus(Duration.ofDays(3));
         Booking b = booking(person.getId(), asha.getId(), BookingStatus.CONFIRMED, future, null);
         String token = SecurityTestTokens.clerk("user_person", "person.account@example.com");
@@ -89,9 +89,15 @@ class PrivateFieldsSecurityTest extends SecuritySuiteBase {
             String body = getOk(path, token);
             assertThat(allKeys(body)).as(path).doesNotContain("adminNote", "contactEmail", "contactPhone", "userId",
                     "sessionId", "clerkUserId");
-            assertThat(body).as(path).doesNotContain(asha.getContactEmail(), "+919812345678", "ADMIN-NOTE-SECRET",
-                    "REGNO-SECRET-4711", "VERIFICATION-NOTE-SECRET");
+            // CONFIRMED: the professional's email and phone are shared with the person.
+            assertThat(body).as(path).contains(asha.getContactEmail(), "+919812345678");
+            assertThat(body).as(path).doesNotContain("ADMIN-NOTE-SECRET", "REGNO-SECRET-4711", "VERIFICATION-NOTE-SECRET");
         }
+
+        // Still waiting for payment: no contact details.
+        Booking held = booking(person.getId(), asha.getId(), BookingStatus.AWAITING_PAYMENT, future.plus(Duration.ofDays(1)), null);
+        String body = getOk("/api/bookings/" + held.getId(), token);
+        assertThat(body).doesNotContain(asha.getContactEmail(), "+919812345678");
     }
 
     // ---- The admin booking list ----

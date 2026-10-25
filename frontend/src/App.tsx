@@ -18,6 +18,7 @@ import { FindProfessionalRedirect, ProfessionalProfileRoute, ProfessionalsPage }
 import {
   ProAppointmentsRoute,
   ProDashboardRoute,
+  ProBlockSlotsRoute,
   ProDaysOffRoute,
   ProEarningsRoute,
   ProReviewsRoute,
@@ -135,6 +136,7 @@ export default function App() {
         <Route path="/pro/profile" element={<ProProfileRoute />} />
         <Route path="/pro/appointments" element={<ProAppointmentsRoute />} />
         <Route path="/pro/days-off" element={<ProDaysOffRoute />} />
+        <Route path="/pro/block-slots" element={<ProBlockSlotsRoute />} />
         <Route path="/pro/earnings" element={<ProEarningsRoute />} />
         <Route path="/pro/reviews" element={<ProReviewsRoute />} />
         <Route path="/pro/requests" element={<ProRequestsRoute />} />

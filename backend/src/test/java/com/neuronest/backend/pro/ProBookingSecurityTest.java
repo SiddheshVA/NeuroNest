@@ -67,6 +67,8 @@ class ProBookingSecurityTest {
     private BookingRepository bookings;
     @MockitoBean
     private ProfessionalDayOffRepository daysOff;
+    @MockitoBean
+    private com.neuronest.backend.professional.ProfessionalBlockedSlotRepository blocks;
 
     private final UUID professionalId = UUID.randomUUID();
 

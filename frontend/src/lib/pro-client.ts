@@ -18,6 +18,7 @@ import {
   normalizeProDashboard,
   normalizeProEarnings,
   type ProAppointmentPage,
+  type ProBlockWeek,
   type ProDashboard,
   type ProDayOff,
   type ProDayOffCreated,
@@ -52,7 +53,7 @@ export type ProVerificationStatus =
 export const PRO_CREDENTIAL_TYPE_LABELS: Record<ProCredentialType, string> = {
   PSYCHOLOGIST: "Psychologist",
   PSYCHIATRIST: "Psychiatrist",
-  COUNSELOR: "Counselor",
+  COUNSELOR: "Registered counsellor",
 };
 
 export const PRO_CONSULTATION_MODE_LABELS: Record<ProConsultationMode, string> = {
@@ -164,7 +165,7 @@ export interface ProProfile {
   /** Days and times in Indian Standard Time (see lib/weekly-hours). */
   weeklyHours: WeeklyHours;
   sessionMinutes: number | null;
-  /** Gap after each session; never shown publicly. */
+  /** The break after each session: the global grid, the same for every professional. */
   bufferMinutes: number;
   photoUrl: string | null;
   /** YYYY-MM-DD. Only ever shown to the professional and the admin. */
@@ -232,8 +233,6 @@ export type ProUpdate = Partial<{
   contactPhone: string | null;
   socialLinks: Partial<Record<ProSocialPlatform, string>>;
   weeklyHours: WeeklyHours;
-  sessionMinutes: number | null;
-  bufferMinutes: number;
 }>;
 
 export const DISABLED_ACCOUNT_MESSAGE = "This professional account has been disabled. Please contact support.";
@@ -367,6 +366,12 @@ export function useProApi() {
         form.append("file", file);
         return request<ProDocument>("/pro/me/documents", { method: "POST", body: form });
       },
+      // Uploads a profile photo to Cloudinary through the backend and returns its https URL (not yet saved).
+      uploadPhoto: (file: File) => {
+        const form = new FormData();
+        form.append("file", file);
+        return request<{ photoUrl: string }>("/pro/me/photo", { method: "POST", body: form });
+      },
       deleteDocument: (docId: string) =>
         request<void>(`/pro/me/documents/${encodeURIComponent(docId)}`, { method: "DELETE" }),
       submit: () =>
@@ -396,6 +401,12 @@ export function useProApi() {
       addDayOff: (body: ProDayOffRequest) =>
         request<ProDayOffCreated>("/pro/days-off", { method: "POST", body: JSON.stringify(body) }).then(normalizeDayOffCreated),
       deleteDayOff: (id: string) => request<void>(`/pro/days-off/${encodeURIComponent(id)}`, { method: "DELETE" }),
+      // "Block slots": each change answers with the updated week.
+      blockedSlots: () => request<ProBlockWeek>("/pro/blocked-slots"),
+      blockSlot: (start: string) =>
+        request<ProBlockWeek>("/pro/blocked-slots", { method: "POST", body: JSON.stringify({ start }) }),
+      unblockSlot: (id: string) =>
+        request<ProBlockWeek>(`/pro/blocked-slots/${encodeURIComponent(id)}`, { method: "DELETE" }),
       // The signed-in professional's own paid sessions and totals (the server takes them from the token).
       earnings: async (page: number, size: number) =>
         normalizeProEarnings(

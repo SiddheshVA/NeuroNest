@@ -44,17 +44,17 @@ public final class PublicProfessionalDtos {
                     p.getQualifications(), p.getBio(), List.copyOf(p.getSpecialties()), List.copyOf(p.getLanguages()),
                     p.getCity(), p.getState(), p.getConsultationMode().name(), p.getConsultationFee(),
                     p.getYearsExperience(), p.getAvailabilityNote(), WeeklyHours.copy(p.getWeeklyHours()),
-                    p.getSessionMinutes(), p.getPhotoUrl(),
+                    SessionGrid.current().sessionMinutes(), p.getPhotoUrl(),
                     p.getRegistrationBody() == null ? null : p.getRegistrationBody().name(), p.isSampleData(),
                     credentialsLabel(p), bookable(p), p.getRatingAvg(), p.getRatingCount());
         }
 
         // Only built from visible listings, so this adds: real (not sample), active, verified, and with
-        // weekly hours and a session length.
+        // weekly hours (the session length is the same for everyone, see SessionGrid).
         static boolean bookable(Professional p) {
             return !p.isSampleData() && p.isActive() && p.isVerified()
                     && p.getVerificationStatus() == VerificationStatus.VERIFIED
-                    && p.getSessionMinutes() != null && WeeklyHours.hasAnyRange(p.getWeeklyHours());
+                    && WeeklyHours.hasAnyRange(p.getWeeklyHours());
         }
 
         static String credentialsLabel(Professional p) {
@@ -68,10 +68,12 @@ public final class PublicProfessionalDtos {
     }
 
     /**
-     * GET /api/professionals/{id}/availability. Slots are ISO date-times with the +05:30 offset. The buffer
-     * between sessions is private and only shapes which slots exist.
+     * GET /api/professionals/{id}/availability. Slots are ISO date-times with the +05:30 offset, on the
+     * global grid: a slot starts every sessionMinutes + breakMinutes. Consecutive sessions are slots next to
+     * each other on the same day; the meeting lasts sessionMinutes per session, with no break inside it.
      */
-    public record PublicAvailability(Integer sessionMinutes, String timezone, List<AvailabilityDay> days) {}
+    public record PublicAvailability(Integer sessionMinutes, int breakMinutes, String timezone,
+                                     List<AvailabilityDay> days) {}
 
     public record AvailabilityDay(LocalDate date, List<String> slots) {}
 

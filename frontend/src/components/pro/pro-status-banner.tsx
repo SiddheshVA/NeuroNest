@@ -22,7 +22,7 @@ const STATUS: Record<ProVerificationStatus, { tone: Tone; icon: LucideIcon; titl
   SUBMITTED: {
     tone: "info",
     icon: Hourglass,
-    title: "Your profile is under review. You will be notified when it is approved.",
+    title: "Pending verification: the NeuroNest team is reviewing your profile. You will be notified when it is approved.",
     text: "You can still update your practice details while you wait.",
   },
   VERIFIED: {

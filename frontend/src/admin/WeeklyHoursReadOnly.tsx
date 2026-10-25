@@ -48,7 +48,7 @@ export function WeeklyHoursReadOnly({
         Session length: {sessionMinutes ? `${sessionMinutes} minutes` : "Not chosen"}.
       </Typography>
       <Typography variant="body2" color="text.secondary">
-        Gap between sessions: {bufferMinutes ?? 0} minutes. All times are Indian Standard Time.
+        Break after each session: {bufferMinutes ?? 0} minutes (the same for every professional). All times are Indian Standard Time.
       </Typography>
     </Stack>
   );

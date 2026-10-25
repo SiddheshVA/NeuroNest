@@ -10,6 +10,7 @@ import com.neuronest.backend.professional.ContactDetailsGuard;
 import com.neuronest.backend.professional.Professional;
 import com.neuronest.backend.professional.ProfessionalRepository;
 import com.neuronest.backend.professional.PublicProfessionalRepository;
+import com.neuronest.backend.professional.SessionGrid;
 import com.neuronest.backend.review.ReviewDtos.AdminReview;
 import com.neuronest.backend.review.ReviewDtos.AdminReviewPage;
 import com.neuronest.backend.review.ReviewDtos.MyReview;
@@ -205,14 +206,17 @@ public class ReviewService {
 
     /**
      * A booking can be reviewed once it is CONFIRMED (paid, or free and confirmed) and its session has ended:
-     * the scheduled time plus the professional's session length has passed.
+     * its meeting end (ends_at) has passed, or for an older booking without one, its start plus the session
+     * length the professional had then (one grid session if they never chose one).
      */
     static boolean sessionEnded(Booking booking, Professional professional, Instant now) {
         if (booking.getStatus() != BookingStatus.CONFIRMED) return false;
         Instant start = booking.scheduledTime();
         if (start == null) return false;
-        int minutes = professional.getSessionMinutes() == null ? 0 : professional.getSessionMinutes();
-        return !start.plus(Duration.ofMinutes(minutes)).isAfter(now);
+        int minutes = professional.getSessionMinutes() != null ? professional.getSessionMinutes()
+                : SessionGrid.current().sessionMinutes();
+        Instant end = booking.getEndsAt() != null ? booking.getEndsAt() : start.plus(Duration.ofMinutes(minutes));
+        return !end.isAfter(now);
     }
 
     static int validRating(ReviewRequest request) {

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
-import { CheckCircle2, Circle, Mail, Send } from "lucide-react";
+import { CheckCircle2, Circle, Clock, Mail, Send } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
 import { BackLink } from "@/components/navigation/back-link";
+import { PhotoUploadField } from "@/components/pro/photo-upload-field";
 import { ProDocuments } from "@/components/pro/pro-documents";
 import { ProPortalNav } from "@/components/pro/pro-portal-nav";
 import { ProRequestsLink } from "@/components/pro/pro-requests-link";
@@ -74,6 +75,11 @@ const FIRST_SAVE_NOTICE =
   "Your account is created when you save for the first time. Save your details first, then you can upload your documents.";
 const SAVE_FIRST = "Save your details first, then you can upload your documents.";
 const ACCOUNT_CREATED_FIX = "Your account was created. Please correct the details below and save again.";
+// Shown at the top of the application form.
+const FORM_INTRO =
+  "This form takes about 10 to 15 minutes. We ask for these details because clients trust you with their wellbeing, and we verify every professional before listing. It helps keep NeuroNest safe for everyone.";
+const ELIGIBILITY_NOTE =
+  "Only licensed mental health professionals (psychologists, psychiatrists and registered counsellors) can apply. Teachers, trainers and coaches are not eligible.";
 const SUBMIT_CONFIRMATION =
   "After you submit, you can't change your name or registration details until the admin has reviewed your profile. Do you want to continue?";
 
@@ -329,9 +335,6 @@ function toUpdate(v: FormValues, includeLocked: boolean): ProUpdate {
     photoUrl: text(v.photoUrl),
     contactPhone: text(v.contactPhone),
     weeklyHours: hoursFromDraft(v.weeklyHours),
-    sessionMinutes: num(v.sessionMinutes),
-    // An empty gap means no gap.
-    bufferMinutes: v.bufferMinutes.trim() === "" ? 0 : Number(v.bufferMinutes),
     // Only ticked platforms are sent, so unticked ones are removed from the saved links.
     socialLinks: Object.fromEntries(Object.entries(v.socialLinks).map(([platform, link]) => [platform, (link ?? "").trim()])),
   };
@@ -397,7 +400,7 @@ function validate(v: FormValues, includeLocked: boolean): FieldErrors {
     }
     if (!v.credentialType) errors.credentialType = CHOOSE_OPTION;
     maxLength("qualifications", "Qualifications", MAX_TEXT);
-    maxLength("registrationNumber", "Registration number", MAX_TEXT);
+    maxLength("registrationNumber", "Registration / license number", MAX_TEXT);
     maxLength("registrationCouncil", "Registration council", MAX_TEXT);
     if (v.registrationBody && !allowedRegistrationBodies(v.credentialType).includes(v.registrationBody)) {
       errors.registrationBody = "Please choose one of the registration bodies listed for your credential type.";
@@ -433,7 +436,7 @@ function validate(v: FormValues, includeLocked: boolean): FieldErrors {
   inRange("consultationFee", "Consultation fee", 0, MAX_CONSULTATION_FEE);
   inRange("yearsExperience", "Years of experience", 0, MAX_YEARS_EXPERIENCE);
   if (v.photoUrl.trim() && !/^https:\/\/\S+$/i.test(v.photoUrl.trim())) {
-    errors.photoUrl = "Photo URL must start with https://.";
+    errors.photoUrl = "The photo could not be used. Please upload it again.";
   }
   if (v.contactPhone.trim() && !normalizeIndianMobile(v.contactPhone.trim())) {
     errors.contactPhone = "Please enter a 10-digit Indian mobile number starting with 6, 7, 8 or 9. You may add +91 or a leading 0.";
@@ -789,8 +792,8 @@ function ProProfilePage() {
     }
   };
 
-  // Fields needed before submitting. Registration details are only required for psychologists and
-  // psychiatrists.
+  // Fields needed before submitting. The registration / license number is required for everyone; the
+  // other registration details only for psychologists and psychiatrists.
   const needsRegistration = !isCounselor;
 
   const startSubmit = () => {
@@ -801,11 +804,13 @@ function ProProfilePage() {
     if (!values.state) selectErrors.state = CHOOSE_OPTION;
     if (needsRegistration && !values.registrationBody) selectErrors.registrationBody = CHOOSE_OPTION;
     const fillErrors: FieldErrors = {};
+    if (values.credentialType && !values.registrationNumber.trim()) {
+      fillErrors.registrationNumber = "Please enter your registration / license number.";
+    }
     for (const field of ["dateOfBirth", "yearsExperience", "consultationFee", "contactPhone"] as const) {
       if (!values[field].trim()) fillErrors[field] = FILL_IN;
     }
     if (!draftHasAnyRange(values.weeklyHours)) fillErrors.weeklyHours = "Add at least one time range to your weekly hours.";
-    if (!values.sessionMinutes) selectErrors.sessionMinutes = CHOOSE_OPTION;
     if (specialtiesOf(values).length === 0) fillErrors.specialties = "Please choose at least one specialization.";
     if (Object.keys(selectErrors).length > 0 || Object.keys(fillErrors).length > 0) {
       setErrors((current) => ({ ...current, ...selectErrors, ...fillErrors }));
@@ -845,6 +850,13 @@ function ProProfilePage() {
       ) : null}
 
       <form onSubmit={save} noValidate className="flex flex-col gap-8 rounded-2xl bg-card p-6 ring-1 ring-foreground/10 sm:p-8">
+        <div className="flex flex-col gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
+          <p className="flex items-start gap-2.5">
+            <Clock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span>{FORM_INTRO}</span>
+          </p>
+          <p className="pl-6.5 font-medium">{ELIGIBILITY_NOTE}</p>
+        </div>
         <p className="text-sm text-muted-foreground">
           Fields marked with an asterisk (<span className="text-destructive">*</span>) are required before you can
           submit your profile. The grey text inside a field is only an example.
@@ -855,7 +867,7 @@ function ProProfilePage() {
             !values.credentialType
               ? "Choose your credential type first. The registration details you need depend on it."
               : isCounselor
-                ? "Registration details are optional for counselors. If you choose a registration body, add its council too."
+                ? "Registered counsellors must add their registration / license number. The other registration details are optional; if you choose a registration body, add its council too."
                 : values.credentialType === "PSYCHIATRIST"
                   ? "Psychiatrists must add their NMC registration, or the name of another registration body."
                   : "Psychologists must add their RCI registration, or the name of another registration body."
@@ -896,8 +908,8 @@ function ProProfilePage() {
             {...(canEditLocked && !values.credentialType ? { disabled: true, helper: CHOOSE_CREDENTIAL_FIRST } : {})}
           />
           <TextField
-            label="Registration number"
-            required={needsRegistration}
+            label="Registration / license number"
+            required
             placeholder="A12345"
             value={values.registrationNumber}
             onChange={(v) => set("registrationNumber", v)}
@@ -1055,20 +1067,12 @@ function ProProfilePage() {
               clearErrors(...WEEK_DAYS.map((day) => `weeklyHours.${day}` as const));
             }}
             sessionMinutes={values.sessionMinutes}
-            onSessionMinutesChange={(v) => {
-              set("sessionMinutes", v);
-              // A different session length changes which ranges are long enough.
-              clearErrors(...WEEK_DAYS.map((day) => `weeklyHours.${day}` as const));
-            }}
-            bufferMinutes={values.bufferMinutes}
-            onBufferMinutesChange={(v) => set("bufferMinutes", v)}
+            breakMinutes={values.bufferMinutes}
             errors={{
               general: errors.weeklyHours,
               days: Object.fromEntries(
                 WEEK_DAYS.flatMap((day) => (errors[`weeklyHours.${day}`] ? [[day, errors[`weeklyHours.${day}`]]] : [])),
               ),
-              sessionMinutes: errors.sessionMinutes,
-              bufferMinutes: errors.bufferMinutes,
             }}
             disabled={saving}
           />
@@ -1091,17 +1095,13 @@ function ProProfilePage() {
           <ChipInputField label="Languages" required values={values.languages} onChange={(v) => set("languages", v)} error={errors.languages} disabled={saving} placeholder="Hindi" />
 
           <SubHeading>Photo</SubHeading>
-          <TextField
-            label="Photo URL (optional)"
-            type="url"
-            inputMode="url"
-            placeholder="https://example.com/photo.jpg"
+          <PhotoUploadField
             value={values.photoUrl}
-            onChange={(v) => set("photoUrl", v)}
+            onChange={(url) => set("photoUrl", url)}
+            upload={api.uploadPhoto}
             error={errors.photoUrl}
-            helper="A link to a professional photo of you that starts with https://."
             disabled={saving}
-            className="sm:col-span-2"
+            blockedReason={registered ? undefined : "Save your details first, then you can upload a photo."}
           />
         </Group>
 
@@ -1264,7 +1264,7 @@ function PageFrame({ children, showBack = false }: { children: ReactNode; showBa
         <header className="flex flex-col gap-2">
           {showBack ? <BackLink /> : null}
           <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-            Your professional profile
+            Your licensed professional profile
           </h1>
           <p className="max-w-2xl text-base leading-relaxed text-muted-foreground">
             Keep your details up to date. Nothing is shown to the public until the NeuroNest team has approved your

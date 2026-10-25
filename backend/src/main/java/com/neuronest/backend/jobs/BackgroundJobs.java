@@ -78,6 +78,15 @@ public class BackgroundJobs {
         }
     }
 
+    /**
+     * Releases the slots of bookings whose 10-minute payment hold has ended unpaid. Runs every minute on
+     * its own (BackgroundJobsConfig), whether or not the other jobs are enabled; the claim is atomic, so it
+     * never clashes with runOnce doing the same.
+     */
+    public void releaseExpiredHolds() {
+        task("expired payment holds", this::expireUnpaidBookings);
+    }
+
     private void task(String name, Supplier<Integer> work) {
         try {
             log.info("Background job {}: {} processed.", name, work.get());

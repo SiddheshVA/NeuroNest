@@ -25,7 +25,7 @@ import {
   type BookingView,
 } from "@/lib/bookings-client";
 import { payForBooking } from "@/lib/razorpay-checkout";
-import { formatIstDate, formatIstDateTime } from "@/lib/ist-time";
+import { formatIstDate, formatIstDateTime, formatMeetingTime } from "@/lib/ist-time";
 import { CREDENTIAL_TYPE_LABELS, type CredentialType } from "@/lib/professionals-client";
 import { getReviewableBookings, type MyReview, type ReviewableBooking } from "@/lib/reviews-client";
 import { loginHref } from "@/lib/safe-redirect";
@@ -36,7 +36,7 @@ const PAGE_SIZE = 10;
 const CANCELLABLE: BookingStatus[] = ["PENDING", "ALTERNATE_PROPOSED", "AWAITING_PAYMENT"];
 
 /** What is being paid for or cancelled: from the list or from the "Awaiting payment" section. */
-type Target = { id: string; professionalName: string; awaitingPayment: boolean };
+type Target = { id: string; professionalName: string; awaitingPayment: boolean; paymentDueAt?: string | null };
 
 type Notice = { kind: "success" | "info"; message: string };
 
@@ -93,20 +93,42 @@ function StatusText({ booking: b, status }: { booking: BookingView; status: Book
     case "AWAITING_PAYMENT":
       return (
         <div className="flex flex-col gap-1.5 text-sm text-foreground">
-          <p className="font-medium">The professional accepted your request.</p>
+          <p className="font-medium">Your time is held while you pay.</p>
           <p>
             {b.paymentDueAt
-              ? `Please pay by ${formatIstDateTime(b.paymentDueAt)} to confirm your slot.`
-              : "Please pay to confirm your slot."}{" "}
-            The meeting details are shown here once the payment is done.
+              ? `Please pay by ${formatIstDateTime(b.paymentDueAt)} to confirm your booking.`
+              : "Please pay to confirm your booking."}{" "}
+            If it is not paid by then, the time is released. The professional's contact details are shown here once
+            the payment is done.
           </p>
         </div>
       );
     case "CONFIRMED":
       return (
         <div className="flex flex-col gap-1.5 text-sm text-foreground">
-          <p className="font-medium">Your appointment is confirmed.</p>
+          <p className="font-medium">
+            Your {b.sessionCount > 1 ? `${b.sessionCount} sessions are` : "appointment is"} confirmed.
+          </p>
           {formatAmount(b.paidAmount, b.paidCurrency) ? <p>Paid {formatAmount(b.paidAmount, b.paidCurrency)}</p> : null}
+          {b.professionalEmail || b.professionalPhone ? (
+            <p>
+              Contact {b.professional?.fullName ?? "your professional"}:{" "}
+              {b.professionalPhone ? (
+                <a href={`tel:${b.professionalPhone}`} className="font-medium text-primary underline underline-offset-4">
+                  {b.professionalPhone}
+                </a>
+              ) : null}
+              {b.professionalPhone && b.professionalEmail ? " · " : null}
+              {b.professionalEmail ? (
+                <a
+                  href={`mailto:${b.professionalEmail}`}
+                  className="font-medium break-all text-primary underline underline-offset-4"
+                >
+                  {b.professionalEmail}
+                </a>
+              ) : null}
+            </p>
+          ) : null}
           {b.meetingMethod === "PHONE" ? (
             <p>The professional will call you on the phone number you gave.</p>
           ) : b.meetingMethod === "VIDEO" && b.meetingLink?.startsWith("https://") ? (
@@ -201,6 +223,7 @@ function BookingItem({
     id: b.id,
     professionalName: professional?.fullName ?? "your professional",
     awaitingPayment: status === "AWAITING_PAYMENT",
+    paymentDueAt: b.paymentDueAt,
   };
 
   return (
@@ -229,7 +252,10 @@ function BookingItem({
       <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {/* Once confirmed, preferredDatetime is the appointment time (the chosen or accepted one). */}
         {b.preferredDatetime ? (
-          <Detail label={confirmed ? "Appointment time" : "Requested time"} value={formatIstDateTime(b.preferredDatetime)} />
+          <Detail
+            label={confirmed ? "Appointment time" : "Requested time"}
+            value={formatMeetingTime(b.preferredDatetime, b.endDatetime, b.sessionCount)}
+          />
         ) : null}
         {b.alternateDatetime && !confirmed ? <Detail label="Second choice" value={formatIstDateTime(b.alternateDatetime)} /> : null}
         {method ? <Detail label="How you asked to meet" value={method} /> : null}
@@ -326,7 +352,12 @@ function AwaitingPaymentSection({
         {items.map((a) => {
           const p = a.professional;
           const type = p ? (CREDENTIAL_TYPE_LABELS[p.credentialType as CredentialType] ?? p.credentialType) : null;
-          const target: Target = { id: a.id, professionalName: p?.fullName ?? "your professional", awaitingPayment: true };
+          const target: Target = {
+            id: a.id,
+            professionalName: p?.fullName ?? "your professional",
+            awaitingPayment: true,
+            paymentDueAt: a.paymentDueAt,
+          };
           const fee = formatAmount(a.amount, a.currency);
           return (
             <li key={a.id} className="flex flex-col gap-4 rounded-2xl bg-card p-6 ring-2 ring-violet-200">
@@ -349,7 +380,7 @@ function AwaitingPaymentSection({
                 <BookingStatusChip status="AWAITING_PAYMENT" label={STATUS_LABELS.AWAITING_PAYMENT} />
               </div>
               <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Detail label="Date and time" value={formatIstDateTime(a.scheduledTime)} />
+                <Detail label="Date and time" value={formatMeetingTime(a.scheduledTime, a.endDatetime, a.sessionCount)} />
                 {a.preferredMode ? <Detail label="Meeting" value={MODE_LABELS[a.preferredMode]} /> : null}
                 {fee ? <Detail label="Fee" value={fee} /> : null}
               </dl>
@@ -476,7 +507,7 @@ export default function AppointmentsPage() {
     setNotice(null);
     setCancelError(null);
     try {
-      const result = await payForBooking(target.id, target.professionalName);
+      const result = await payForBooking(target.id, target.professionalName, target.paymentDueAt);
       switch (result.outcome) {
         case "paid":
           setNotice({ kind: "success", message: "Payment received. Your appointment is confirmed and the meeting details are below." });

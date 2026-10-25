@@ -30,10 +30,12 @@ public class ProController {
 
     private final ProProfileService profiles;
     private final ProDocumentService documents;
+    private final ProPhotoService photos;
 
-    public ProController(ProProfileService profiles, ProDocumentService documents) {
+    public ProController(ProProfileService profiles, ProDocumentService documents, ProPhotoService photos) {
         this.profiles = profiles;
         this.documents = documents;
+        this.photos = photos;
     }
 
     @PostMapping("/register")
@@ -60,6 +62,13 @@ public class ProController {
                                                @RequestParam(name = "docType", required = false) String docType,
                                                @RequestPart(name = "file", required = false) MultipartFile file) {
         return ResponseEntity.status(HttpStatus.CREATED).body(documents.upload(principal, docType, file));
+    }
+
+    // Uploads a profile photo to Cloudinary and returns its URL; the profile form saves it as photoUrl.
+    @PostMapping(path = "/me/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ProPhotoService.PhotoUploaded uploadPhoto(@AuthenticationPrincipal ProPrincipal principal,
+                                                     @RequestPart(name = "file", required = false) MultipartFile file) {
+        return photos.upload(principal, file);
     }
 
     @DeleteMapping("/me/documents/{docId}")

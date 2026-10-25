@@ -25,7 +25,7 @@ export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number];
 export const CREDENTIAL_TYPE_LABELS: Record<CredentialType, string> = {
   PSYCHOLOGIST: "Psychologist",
   PSYCHIATRIST: "Psychiatrist",
-  COUNSELOR: "Counselor",
+  COUNSELOR: "Registered counsellor",
 };
 
 export const CONSULTATION_MODE_LABELS: Record<ConsultationMode, string> = {
@@ -42,7 +42,7 @@ export const REGISTRATION_BODY_LABELS: Record<RegistrationBody, string> = {
 
 export const VERIFICATION_STATUS_LABELS: Record<VerificationStatus, string> = {
   DRAFT: "Draft",
-  SUBMITTED: "Submitted",
+  SUBMITTED: "Pending verification",
   VERIFIED: "Verified",
   NEEDS_INFO: "Needs information",
   REJECTED: "Rejected",

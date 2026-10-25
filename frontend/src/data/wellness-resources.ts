@@ -198,7 +198,7 @@ export const articles: Article[] = [
           "You feel hopeless, constantly low, or unable to cope",
           "You're using alcohol or other substances to get through the day",
         ],
-        closing: "Not sure how stressed you are? Take our short stress check to find out. If you'd like to talk to someone, you can find a qualified counselor, psychologist or psychiatrist through Find Professional.",
+        closing: "Not sure how stressed you are? Take our short stress check to find out. If you'd like to talk to someone, you can find a qualified counselor, psychologist or psychiatrist through Find Licensed Professional.",
       },
     },
     sources: [
@@ -279,7 +279,7 @@ export const articles: Article[] = [
           "You feel low, hopeless or worthless most of the time",
           "You're thinking about quitting everything or feel you can't go on",
         ],
-        closing: "Burnout can overlap with anxiety and depression, so it's worth talking to a professional if things feel heavy. You can take our short stress check, or find a qualified counselor, psychologist or psychiatrist through Find Professional.",
+        closing: "Burnout can overlap with anxiety and depression, so it's worth talking to a professional if things feel heavy. You can take our short stress check, or find a qualified counselor, psychologist or psychiatrist through Find Licensed Professional.",
       },
     },
     sources: [
@@ -359,7 +359,7 @@ export const articles: Article[] = [
           "You feel sad, empty or hopeless most of the time",
           "You feel like no one would notice or care if you weren't around",
         ],
-        closing: "Long-term loneliness can affect both mental and physical health, and it's okay to ask for support. You can take our short wellbeing check, or talk to a qualified counselor or psychologist through Find Professional.",
+        closing: "Long-term loneliness can affect both mental and physical health, and it's okay to ask for support. You can take our short wellbeing check, or talk to a qualified counselor or psychologist through Find Licensed Professional.",
       },
     },
     sources: [
@@ -440,7 +440,7 @@ export const articles: Article[] = [
           "You feel your life is over if you don't get the result you want",
           "You're having thoughts of hurting yourself or that you can't go on",
         ],
-        closing: "No exam or result is worth your life or your health. If things feel too heavy, please reach out — to someone you trust, a school or college counselor, or a professional through Find Professional. You can also take our short stress check to understand how you're feeling.",
+        closing: "No exam or result is worth your life or your health. If things feel too heavy, please reach out — to someone you trust, a school or college counselor, or a professional through Find Licensed Professional. You can also take our short stress check to understand how you're feeling.",
       },
     },
     sources: [
@@ -517,7 +517,7 @@ export const articles: Article[] = [
           "You feel worthless, or that you've let everyone down beyond repair",
           "You're having thoughts of hurting yourself or that life isn't worth living",
         ],
-        closing: "No result, rank or rejection defines your worth or your future. If things feel too heavy, please talk to someone you trust or a professional through Find Professional. You can also take our short mood check to understand how you're feeling.",
+        closing: "No result, rank or rejection defines your worth or your future. If things feel too heavy, please talk to someone you trust or a professional through Find Licensed Professional. You can also take our short mood check to understand how you're feeling.",
       },
     },
     sources: [
@@ -598,7 +598,7 @@ export const articles: Article[] = [
           "You snore loudly, stop breathing or gasp in your sleep (someone may notice this)",
           "Poor sleep comes with feeling low, anxious or hopeless most of the time",
         ],
-        closing: "Sleep problems can be linked to stress, anxiety, low mood or other health issues, and many of these can be treated. You can take our short wellbeing check, or find a qualified professional through Find Professional.",
+        closing: "Sleep problems can be linked to stress, anxiety, low mood or other health issues, and many of these can be treated. You can take our short wellbeing check, or find a qualified professional through Find Licensed Professional.",
       },
     },
     sources: [
@@ -677,7 +677,7 @@ export const articles: Article[] = [
           "Changes in your sleep, appetite or energy aren't improving",
           "You feel hopeless, or that you can't cope",
         ],
-        closing: "If simple habits feel impossible right now, that's not a personal failure — it can be a sign that you need extra support. You can take our short wellbeing check, or find a qualified professional through Find Professional.",
+        closing: "If simple habits feel impossible right now, that's not a personal failure — it can be a sign that you need extra support. You can take our short wellbeing check, or find a qualified professional through Find Licensed Professional.",
       },
     },
     sources: [
@@ -757,7 +757,7 @@ export const articles: Article[] = [
           "You're being bullied, harassed or threatened online",
           "You feel hopeless or have thoughts of hurting yourself",
         ],
-        closing: "If you're being harassed online, save evidence and tell someone you trust. If screen time has become hard to control or is affecting your mood, a professional can help — you can take our short wellbeing check, or find support through Find Professional.",
+        closing: "If you're being harassed online, save evidence and tell someone you trust. If screen time has become hard to control or is affecting your mood, a professional can help — you can take our short wellbeing check, or find support through Find Licensed Professional.",
       },
     },
     sources: [
@@ -838,7 +838,7 @@ export const articles: Article[] = [
           "The symptoms last longer than 20 minutes or keep getting worse",
           "You faint, or have severe difficulty breathing",
         ],
-        closing: "It's always better to get checked than to guess — a doctor can rule out a heart or other medical problem. If you have panic attacks often, or worry a lot about the next one, talk to a doctor or mental health professional. Talking therapies like CBT work very well for panic. You can take our short anxiety check, or find support through Find Professional.",
+        closing: "It's always better to get checked than to guess — a doctor can rule out a heart or other medical problem. If you have panic attacks often, or worry a lot about the next one, talk to a doctor or mental health professional. Talking therapies like CBT work very well for panic. You can take our short anxiety check, or find support through Find Licensed Professional.",
       },
     },
     sources: [
@@ -906,7 +906,7 @@ export const articles: Article[] = [
           { title: "Start by telling someone you trust.", text: "A friend, sibling, parent, teacher or partner. You might say: \"I've been feeling really low lately and I don't know why. Can we talk?\" You don't need the perfect words." },
           { title: "Be clear about what you need.", text: "Sometimes you want advice, sometimes you just want someone to listen. It's okay to say: \"I don't need solutions right now — I just need you to hear me.\"" },
           { title: "Use free, confidential options.", text: "You can call Tele-MANAS for free counselling, any time of day. Many colleges and workplaces also offer free counsellors — check with your student welfare office or HR." },
-          { title: "Find the right kind of professional.", text: "A counselor or psychologist can help through talking therapy. A psychiatrist is a medical doctor who can also prescribe medicine if needed. You can explore professionals through Find Professional." },
+          { title: "Find the right kind of professional.", text: "A counselor or psychologist can help through talking therapy. A psychiatrist is a medical doctor who can also prescribe medicine if needed. You can explore professionals through Find Licensed Professional." },
           { title: "Write down what you want to share.", text: "Before your first conversation, note how you've been feeling, for how long, and what's affecting you. It makes it easier to explain." },
           { title: "Give it a little time.", text: "The first session can feel awkward. It's okay if it takes a few conversations to feel comfortable — or to try a different professional if it doesn't feel like a good fit." },
         ],
@@ -921,7 +921,7 @@ export const articles: Article[] = [
           "You're seeing or hearing things others don't, or feel very confused",
           "Someone you know is in immediate danger",
         ],
-        closing: "In these situations, call one of the free 24/7 helplines in the box below, or call 112 for emergencies. For everything else, it's never too early to talk to someone. Not sure where you stand? Take our short wellbeing check, or explore qualified professionals through Find Professional.",
+        closing: "In these situations, call one of the free 24/7 helplines in the box below, or call 112 for emergencies. For everything else, it's never too early to talk to someone. Not sure where you stand? Take our short wellbeing check, or explore qualified professionals through Find Licensed Professional.",
       },
     },
     sources: [
@@ -1003,7 +1003,7 @@ export const articles: Article[] = [
           "Someone cannot keep themselves safe right now",
           "You feel unable to keep yourself safe",
         ],
-        closing: "For support at any time of day or night, the free 24/7 helplines in the box on this page can talk with you in many Indian languages. When the immediate crisis has passed, ongoing support from a counselor, psychologist or psychiatrist can help — you can find one through Find Professional. You matter, and help is always available.",
+        closing: "For support at any time of day or night, the free 24/7 helplines in the box on this page can talk with you in many Indian languages. When the immediate crisis has passed, ongoing support from a counselor, psychologist or psychiatrist can help — you can find one through Find Licensed Professional. You matter, and help is always available.",
       },
     },
     sources: [

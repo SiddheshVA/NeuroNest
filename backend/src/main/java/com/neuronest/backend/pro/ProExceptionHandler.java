@@ -24,7 +24,8 @@ import java.util.Map;
 public class ProExceptionHandler {
 
     @ExceptionHandler({ProExceptions.NotRegisteredException.class, ProExceptions.DocumentNotFoundException.class,
-            ProExceptions.BookingNotFoundException.class, ProExceptions.DayOffNotFoundException.class})
+            ProExceptions.BookingNotFoundException.class, ProExceptions.DayOffNotFoundException.class,
+            ProExceptions.BlockedSlotNotFoundException.class})
     public ResponseEntity<?> handleNotFound(RuntimeException ex) {
         return error(HttpStatus.NOT_FOUND, ex.getMessage());
     }
@@ -63,6 +64,16 @@ public class ProExceptionHandler {
     @ExceptionHandler({ProExceptions.FileTooLargeException.class, MaxUploadSizeExceededException.class})
     public ResponseEntity<?> handleTooLarge(Exception ex) {
         return error(HttpStatus.CONTENT_TOO_LARGE, "The file is larger than 5 MB. Please upload a smaller file.");
+    }
+
+    @ExceptionHandler(CloudinaryClient.NotConfiguredException.class)
+    public ResponseEntity<?> handlePhotoNotConfigured(CloudinaryClient.NotConfiguredException ex) {
+        return error(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+    }
+
+    @ExceptionHandler(CloudinaryClient.UploadFailedException.class)
+    public ResponseEntity<?> handlePhotoUploadFailed(CloudinaryClient.UploadFailedException ex) {
+        return error(HttpStatus.BAD_GATEWAY, ex.getMessage());
     }
 
     @ExceptionHandler(MultipartException.class)

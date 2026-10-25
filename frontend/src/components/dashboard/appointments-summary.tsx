@@ -4,7 +4,7 @@ import { useAuth } from "@clerk/clerk-react";
 import { CalendarClock, CreditCard, Hourglass, MessageSquareReply } from "lucide-react";
 
 import { getBookingSummary, METHOD_LABELS, type BookingSummary } from "@/lib/bookings-client";
-import { formatIstDateTime, todayInIndia } from "@/lib/ist-time";
+import { formatMeetingTime, todayInIndia } from "@/lib/ist-time";
 import { CREDENTIAL_TYPE_LABELS, type CredentialType } from "@/lib/professionals-client";
 import { cn } from "@/lib/utils";
 import { DashboardSectionHeader } from "@/components/dashboard/dashboard-section-header";
@@ -79,7 +79,7 @@ export function AppointmentsSummary() {
                 value={(state.summary.awaitingPayment ?? []).length}
                 label="Awaiting payment"
                 highlight
-                sentence="A professional accepted your request. Open your appointments to pay and confirm your slot."
+                sentence="Your time is held while you pay. Open your appointments to pay and confirm your booking."
               />
             ) : null}
             <Counter
@@ -145,7 +145,7 @@ function NextAppointmentCard({ next }: { next: BookingSummary["nextAppointment"]
       ) : (
         <p className="text-sm text-[#4A5750]">This professional is no longer listed.</p>
       )}
-      <p className="text-sm font-medium">{formatIstDateTime(next.scheduledTime)}</p>
+      <p className="text-sm font-medium">{formatMeetingTime(next.scheduledTime, next.endDatetime, next.sessionCount)}</p>
       <MeetingLine next={next} />
       <Link
         href="/appointments"

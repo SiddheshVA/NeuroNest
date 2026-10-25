@@ -7,6 +7,7 @@ import { ProProfilePage } from "@/components/pro/pro-profile";
 import { ProRequestPage, ProRequestsPage } from "@/components/pro/pro-requests";
 import { ProDashboardPage } from "@/components/pro/pro-dashboard";
 import { ProAppointmentsPage } from "@/components/pro/pro-appointments";
+import { ProBlockSlotsPage } from "@/components/pro/pro-block-slots";
 import { ProDaysOffPage } from "@/components/pro/pro-days-off";
 import { ProEarningsPage } from "@/components/pro/pro-earnings";
 import { ProReviewsPage } from "@/components/pro/pro-reviews";
@@ -84,6 +85,14 @@ export function ProDaysOffRoute() {
   return (
     <SignedInPro>
       <ProDaysOffPage />
+    </SignedInPro>
+  );
+}
+
+export function ProBlockSlotsRoute() {
+  return (
+    <SignedInPro>
+      <ProBlockSlotsPage />
     </SignedInPro>
   );
 }

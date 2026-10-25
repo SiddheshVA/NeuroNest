@@ -50,6 +50,31 @@ export function formatIstDateTime(value: string): string {
   return date ? `${dayFormat.format(date)}, ${timeFormat.format(date)} IST` : value;
 }
 
+/** "2 hours", "1 hour 30 minutes", "45 minutes". */
+export function formatMeetingLength(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  const h = hours === 0 ? "" : `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  const m = rest === 0 ? "" : `${rest} ${rest === 1 ? "minute" : "minutes"}`;
+  return [h, m].filter(Boolean).join(" ");
+}
+
+/**
+ * "Thu, 29 Oct, 7:45 pm to 9:45 pm IST (2 sessions, 2 hours)": the whole meeting, never the break after
+ * it. Without an end (an older booking), the start alone, as formatIstDateTime shows it.
+ */
+export function formatMeetingTime(start: string, end?: string | null, sessions?: number | null): string {
+  const from = parse(start);
+  const to = end ? parse(end) : null;
+  if (!from || !to || to.getTime() <= from.getTime()) return formatIstDateTime(start);
+  const count = Math.max(1, sessions ?? 1);
+  const minutes = Math.round((to.getTime() - from.getTime()) / 60_000);
+  return (
+    `${dayFormat.format(from)}, ${timeFormat.format(from)} to ${timeFormat.format(to)} IST ` +
+    `(${count} ${count === 1 ? "session" : "sessions"}, ${formatMeetingLength(minutes)})`
+  );
+}
+
 /** "12 Oct 2026". */
 export function formatIstDate(value: string): string {
   const date = parse(value);

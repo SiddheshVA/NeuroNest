@@ -2,8 +2,10 @@ package com.neuronest.backend.pro;
 
 import com.neuronest.backend.booking.Booking;
 import com.neuronest.backend.booking.BookingStatus;
+import com.neuronest.backend.booking.MeetingTimes;
 import com.neuronest.backend.booking.SharedAssessment;
 import com.neuronest.backend.professional.AvailabilityService;
+import com.neuronest.backend.professional.Professional;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -57,9 +59,13 @@ public final class ProBookingDtos {
             String contactPhone,
             // The person's deadline to pay while AWAITING_PAYMENT; on an EXPIRED booking it means the payment
             // window ended unpaid (an unanswered request has none). Null for every other status.
-            Instant paymentDueAt) {
+            Instant paymentDueAt,
+            // How many consecutive sessions, and when the meeting ends (never the break after it); null
+            // when no end is stored.
+            int sessionCount,
+            OffsetDateTime endDatetime) {
 
-        static ProBookingView from(Booking b, Instant now) {
+        static ProBookingView from(Booking b, Professional p, Instant now) {
             boolean contactVisible = contactVisible(b, now);
             return new ProBookingView(b.getId(), b.getStatus().name(), b.getCreatedAt(), b.getExpiresAt(),
                     b.getContactName(), b.getPreferredMode(), b.getPreferredMethod(),
@@ -70,7 +76,8 @@ public final class ProBookingDtos {
                     contactVisible ? b.getContactEmail() : null,
                     contactVisible ? b.getContactPhone() : null,
                     b.getStatus() == BookingStatus.AWAITING_PAYMENT || b.getStatus() == BookingStatus.EXPIRED
-                            ? b.getPaymentDueAt() : null);
+                            ? b.getPaymentDueAt() : null,
+                    b.getSessionCount(), inIndia(MeetingTimes.end(b, p)));
         }
 
         static boolean contactVisible(Booking b, Instant now) {
@@ -79,7 +86,7 @@ public final class ProBookingDtos {
             return scheduled != null && !scheduled.isBefore(now.minus(CONTACT_VISIBLE_FOR));
         }
 
-        private static OffsetDateTime inIndia(Instant instant) {
+        static OffsetDateTime inIndia(Instant instant) {
             return instant == null ? null : instant.atZone(AvailabilityService.ZONE).toOffsetDateTime();
         }
     }
@@ -97,13 +104,15 @@ public final class ProBookingDtos {
             OffsetDateTime scheduledTime,
             String professionalNote,
             String contactEmail,
-            String contactPhone) {
+            String contactPhone,
+            int sessionCount,
+            OffsetDateTime endDatetime) {
 
-        static ProAppointmentView from(Booking b, Instant now) {
-            ProBookingView view = ProBookingView.from(b, now);
+        static ProAppointmentView from(Booking b, Professional p, Instant now) {
+            ProBookingView view = ProBookingView.from(b, p, now);
             return new ProAppointmentView(view.id(), view.contactName(), view.preferredMode(), view.meetingMethod(),
                     view.meetingLink(), view.meetingAddress(), view.preferredDatetime(), view.professionalNote(),
-                    view.contactEmail(), view.contactPhone());
+                    view.contactEmail(), view.contactPhone(), view.sessionCount(), view.endDatetime());
         }
     }
 

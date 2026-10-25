@@ -70,6 +70,19 @@ public class JdbcBookingJobStore implements BookingJobStore {
                AND status = 'PENDING' AND reminder_sent_at IS NULL
             RETURNING id""";
 
+    static final String CLAIM_SESSION_REMINDERS = """
+            UPDATE booking_requests
+               SET session_reminder_sent = true, updated_at = :now
+             WHERE id IN (SELECT id FROM booking_requests
+                           WHERE status = 'CONFIRMED' AND NOT session_reminder_sent
+                             AND preferred_datetime > :from AND preferred_datetime <= :to
+                             AND created_at <= preferred_datetime - make_interval(mins => :lead)
+                           ORDER BY preferred_datetime, id
+                           LIMIT :limit
+                           FOR UPDATE SKIP LOCKED)
+               AND status = 'CONFIRMED' AND NOT session_reminder_sent
+            RETURNING id""";
+
     // One statement: the professionals are changed and their log rows written together. The note is also
     // stored as verification_notes, so the professional's status banner explains the change instead of
     // showing an older note (for example the one written when they were verified).
@@ -124,6 +137,14 @@ public class JdbcBookingJobStore implements BookingJobStore {
     public List<UUID> claimReminders(Instant now, Instant until, int limit) {
         return jdbc.queryForList(CLAIM_REMINDERS, new MapSqlParameterSource()
                 .addValue("now", Timestamp.from(now)).addValue("until", Timestamp.from(until))
+                .addValue("limit", limit), UUID.class);
+    }
+
+    @Override
+    public List<UUID> claimSessionReminders(Instant now, Instant from, Instant to, long leadMinutes, int limit) {
+        return jdbc.queryForList(CLAIM_SESSION_REMINDERS, new MapSqlParameterSource()
+                .addValue("now", Timestamp.from(now)).addValue("from", Timestamp.from(from))
+                .addValue("to", Timestamp.from(to)).addValue("lead", (int) leadMinutes)
                 .addValue("limit", limit), UUID.class);
     }
 

@@ -2,10 +2,8 @@ import { Copy, Plus, X } from "lucide-react";
 import { CheckboxField, SelectField, secondaryButtonClass } from "@/components/pro/pro-ui";
 import { cn } from "@/lib/utils";
 import {
-  BUFFER_MINUTE_OPTIONS,
   END_TIME_OPTIONS,
   MAX_RANGES_PER_DAY,
-  SESSION_MINUTE_OPTIONS,
   START_TIME_OPTIONS,
   WEEK_DAYS,
   WEEK_DAY_LABELS,
@@ -22,30 +20,25 @@ export interface WeeklyHoursErrors {
   /** A problem with the hours as a whole, such as no range at all. */
   general?: string;
   days: Partial<Record<WeekDay, string>>;
-  sessionMinutes?: string;
-  bufferMinutes?: string;
 }
 
 /**
- * The days and times a professional takes appointments, plus the session length and the gap between
- * sessions. Times are chosen from 15-minute steps shown in 12-hour form and kept as 24-hour "18:00".
+ * The days and times a professional takes appointments. Times are chosen from 15-minute steps shown in
+ * 12-hour form and kept as 24-hour "18:00". The session length and the break after each session are the same
+ * for every professional (set on the server) and only shown here.
  */
 export function WeeklyHoursEditor({
   draft,
   onChange,
   sessionMinutes,
-  onSessionMinutesChange,
-  bufferMinutes,
-  onBufferMinutesChange,
+  breakMinutes,
   errors,
   disabled,
 }: {
   draft: WeeklyDraft;
   onChange: (next: WeeklyDraft) => void;
   sessionMinutes: string;
-  onSessionMinutesChange: (value: string) => void;
-  bufferMinutes: string;
-  onBufferMinutesChange: (value: string) => void;
+  breakMinutes: string;
   errors: WeeklyHoursErrors;
   disabled?: boolean;
 }) {
@@ -177,27 +170,13 @@ export function WeeklyHoursEditor({
         })}
       </ul>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <SelectField
-          label="Session length"
-          required
-          value={sessionMinutes}
-          onChange={onSessionMinutesChange}
-          options={SESSION_MINUTE_OPTIONS.map((m) => ({ value: String(m), label: `${m} minutes` }))}
-          error={errors.sessionMinutes}
-          helper="Every time range must be at least one session long."
-          disabled={disabled}
-        />
-        <SelectField
-          label="Gap between sessions"
-          value={bufferMinutes}
-          onChange={onBufferMinutesChange}
-          options={BUFFER_MINUTE_OPTIONS.map((m) => ({ value: String(m), label: `${m} minutes` }))}
-          error={errors.bufferMinutes}
-          helper="Optional. Time to rest between two sessions. If you leave this empty, there is no gap."
-          disabled={disabled}
-        />
-      </div>
+      {sessionMinutes ? (
+        <p className="text-sm text-muted-foreground">
+          Each session lasts {sessionMinutes} minutes, with a {breakMinutes || 0}-minute break after it, so your
+          times start every {Number(sessionMinutes) + Number(breakMinutes || 0)} minutes from the start of each range.
+          This is the same for every professional. Every time range must be at least one session long.
+        </p>
+      ) : null}
     </div>
   );
 }

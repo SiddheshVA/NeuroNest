@@ -9,26 +9,37 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-// Request and response shapes for /api/bookings. Entities are never serialized. A booking view never
-// contains the professional's contact details, the admin note, or the user's own contact fields.
+// Request and response shapes for /api/bookings. Entities are never serialized. A booking view shows the
+// professional's contact details only once CONFIRMED, and never the admin note or the user's own contact fields.
 public final class BookingDtos {
 
     private BookingDtos() {}
 
     // Everything arrives as text so a wrong value gets a readable 400 from the service. The user and the
     // contact email are never taken from the body; a free-text preferredWindow is not accepted (unknown
-    // fields are ignored). preferredMethod (PHONE or VIDEO) is for ONLINE requests only.
+    // fields are ignored). preferredMethod (PHONE or VIDEO) is for ONLINE requests only. sessionCount (1 to
+    // 4, default 1) consecutive sessions start at slotStart.
     public record CreateBookingRequest(
             String professionalId,
             String preferredMode,
             String contactName,
             String contactPhone,
             String slotStart,
-            String alternateSlotStart,
+            Integer sessionCount,
             String note,
             Boolean consentGiven,
             String preferredMethod,
-            Boolean shareLatestAssessment) {}
+            Boolean shareLatestAssessment,
+            // Optional "Send me updates on WhatsApp" (to contactPhone); missing means no.
+            Boolean whatsappUpdates) {
+
+        public CreateBookingRequest(String professionalId, String preferredMode, String contactName,
+                                    String contactPhone, String slotStart, Integer sessionCount, String note,
+                                    Boolean consentGiven, String preferredMethod, Boolean shareLatestAssessment) {
+            this(professionalId, preferredMode, contactName, contactPhone, slotStart, sessionCount, note,
+                    consentGiven, preferredMethod, shareLatestAssessment, null);
+        }
+    }
 
     public record ProfessionalSummary(UUID id, String fullName, String credentialType, String city) {
         static ProfessionalSummary from(Professional p) {
@@ -68,7 +79,13 @@ public final class BookingDtos {
             // A receipt: what was paid, in paise, for a CONFIRMED booking with a PAID payment (read from the
             // payment row); null otherwise, including free sessions and older bookings without a payment.
             Long paidAmount,
-            String paidCurrency) {
+            String paidCurrency,
+            // How many consecutive sessions, and when the last one ends (IST); null end for older bookings.
+            int sessionCount,
+            OffsetDateTime endDatetime,
+            // The professional's email and phone, only once the booking is CONFIRMED; null otherwise.
+            String professionalEmail,
+            String professionalPhone) {
 
         static BookingView from(Booking b, Professional p) {
             return from(b, p, null, null);
@@ -76,6 +93,7 @@ public final class BookingDtos {
 
         static BookingView from(Booking b, Professional p, PaymentAmounts.Amount due, PaymentAmounts.Amount paid) {
             boolean confirmed = b.getStatus() == BookingStatus.CONFIRMED;
+            Contact contact = confirmed ? Contact.of(p) : Contact.NONE;
             return new BookingView(b.getId(), b.getStatus().name(), b.getCreatedAt(), b.getExpiresAt(),
                     b.getPreferredMode(), inIndia(b.getPreferredDatetime()), inIndia(b.getAlternateDatetime()),
                     inIndia(b.getProposedDatetime()), b.getProfessionalNote(), b.getRespondedAt(),
@@ -87,19 +105,30 @@ public final class BookingDtos {
                     b.getStatus() == BookingStatus.AWAITING_PAYMENT || b.getStatus() == BookingStatus.EXPIRED
                             ? b.getPaymentDueAt() : null,
                     due == null ? null : due.paise(), due == null ? null : due.currency(),
-                    paid == null || !confirmed ? null : paid.paise(), paid == null || !confirmed ? null : paid.currency());
+                    paid == null || !confirmed ? null : paid.paise(), paid == null || !confirmed ? null : paid.currency(),
+                    b.getSessionCount(), inIndia(MeetingTimes.end(b, p)), contact.email(), contact.phone());
         }
 
         static OffsetDateTime inIndia(Instant instant) {
             return instant == null ? null : instant.atZone(AvailabilityService.ZONE).toOffsetDateTime();
+        }
+
+    }
+
+    /** The professional's contact details, shared with the user only for a CONFIRMED booking. */
+    record Contact(String email, String phone) {
+        static final Contact NONE = new Contact(null, null);
+
+        static Contact of(Professional p) {
+            return p == null ? NONE : new Contact(p.getContactEmail(), p.getContactPhone());
         }
     }
 
     public record BookingPage(List<BookingView> items, int page, int size, long totalElements, int totalPages) {}
 
     /**
-     * The signed-in user's next confirmed appointment. The meeting details are the ones the professional
-     * set for this user; the professional's own contact details are never included.
+     * The signed-in user's next confirmed appointment, with the professional's contact details (it is
+     * CONFIRMED, so they are shared).
      */
     public record NextAppointment(
             UUID id,
@@ -109,11 +138,18 @@ public final class BookingDtos {
             String meetingMethod,
             String meetingLink,
             String meetingAddress,
-            ProfessionalSummary professional) {
+            ProfessionalSummary professional,
+            int sessionCount,
+            OffsetDateTime endDatetime,
+            String professionalEmail,
+            String professionalPhone) {
 
         static NextAppointment from(Booking b, Professional p) {
+            Contact contact = b.getStatus() == BookingStatus.CONFIRMED ? Contact.of(p) : Contact.NONE;
             return new NextAppointment(b.getId(), BookingView.inIndia(b.getPreferredDatetime()), b.getPreferredMode(),
-                    b.getMeetingMethod(), b.getMeetingLink(), b.getMeetingAddress(), ProfessionalSummary.from(p));
+                    b.getMeetingMethod(), b.getMeetingLink(), b.getMeetingAddress(), ProfessionalSummary.from(p),
+                    b.getSessionCount(), BookingView.inIndia(MeetingTimes.end(b, p)), contact.email(),
+                    contact.phone());
         }
     }
 
@@ -131,12 +167,15 @@ public final class BookingDtos {
             // What paying would charge, in paise (PaymentAmounts, the same amount the order endpoint
             // charges); null if it cannot be worked out.
             Long amount,
-            String currency) {
+            String currency,
+            // The whole meeting (never the break after it); endDatetime is null when no end is stored.
+            int sessionCount,
+            OffsetDateTime endDatetime) {
 
         static AwaitingPayment from(Booking b, Professional p, PaymentAmounts.Amount due) {
             return new AwaitingPayment(b.getId(), BookingView.inIndia(b.getPreferredDatetime()), b.getPaymentDueAt(),
                     b.getPreferredMode(), ProfessionalSummary.from(p), due == null ? null : due.paise(),
-                    due == null ? null : due.currency());
+                    due == null ? null : due.currency(), b.getSessionCount(), BookingView.inIndia(MeetingTimes.end(b, p)));
         }
     }
 

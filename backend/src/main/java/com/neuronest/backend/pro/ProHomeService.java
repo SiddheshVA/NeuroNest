@@ -3,10 +3,12 @@ package com.neuronest.backend.pro;
 import com.neuronest.backend.booking.Booking;
 import com.neuronest.backend.booking.BookingRepository;
 import com.neuronest.backend.booking.BookingStatus;
+import com.neuronest.backend.booking.MeetingTimes;
 import com.neuronest.backend.config.ApiValidationException;
 import com.neuronest.backend.config.ConflictException;
 import com.neuronest.backend.pro.ProBookingDtos.ProAppointmentPage;
 import com.neuronest.backend.pro.ProBookingDtos.ProAppointmentView;
+import com.neuronest.backend.pro.ProBookingDtos.ProBookingView;
 import com.neuronest.backend.pro.ProHomeDtos.AwaitingPaymentItem;
 import com.neuronest.backend.pro.ProHomeDtos.DayOffCreated;
 import com.neuronest.backend.pro.ProHomeDtos.DayOffRequest;
@@ -163,7 +165,8 @@ public class ProHomeService {
                             Sort.by(Sort.Order.desc("preferredDatetime"), Sort.Order.asc("id"))));
             default -> throw new ApiValidationException("when must be upcoming or past.");
         };
-        return new ProAppointmentPage(result.getContent().stream().map(b -> ProAppointmentView.from(b, now)).toList(),
+        Professional p = professionals.findById(professionalId).orElse(null);
+        return new ProAppointmentPage(result.getContent().stream().map(b -> ProAppointmentView.from(b, p, now)).toList(),
                 page, size, result.getTotalElements(), result.getTotalPages());
     }
 
@@ -188,17 +191,18 @@ public class ProHomeService {
                         BookingStatus.AWAITING_PAYMENT, now).stream()
                 .map(b -> new AwaitingPaymentItem(b.getId(), b.getContactName(),
                         b.getPreferredDatetime().atZone(AvailabilityService.ZONE).toOffsetDateTime(), b.getMeetingMethod(),
-                        b.getPaymentDueAt()))
+                        b.getPaymentDueAt(), b.getSessionCount(), ProBookingView.inIndia(MeetingTimes.end(b, p))))
                 .toList();
         NextAppointment next = bookings
                 .findFirstByProfessionalIdAndStatusAndPreferredDatetimeGreaterThanEqualOrderByPreferredDatetimeAscIdAsc(
                         id, BookingStatus.CONFIRMED, now)
                 .map(b -> new NextAppointment(b.getId(), b.getContactName(),
-                        b.getPreferredDatetime().atZone(AvailabilityService.ZONE).toOffsetDateTime(), b.getMeetingMethod()))
+                        b.getPreferredDatetime().atZone(AvailabilityService.ZONE).toOffsetDateTime(), b.getMeetingMethod(),
+                        b.getSessionCount(), ProBookingView.inIndia(MeetingTimes.end(b, p))))
                 .orElse(null);
         LocalDate expiry = p.getRegistrationExpiry();
         Long daysLeft = expiry == null ? null : ChronoUnit.DAYS.between(today, expiry);
-        boolean hasWeeklyHours = p.getSessionMinutes() != null && WeeklyHours.hasAnyRange(p.getWeeklyHours());
+        boolean hasWeeklyHours = WeeklyHours.hasAnyRange(p.getWeeklyHours());
         List<ProfessionalDayOff> activeDaysOff =
                 daysOff.findByProfessionalIdAndDateToGreaterThanEqualOrderByDateFromAscIdAsc(id, today);
 

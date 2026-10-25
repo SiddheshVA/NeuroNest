@@ -50,9 +50,9 @@ class ProBookingServiceTest {
     // Monday 12 Oct 2026, 10:00 in India.
     private static final Instant NOW = Instant.parse("2026-10-12T04:30:00Z");
     private static final Clock CLOCK = Clock.fixed(NOW, AvailabilityService.ZONE);
-    // The professional works Wednesdays and Thursdays 18:00 to 20:00 in 60-minute sessions.
+    // The professional works Wednesdays and Thursdays 18:00 to 20:30: slots 18:00 and 19:15 on the global grid.
     private static final String WED_18 = "2026-10-14T18:00:00+05:30";
-    private static final String WED_19 = "2026-10-14T19:00:00+05:30";
+    private static final String WED_1915 = "2026-10-14T19:15:00+05:30";
     private static final String THU_18 = "2026-10-15T18:00:00+05:30";
     private static final String LINK = "https://meet.google.com/abc-defg-hij";
 
@@ -61,7 +61,8 @@ class ProBookingServiceTest {
     private final ProfessionalRepository professionals = mock(ProfessionalRepository.class);
     private final ProfessionalAccountRepository accounts = mock(ProfessionalAccountRepository.class);
     private final ProfessionalDayOffRepository daysOff = mock(ProfessionalDayOffRepository.class);
-    private final SlotService slots = new SlotService(new AvailabilityService(), bookings, daysOff);
+    private final SlotService slots = new SlotService(new AvailabilityService(), bookings, daysOff,
+            mock(com.neuronest.backend.professional.ProfessionalBlockedSlotRepository.class));
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final ProBookingService service = new ProBookingService(bookings, slots, professionals, accounts, events, CLOCK);
     private final BookingService userService = new BookingService(bookings, slots, mock(PublicProfessionalService.class),
@@ -116,8 +117,8 @@ class ProBookingServiceTest {
         // A paid professional; the free-session tests clear it.
         p.setConsultationFee(1500);
         p.setWeeklyHours(Map.of(
-                "WED", List.of(Map.of("start", "18:00", "end", "20:00")),
-                "THU", List.of(Map.of("start", "18:00", "end", "20:00"))));
+                "WED", List.of(Map.of("start", "18:00", "end", "20:30")),
+                "THU", List.of(Map.of("start", "18:00", "end", "20:30"))));
         return p;
     }
 
@@ -134,7 +135,7 @@ class ProBookingServiceTest {
         b.setPreferredMode(mode);
         b.setPreferredMethod(method);
         b.setPreferredDatetime(at(WED_18));
-        b.setAlternateDatetime(at(WED_19));
+        b.setAlternateDatetime(at(WED_1915));
         b.setNote("First session, please.");
         b.setAdminNote("internal");
         b.setStatus(BookingStatus.PENDING);
@@ -199,15 +200,15 @@ class ProBookingServiceTest {
                 confirmBody("ALTERNATE", "VIDEO", "  " + LINK + " ", "ignored address", null));
 
         assertThat(b.getStatus()).isEqualTo(BookingStatus.AWAITING_PAYMENT);
-        assertThat(b.getPreferredDatetime()).isEqualTo(at(WED_19));
-        assertThat(b.scheduledTime()).isEqualTo(at(WED_19));
+        assertThat(b.getPreferredDatetime()).isEqualTo(at(WED_1915));
+        assertThat(b.scheduledTime()).isEqualTo(at(WED_1915));
         assertThat(b.getMeetingMethod()).isEqualTo("VIDEO");
         assertThat(b.getMeetingLink()).isEqualTo(LINK);
         assertThat(b.getMeetingAddress()).isNull();
         assertThat(b.getProfessionalNote()).isNull();
-        assertThat(view.preferredDatetime()).isEqualTo(OffsetDateTime.parse(WED_19));
+        assertThat(view.preferredDatetime()).isEqualTo(OffsetDateTime.parse(WED_1915));
         // The agreed time blocks the slot everywhere while it waits for payment.
-        assertThat(slots.check(professional(professionalId), at(WED_19), ZonedDateTime.now(CLOCK)))
+        assertThat(slots.check(professional(professionalId), at(WED_1915), ZonedDateTime.now(CLOCK)))
                 .isEqualTo(SlotService.SlotCheck.TAKEN);
     }
 
@@ -407,7 +408,7 @@ class ProBookingServiceTest {
         assertThat(b.getMeetingMethod()).isNull();
         verify(bookings, never()).saveAndFlush(any());
 
-        // A partial overlap counts too: a 60-minute session at 18:30 overlaps one at 19:00.
+        // A partial overlap counts too: an old booking at 18:30 (60 minutes) overlaps the 19:15 slot.
         confirmedAt("2026-10-14T18:30:00+05:30");
         assertThatThrownBy(() -> service.confirm(me, b.getId().toString(), confirmBody("ALTERNATE", "VIDEO", LINK, null, null)))
                 .isInstanceOf(ConflictException.class);
@@ -603,6 +604,25 @@ class ProBookingServiceTest {
 
         assertThatThrownBy(() -> service.get(new ProPrincipal("not_a_professional"), id))
                 .isInstanceOf(ProExceptions.NotRegisteredException.class);
+    }
+
+    @Test
+    void aTwoSessionBookingShowsTheWholeMeetingInTheListAndTheDetailNeverTheBreak() {
+        // Two sessions from 18:00: the meeting runs to 20:00, the time is blocked until 20:30.
+        Booking b = confirmedAt(WED_18);
+        b.setSessionCount(2);
+        b.setEndsAt(at("2026-10-14T20:00:00+05:30"));
+        b.setBlockedUntil(at("2026-10-14T20:30:00+05:30"));
+        doReturn(new PageImpl<>(List.of(b))).when(bookings).findByProfessionalId(eq(professionalId), any(Pageable.class));
+
+        ProBookingView detail = service.get(me, b.getId().toString());
+        ProBookingView listed = service.list(me, null, 0, 20).items().get(0);
+
+        for (ProBookingView view : List.of(detail, listed)) {
+            assertThat(view.preferredDatetime()).isEqualTo(OffsetDateTime.parse(WED_18));
+            assertThat(view.sessionCount()).isEqualTo(2);
+            assertThat(view.endDatetime()).isEqualTo(OffsetDateTime.parse("2026-10-14T20:00:00+05:30"));
+        }
     }
 
     @Test

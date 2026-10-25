@@ -60,6 +60,12 @@ export interface BookingView {
   /** A receipt: what was paid, in paise, for a CONFIRMED booking with a payment. Null otherwise. */
   paidAmount: number | null;
   paidCurrency: string | null;
+  /** How many consecutive sessions, and when the last one ends (+05:30); null end for older bookings. */
+  sessionCount: number;
+  endDatetime: string | null;
+  /** The professional's email and phone, only once the booking is CONFIRMED. */
+  professionalEmail: string | null;
+  professionalPhone: string | null;
 }
 
 export interface BookingPage {
@@ -77,10 +83,13 @@ export interface CreateBookingRequest {
   contactName: string;
   contactPhone: string;
   slotStart: string;
-  alternateSlotStart?: string;
+  /** Consecutive sessions from slotStart, 1 to MAX_SESSIONS (default 1). */
+  sessionCount?: number;
   note?: string;
   consentGiven: true;
   shareLatestAssessment?: boolean;
+  /** "Send me updates on WhatsApp" to contactPhone. Stored now; used once WhatsApp updates are switched on. */
+  whatsappUpdates?: boolean;
 }
 
 export class BookingApiError extends Error {
@@ -94,6 +103,9 @@ export class BookingApiError extends Error {
 
 /** The server's message for a 409 when the chosen time was taken in the meantime. */
 export const SLOT_TAKEN_MESSAGE = "This time is no longer available. Please choose another time.";
+
+/** The most consecutive sessions one booking may cover (BookingService.MAX_SESSIONS). */
+export const MAX_SESSIONS = 4;
 
 export function isSlotTaken(error: unknown): boolean {
   return error instanceof BookingApiError && error.status === 409 && error.message.includes("no longer available");
@@ -191,6 +203,9 @@ export interface AwaitingPaymentBooking {
   /** What paying charges, in paise (the same amount the order uses); null if not known. */
   amount: number | null;
   currency: string | null;
+  /** How many sessions in a row, and when the meeting ends (never the break after it); null without a stored end. */
+  sessionCount: number;
+  endDatetime: string | null;
 }
 
 /**
@@ -207,6 +222,10 @@ export interface BookingSummary {
     meetingLink: string | null;
     meetingAddress: string | null;
     professional: { id: string; fullName: string; credentialType: string; city: string | null } | null;
+    sessionCount: number;
+    endDatetime: string | null;
+    professionalEmail: string | null;
+    professionalPhone: string | null;
   } | null;
   /** AWAITING_PAYMENT bookings whose deadline has not passed, earliest deadline first. */
   awaitingPayment: AwaitingPaymentBooking[];

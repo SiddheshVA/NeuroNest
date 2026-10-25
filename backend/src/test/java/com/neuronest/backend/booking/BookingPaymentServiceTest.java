@@ -392,4 +392,82 @@ class BookingPaymentServiceTest {
         var tx = verify.getAnnotation(org.springframework.transaction.annotation.Transactional.class);
         assertThat(tx.noRollbackFor()).containsExactly(BookingExceptions.PaidButNotConfirmedException.class);
     }
+
+    // ---- multi-session price and the webhook ----
+
+    @Test
+    void aMultiSessionBookingIsChargedTheFeeTimesItsSessions() {
+        Booking b = awaiting();
+        b.setSessionCount(3);
+
+        PaymentOrder order = service.createOrder(userId, b.getId().toString());
+
+        assertThat(order.amount()).isEqualTo(450_000);
+        verify(gateway).createOrder(450_000, "INR", b.getId().toString());
+    }
+
+    private Payment orderFor(Booking b) {
+        Payment p = new Payment(b.getId(), "order_TEST123", 150_000, "INR", NOW);
+        paymentStore.add(p);
+        when(paymentRepository.findBookingIdByRazorpayOrderId("order_TEST123")).thenReturn(Optional.of(b.getId()));
+        return p;
+    }
+
+    @Test
+    void theWebhookConfirmsAHeldBookingOnceEvenIfItIsDeliveredAgain() {
+        Booking b = awaiting();
+        Payment p = orderFor(b);
+
+        service.confirmFromWebhook("order_TEST123", "pay_1");
+        service.confirmFromWebhook("order_TEST123", "pay_1");
+
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.PAID);
+        assertThat(p.getRazorpayPaymentId()).isEqualTo("pay_1");
+        verify(events, times(1)).publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, b.getId()));
+        // The checkout callback arriving afterwards answers as confirmed and changes nothing.
+        assertThat(service.verify(userId, b.getId().toString(), uncheckedSigned("order_TEST123", "pay_1")).status())
+                .isEqualTo("CONFIRMED");
+        verify(events, times(1)).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void aWebhookPaymentAfterTheHoldEndedIsKeptPaidButDoesNotConfirm() {
+        Booking b = awaiting();
+        b.setStatus(BookingStatus.EXPIRED);
+        Payment p = orderFor(b);
+
+        service.confirmFromWebhook("order_TEST123", "pay_late");
+
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.EXPIRED);
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.PAID);
+        verify(events, never()).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void aFailedPaymentMarksTheOrderFailedAndALaterSuccessStillConfirms() {
+        Booking b = awaiting();
+        Payment p = orderFor(b);
+
+        service.recordFailedFromWebhook("order_TEST123");
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.AWAITING_PAYMENT);
+
+        service.confirmFromWebhook("order_TEST123", "pay_retry");
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+    }
+
+    @Test
+    void anUnknownOrderIsIgnored() {
+        service.confirmFromWebhook("order_SOMEONE_ELSE", "pay_1");
+        verifyNoInteractions(events);
+    }
+
+    private static VerifyPaymentRequest uncheckedSigned(String orderId, String paymentId) {
+        try {
+            return signed(orderId, paymentId);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
 }

@@ -32,6 +32,13 @@ public interface BookingJobStore {
     List<UUID> claimReminders(Instant now, Instant until, int limit);
 
     /**
+     * CONFIRMED sessions starting within (from, to] whose session reminder has not gone out, leaving out any
+     * booked less than {@code leadMinutes} before its start: sets session_reminder_sent = true as the claim,
+     * so each reminder is sent once.
+     */
+    List<UUID> claimSessionReminders(Instant now, Instant from, Instant to, long leadMinutes, int limit);
+
+    /**
      * VERIFIED professionals whose registration_expiry is before {@code today}: set EXPIRED, not verified,
      * not active, and write one verification_log row each. Sample listings without an account are skipped.
      */

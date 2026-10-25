@@ -34,7 +34,14 @@ export interface ProDashboard {
   awaitingPayment: number;
   /** Up to 20 of them, earliest deadline first. No contact details. */
   awaitingPaymentBookings: ProAwaitingPaymentItem[];
-  nextAppointment: { id: string; contactName: string; scheduledTime: string; meetingMethod: MeetingMethod | null } | null;
+  nextAppointment: {
+    id: string;
+    contactName: string;
+    scheduledTime: string;
+    meetingMethod: MeetingMethod | null;
+    sessionCount: number;
+    endDatetime: string | null;
+  } | null;
   /** YYYY-MM-DD. */
   registrationExpiry: string | null;
   registrationDaysLeft: number | null;
@@ -51,6 +58,9 @@ export interface ProAwaitingPaymentItem {
   meetingMethod: MeetingMethod | null;
   /** ISO-8601 in UTC. */
   paymentDueAt: string | null;
+  /** How many sessions in a row, and when the meeting ends (never the break after it); null without a stored end. */
+  sessionCount: number;
+  endDatetime: string | null;
 }
 
 /** Missing lists read as [] and missing counts as 0, so an older response never breaks the dashboard. */
@@ -72,6 +82,9 @@ export interface ProAppointment {
   meetingAddress: string | null;
   /** ISO date-time with the +05:30 offset. */
   scheduledTime: string;
+  /** How many sessions in a row, and when the meeting ends (never the break after it); null without a stored end. */
+  sessionCount: number;
+  endDatetime: string | null;
   professionalNote: string | null;
   /** Only until 7 days after the appointment; null afterwards. */
   contactEmail: string | null;
@@ -166,4 +179,26 @@ export function normalizeProEarnings(e: Partial<ProEarnings> | null | undefined)
       totalPages: p?.totalPages ?? 0,
     },
   };
+}
+
+/**
+ * GET/POST/DELETE /api/pro/blocked-slots: the professional's grid slots for today and the next 6 days.
+ * FREE can be blocked, BLOCKED can be unblocked (blockId), BOOKED has a client's held or confirmed booking and
+ * cannot be blocked. start and end are ISO date-times with the +05:30 offset; end is the meeting end (one
+ * session), never the break after it.
+ */
+export type ProSlotStatus = "FREE" | "BLOCKED" | "BOOKED";
+
+export interface ProBlockSlot {
+  start: string;
+  end: string;
+  status: ProSlotStatus;
+  blockId: string | null;
+}
+
+export interface ProBlockWeek {
+  sessionMinutes: number;
+  breakMinutes: number;
+  /** Seven dates (YYYY-MM-DD); slots is empty when there are no hours that day. */
+  days: { date: string; slots: ProBlockSlot[] }[];
 }

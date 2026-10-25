@@ -130,6 +130,29 @@ public class Booking {
     @Column(name = "payment_expired_at")
     private Instant paymentExpiredAt;
 
+    // V15/V16: how many consecutive sessions this booking covers, when the meeting ends (ends_at: start +
+    // sessions x session length, no breaks inside) and until when it blocks the professional's time
+    // (blocked_until: the skipped breaks added at the end). The database refuses two AWAITING_PAYMENT or
+    // CONFIRMED bookings whose [preferred_datetime, blocked_until) overlap. Bookings made before V16 have
+    // blocked_until = ends_at (their ends_at already included the buffer); older rows may have neither.
+    @Column(name = "session_count", nullable = false)
+    private int sessionCount = 1;
+
+    @Column(name = "ends_at")
+    private Instant endsAt;
+
+    @Column(name = "blocked_until")
+    private Instant blockedUntil;
+
+    // V17: the client asked for updates on WhatsApp when booking (used only once that channel is on), and
+    // whether the 10-minute session reminder has gone out (claimed by SessionReminderJob before sending).
+    // reminder_sent_at is a different, older reminder: the professional's nudge for an unanswered request.
+    @Column(name = "whatsapp_opt_in", nullable = false)
+    private boolean whatsappOptIn;
+
+    @Column(name = "session_reminder_sent", nullable = false)
+    private boolean sessionReminderSent;
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
@@ -249,5 +272,20 @@ public class Booking {
     public void setPaymentDueAt(Instant paymentDueAt) { this.paymentDueAt = paymentDueAt; }
 
     public Instant getPaymentExpiredAt() { return paymentExpiredAt; }
+
+    public int getSessionCount() { return sessionCount; }
+    public void setSessionCount(int sessionCount) { this.sessionCount = sessionCount; }
+
+    public Instant getEndsAt() { return endsAt; }
+    public void setEndsAt(Instant endsAt) { this.endsAt = endsAt; }
+
+    public Instant getBlockedUntil() { return blockedUntil; }
+    public void setBlockedUntil(Instant blockedUntil) { this.blockedUntil = blockedUntil; }
+
+    public boolean isWhatsappOptIn() { return whatsappOptIn; }
+    public void setWhatsappOptIn(boolean whatsappOptIn) { this.whatsappOptIn = whatsappOptIn; }
+
+    public boolean isSessionReminderSent() { return sessionReminderSent; }
+    public void setSessionReminderSent(boolean sessionReminderSent) { this.sessionReminderSent = sessionReminderSent; }
     public void setPaymentExpiredAt(Instant paymentExpiredAt) { this.paymentExpiredAt = paymentExpiredAt; }
 }

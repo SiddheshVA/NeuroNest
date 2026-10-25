@@ -59,9 +59,9 @@ const tools = [
   {
     icon: UserRound,
     tone: "rose" as const,
-    title: "Find Professional",
+    title: "Find a Licensed Professional",
     description:
-      "Connect with licensed therapists and counsellors when you need extra support.",
+      "Connect with licensed mental health professionals (psychologists, psychiatrists and registered counsellors) when you need extra support.",
     href: "/professionals",
     ctaLabel: "Find support",
     image: "/images/professionals.png",
