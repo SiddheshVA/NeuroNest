@@ -7,6 +7,7 @@ import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.Mac;
@@ -17,10 +18,9 @@ import java.security.MessageDigest;
 import java.util.HexFormat;
 
 /**
- * Every call to Razorpay goes through here, so tests can mock it. The keys come only from the
- * RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET environment variables (not application.properties or
- * .env.properties) and are never logged. Without both, the app still starts and only the payment
- * endpoints refuse, with {@link NotConfiguredException}.
+ * Every call to Razorpay goes through here, so tests can mock it. The keys come from RAZORPAY_KEY_ID and
+ * RAZORPAY_KEY_SECRET (environment variables, or .env.properties locally) and are never logged. Without
+ * both, the app still starts and only the payment endpoints refuse, with {@link NotConfiguredException}.
  */
 @Service
 public class RazorpayGateway {
@@ -46,16 +46,12 @@ public class RazorpayGateway {
     private RazorpayClient client;
 
     @Autowired
-    public RazorpayGateway() {
-        this(System.getenv("RAZORPAY_KEY_ID"), System.getenv("RAZORPAY_KEY_SECRET"));
-        log.info(isConfigured() ? "Razorpay payments are configured."
-                : "Razorpay payments are not configured: the payment endpoints are off.");
-    }
-
-    // With explicit keys, for tests. The app always uses the environment (above).
-    public RazorpayGateway(String keyId, String keySecret) {
+    public RazorpayGateway(@Value("${razorpay.key-id:}") String keyId,
+                           @Value("${razorpay.key-secret:}") String keySecret) {
         this.keyId = blankToNull(keyId);
         this.keySecret = blankToNull(keySecret);
+        log.info(isConfigured() ? "Razorpay payments are configured."
+                : "Razorpay payments are not configured: the payment endpoints are off.");
     }
 
     public boolean isConfigured() {

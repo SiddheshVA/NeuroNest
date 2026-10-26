@@ -50,7 +50,7 @@ const tools = [
     tone: "amber" as const,
     title: "Wellness Resources",
     description:
-      "Articles, videos and practical guides to learn and grow at your own pace.",
+      "Articles to help you learn and grow at your own pace.",
     href: "/resources",
     ctaLabel: "Explore resources",
     image: "/images/wellness.png",

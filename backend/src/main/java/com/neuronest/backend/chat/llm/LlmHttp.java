@@ -9,6 +9,7 @@ import java.net.http.HttpResponse.BodyHandler;
 import java.net.http.HttpResponse.BodySubscribers;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -67,11 +68,16 @@ final class LlmHttp {
 
     /** POSTs and returns the 200 response body; any other outcome throws. */
     String postForString(HttpRequest request) {
+        return postForString(request, settings.jsonTimeout());
+    }
+
+    /** As {@link #postForString(HttpRequest)}, with its own deadline (e.g. a long audio upload). */
+    String postForString(HttpRequest request, Duration timeout) {
         CompletableFuture<HttpResponse<String>> future =
                 client.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         HttpResponse<String> response;
         try {
-            response = future.get(settings.jsonTimeout().toMillis(), TimeUnit.MILLISECONDS);
+            response = future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             future.cancel(true);
             throw new LlmProviderException(provider, Kind.TIMEOUT, null, false, e);

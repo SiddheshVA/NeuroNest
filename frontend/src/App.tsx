@@ -12,7 +12,7 @@ import { PageErrorBoundary } from "@/components/shared/page-error-boundary";
 import AssessmentResultPage from "@/routes/AssessmentResultPage";
 import CheckInResultPage from "@/routes/CheckInResultPage";
 import { AssessmentPage, Gad7Page, K10Page, Phq9Page, Pss10Page, SciPage } from "@/routes/AssessmentPages";
-import { ArticleRoute, GuideRoute, ResourcesPage, VideoRoute } from "@/routes/ResourcesPages";
+import { ArticleRoute, ResourcesPage } from "@/routes/ResourcesPages";
 import { LoginPage, RequireAuth, SignUpPage } from "@/routes/AuthPages";
 import { FindProfessionalRedirect, ProfessionalProfileRoute, ProfessionalsPage } from "@/routes/ProfessionalsPages";
 import {
@@ -124,8 +124,6 @@ export default function App() {
 
         <Route path="/resources" element={<ResourcesPage />} />
         <Route path="/resources/articles/:slug" element={<ArticleRoute />} />
-        <Route path="/resources/videos/:slug" element={<VideoRoute />} />
-        <Route path="/resources/guides/:slug" element={<GuideRoute />} />
 
         <Route path="/professionals" element={<ProfessionalsPage />} />
         <Route path="/professionals/:id" element={<ProfessionalProfileRoute />} />

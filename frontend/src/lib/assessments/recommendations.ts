@@ -117,7 +117,7 @@ const DEFINITIONS: Record<RecommendationKind, RecommendationDefinition> = {
   },
   "wellness-resources": {
     title: "Browse wellness resources",
-    description: "Simple articles and guides with ideas that might help.",
+    description: "Simple articles with ideas that might help.",
     action: { label: "Browse resources", href: "/resources" },
   },
   "stress-management-resources": {

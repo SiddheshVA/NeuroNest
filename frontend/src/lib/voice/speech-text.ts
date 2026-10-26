@@ -5,7 +5,7 @@
  */
 
 import type { CrisisContact } from "@/lib/nuro-client";
-import type { RecognitionLang } from "@/lib/voice/voice-prefs";
+import type { SpeechLanguageCode } from "@/lib/voice/voice-client";
 
 /** Chrome stops long utterances after ~15 seconds, so text is spoken in short pieces. */
 const MAX_CHUNK_LENGTH = 180;
@@ -98,24 +98,25 @@ function bestVoiceFor(voices: SpeechSynthesisVoice[], lang: string) {
 }
 
 /**
- * The voice for `text`: the user's chosen voice if this device has it,
- * otherwise a female en-IN voice, then the browser default (null).
+ * The browser voice for `text` (used when Neuro's own voice is unavailable):
+ * the given voice if this device has it, otherwise a female en-IN voice, then
+ * the browser default (null).
  *
  * Hindi and Marathi share Devanagari, so for Devanagari text the language
- * selected for voice input decides: with mr-IN, a mr-IN voice, then hi-IN;
- * otherwise hi-IN. A chosen voice already in that language is kept.
+ * of the question (when it was spoken) decides: with mr-IN, a mr-IN voice,
+ * then hi-IN; otherwise hi-IN. A given voice already in that language is kept.
  */
 export function chooseVoice(
   voices: SpeechSynthesisVoice[],
   text: string,
   chosenName: string | null,
-  recognitionLang: RecognitionLang = "en-IN",
+  language: SpeechLanguageCode = "en-IN",
 ) {
   const chosen = chosenName ? voices.find((voice) => voice.name === chosenName) : undefined;
   const chosenLang = chosen ? normaliseLang(chosen.lang) : null;
 
   if (hasDevanagari(text)) {
-    const scriptLangs = recognitionLang === "mr-IN" ? ["mr-in", "hi-in"] : ["hi-in"];
+    const scriptLangs = language === "mr-IN" ? ["mr-in", "hi-in"] : ["hi-in"];
     for (const lang of scriptLangs) {
       if (chosen && chosenLang === lang) return chosen;
       const native = bestVoiceFor(voices, lang);
@@ -125,28 +126,6 @@ export function chooseVoice(
 
   return (
     chosen ?? bestVoiceFor(voices, "en-in") ?? voices.find((voice) => voice.default) ?? null
-  );
-}
-
-/** The automatic choice (no voice chosen by the user). */
-export function pickVoice(
-  voices: SpeechSynthesisVoice[],
-  text: string,
-  recognitionLang: RecognitionLang = "en-IN",
-) {
-  return chooseVoice(voices, text, null, recognitionLang);
-}
-
-/** Voices for the picker: en-IN, hi-IN, mr-IN, then the rest, each by language and name. */
-export function sortVoicesForPicker(voices: SpeechSynthesisVoice[]) {
-  const top = ["en-in", "hi-in", "mr-in"];
-  const rank = (voice: SpeechSynthesisVoice) => {
-    const index = top.indexOf(normaliseLang(voice.lang));
-    return index === -1 ? top.length : index;
-  };
-  return [...voices].sort(
-    (a, b) =>
-      rank(a) - rank(b) || a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name),
   );
 }
 

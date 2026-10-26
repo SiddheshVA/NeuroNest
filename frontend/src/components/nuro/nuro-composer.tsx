@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUp } from "lucide-react";
-import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
-import Menu from "@mui/material/Menu";
-import MenuItem from "@mui/material/MenuItem";
 import Tooltip from "@mui/material/Tooltip";
 import CloseRounded from "@mui/icons-material/CloseRounded";
-import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
 import MicRounded from "@mui/icons-material/MicRounded";
 import StopRounded from "@mui/icons-material/StopRounded";
 
@@ -17,13 +13,11 @@ import { toggleSx } from "@/components/nuro/nuro-panel-controls";
 import { NuroListeningOverlay } from "@/components/nuro/nuro-listening-overlay";
 import { useSpeechInput, type SpeechInputNotice } from "@/lib/voice/use-speech-input";
 import {
-  RECOGNITION_LANGS,
-  readRecognitionLang,
-  readVoiceNoteDismissed,
-  writeRecognitionLang,
-  writeVoiceNoteDismissed,
-  type RecognitionLang,
-} from "@/lib/voice/voice-prefs";
+  speechLanguageFor,
+  type SpeechLanguageCode,
+  type Transcript,
+} from "@/lib/voice/voice-client";
+import { readVoiceNoteDismissed, writeVoiceNoteDismissed } from "@/lib/voice/voice-prefs";
 
 const MAX_TEXTAREA_HEIGHT = 160;
 
@@ -32,7 +26,7 @@ const VOICE_NOTICES: Record<SpeechInputNotice, string> = {
   denied:
     "Neuro can't hear you because microphone access is blocked for this site. To allow it, select the lock or site-settings icon beside the address bar, turn on Microphone, then tap the mic again. Typing works just as well.",
   unavailable:
-    "Voice input isn't available right now (no microphone found, or the browser's speech service couldn't be reached). You can try again later, or type instead.",
+    "Voice input isn't available right now (no microphone found, or this browser can't record audio). You can try again later, or type instead.",
 };
 
 const micSx = { ...toggleSx, width: 36, height: 36 } as const;
@@ -54,16 +48,22 @@ export function NuroComposer({
   onChange,
   onSend,
   onListeningChange,
+  onBeforeListening,
   overlayHost,
   disabled,
   placeholder = "Share what's on your mind…",
 }: {
   value: string;
   onChange: (value: string) => void;
-  /** `viaVoice`: the message being sent was (at least partly) dictated. */
-  onSend: (viaVoice: boolean) => void;
+  /**
+   * `viaVoice`: the message being sent was (at least partly) dictated;
+   * `spokenLanguage`: the language it was spoken in.
+   */
+  onSend: (viaVoice: boolean, spokenLanguage?: SpeechLanguageCode) => void;
   /** Recording started or stopped (used to keep spoken replies out of the mic). */
   onListeningChange?: (listening: boolean) => void;
+  /** Runs before the mic starts (e.g. to ask for a voice first); calls `start` when ready. */
+  onBeforeListening?: (start: () => void) => void;
   /** Where the listening animation is shown (the message area), if anywhere. */
   overlayHost?: HTMLElement | null;
   disabled: boolean;
@@ -73,57 +73,57 @@ export function NuroComposer({
   const sendButtonRef = useRef<HTMLButtonElement>(null);
 
   // ---- Voice input ----
-  const [lang, setLang] = useState<RecognitionLang>(readRecognitionLang);
-  const [langMenuAnchor, setLangMenuAnchor] = useState<HTMLElement | null>(null);
   const [showVoiceNote, setShowVoiceNote] = useState(false);
   const [announcement, setAnnouncement] = useState("");
-  // Words finalised during the current recording, shown in the listening overlay.
-  const [recordingText, setRecordingText] = useState("");
-  // The box's text plus everything finalised so far in this recording.
+  // The box's text when the recording started; the transcript is added after it.
   const dictatedRef = useRef("");
   const draftFromVoiceRef = useRef(false);
+  // The language the dictated message was spoken in (detected by the backend).
+  const spokenLanguageRef = useRef<SpeechLanguageCode | undefined>(undefined);
   const focusAfterStopRef = useRef(false);
   const autoSendRef = useRef(false);
 
-  const handleFinalText = useCallback(
-    (text: string) => {
-      dictatedRef.current = appendText(dictatedRef.current, text);
+  const handleTranscript = useCallback(
+    (transcript: Transcript, autoSend: boolean) => {
+      dictatedRef.current = appendText(dictatedRef.current, transcript.text);
       draftFromVoiceRef.current = true;
-      setRecordingText((previous) => appendText(previous, text));
+      spokenLanguageRef.current = speechLanguageFor(transcript.language);
+      autoSendRef.current = autoSend;
       onChange(dictatedRef.current);
     },
     [onChange],
   );
 
-  const handleStopped = useCallback(
-    ({ autoSend }: { autoSend: boolean }) => {
-      setAnnouncement("Stopped");
-      focusAfterStopRef.current = true;
-      autoSendRef.current = autoSend;
-      onListeningChange?.(false);
-    },
-    [onListeningChange],
-  );
+  const speech = useSpeechInput({ onTranscript: handleTranscript });
+  const voiceBusy = speech.phase !== "idle";
 
-  const speech = useSpeechInput({
-    lang,
-    onFinalText: handleFinalText,
-    onStopped: handleStopped,
-  });
+  // The mic is on only while listening; spoken replies may resume once it is off.
+  const wasListeningRef = useRef(false);
+  useEffect(() => {
+    if (speech.listening) {
+      wasListeningRef.current = true;
+      return;
+    }
+    if (!wasListeningRef.current) return;
+    wasListeningRef.current = false;
+    setAnnouncement(speech.phase === "understanding" ? "Understanding" : "Stopped");
+    onListeningChange?.(false);
+  }, [onListeningChange, speech.listening, speech.phase]);
 
   function startListening() {
+    if (onBeforeListening) onBeforeListening(beginListening);
+    else beginListening();
+  }
+
+  function beginListening() {
     dictatedRef.current = value;
-    setRecordingText("");
+    autoSendRef.current = false;
+    focusAfterStopRef.current = true;
+    wasListeningRef.current = true;
     if (!readVoiceNoteDismissed()) setShowVoiceNote(true);
     setAnnouncement("Listening");
     onListeningChange?.(true);
     speech.start();
-  }
-
-  function chooseLang(next: RecognitionLang) {
-    setLang(next);
-    writeRecognitionLang(next);
-    setLangMenuAnchor(null);
   }
 
   function dismissVoiceNote() {
@@ -134,9 +134,10 @@ export function NuroComposer({
   // After a pause in speech the message is sent exactly as if Send were pressed.
   // After a manual stop nothing is sent: the text stays to read or edit, and
   // focus moves to Send (or back to the box if there's nothing to send). This
-  // runs after the render that has the final words in the box.
+  // runs once the recording has been understood, after the render that has
+  // the words in the box.
   useEffect(() => {
-    if (speech.listening || !focusAfterStopRef.current) return;
+    if (voiceBusy || !focusAfterStopRef.current) return;
     focusAfterStopRef.current = false;
     const autoSend = autoSendRef.current;
     autoSendRef.current = false;
@@ -147,10 +148,13 @@ export function NuroComposer({
     } else {
       textareaRef.current?.focus();
     }
-  }, [speech.listening]);
+  }, [voiceBusy]);
 
   useEffect(() => {
-    if (!value) draftFromVoiceRef.current = false;
+    if (!value) {
+      draftFromVoiceRef.current = false;
+      spokenLanguageRef.current = undefined;
+    }
   }, [value]);
 
   useEffect(() => {
@@ -158,16 +162,16 @@ export function NuroComposer({
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
-  }, [value, speech.listening]);
+  }, [value, voiceBusy]);
 
   const trimmed = value.trim();
   const overLimit = value.length > MAX_MESSAGE_LENGTH;
-  const canSend = trimmed.length > 0 && !overLimit && !disabled && !speech.listening;
-  const currentLang = RECOGNITION_LANGS.find((option) => option.value === lang) ?? RECOGNITION_LANGS[0];
+  const canSend = trimmed.length > 0 && !overLimit && !disabled && !voiceBusy;
 
   function handleSend() {
     if (!canSend) return;
-    onSend(draftFromVoiceRef.current);
+    const viaVoice = draftFromVoiceRef.current;
+    onSend(viaVoice, viaVoice ? spokenLanguageRef.current : undefined);
   }
 
   return (
@@ -179,9 +183,9 @@ export function NuroComposer({
       {showVoiceNote ? (
         <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/60 py-1.5 pr-1 pl-3 text-xs text-muted-foreground">
           <span className="flex-1 py-1">
-            Your browser turns your voice into text. Some browsers, like Chrome, use
-            their own online speech service to do this. NeuroNest never receives or
-            stores recordings, only the text you choose to send.
+            Your recording is sent securely to NeuroNest and turned into text by
+            Google&apos;s Gemini. It isn&apos;t stored: only the text you choose to send
+            is saved.
           </span>
           <IconButton
             aria-label="Dismiss voice privacy note"
@@ -195,9 +199,8 @@ export function NuroComposer({
       ) : null}
 
       <div className="flex items-end gap-1.5 rounded-3xl border border-border bg-background px-3 py-2 shadow-sm focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
-        {speech.listening ? (
-          // While dictating the box is read-only: final words in normal colour,
-          // words still being recognised in a lighter one.
+        {voiceBusy ? (
+          // While recording (and while it is understood) the box is read-only.
           <div
             role="textbox"
             aria-readonly="true"
@@ -206,14 +209,10 @@ export function NuroComposer({
             className="max-h-40 min-h-9 flex-1 overflow-y-auto px-1.5 py-1.5 text-sm whitespace-pre-wrap text-foreground"
           >
             {value}
-            {speech.interim ? (
+            {!value ? (
               <span className="text-muted-foreground">
-                {value && !/\s$/.test(value) ? " " : ""}
-                {speech.interim}
+                {speech.listening ? "Listening…" : "Understanding…"}
               </span>
-            ) : null}
-            {!value && !speech.interim ? (
-              <span className="text-muted-foreground">Listening…</span>
             ) : null}
           </div>
         ) : (
@@ -240,49 +239,6 @@ export function NuroComposer({
 
         {speech.supported ? (
           <>
-            <Tooltip title={`Voice language: ${currentLang.label}`}>
-              <span>
-                <Button
-                  size="small"
-                  aria-label={`Voice input language: ${currentLang.label}`}
-                  aria-haspopup="menu"
-                  aria-expanded={langMenuAnchor ? "true" : undefined}
-                  onClick={(event) => setLangMenuAnchor(event.currentTarget)}
-                  disabled={speech.listening}
-                  endIcon={<ExpandMoreRounded sx={{ fontSize: "16px !important" }} />}
-                  sx={{
-                    ...toggleSx,
-                    minWidth: 0,
-                    height: 36,
-                    px: 1,
-                    borderRadius: 999,
-                    textTransform: "none",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    "& .MuiButton-endIcon": { ml: 0.25 },
-                  }}
-                >
-                  {currentLang.short}
-                </Button>
-              </span>
-            </Tooltip>
-            <Menu
-              anchorEl={langMenuAnchor}
-              open={Boolean(langMenuAnchor)}
-              onClose={() => setLangMenuAnchor(null)}
-            >
-              {RECOGNITION_LANGS.map((option) => (
-                <MenuItem
-                  key={option.value}
-                  selected={option.value === lang}
-                  onClick={() => chooseLang(option.value)}
-                  sx={{ fontSize: 14 }}
-                >
-                  {option.label}
-                </MenuItem>
-              ))}
-            </Menu>
-
             {speech.listening ? (
               <Tooltip title="Stop listening">
                 <IconButton aria-label="Stop listening" onClick={speech.stop} sx={listeningMicSx}>
@@ -302,7 +258,7 @@ export function NuroComposer({
                   <IconButton
                     aria-label="Speak your message"
                     onClick={startListening}
-                    disabled={disabled}
+                    disabled={disabled || voiceBusy}
                     sx={micSx}
                   >
                     <MicRounded fontSize="small" />
@@ -329,12 +285,13 @@ export function NuroComposer({
         </button>
       </div>
 
-      {speech.listening && overlayHost
+      {voiceBusy && overlayHost
         ? createPortal(
             <NuroListeningOverlay
-              transcript={recordingText}
-              interim={speech.interim}
-              countdown={speech.countdown}
+              understanding={speech.phase === "understanding"}
+              levelLive={speech.levelLive}
+              levelRef={speech.setLevelTarget}
+              pausing={speech.pausing}
               onStop={speech.stop}
               onKeepTalking={speech.keepTalking}
             />,
@@ -342,13 +299,13 @@ export function NuroComposer({
           )
         : null}
 
-      {speech.listening ? (
+      {voiceBusy ? (
         <p className="flex items-center gap-2 px-2 text-xs font-medium text-primary">
           <span
             aria-hidden="true"
             className="size-2 animate-pulse rounded-full bg-primary motion-reduce:animate-none"
           />
-          Listening… take your time
+          {speech.listening ? "Listening… take your time" : "Understanding…"}
         </p>
       ) : speech.notice ? (
         <p className="px-2 text-xs text-muted-foreground">{VOICE_NOTICES[speech.notice]}</p>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ExternalLink, Leaf, LifeBuoy, Phone, User } from "lucide-react";
+import { ArrowRight, ExternalLink, Leaf, LifeBuoy, Phone, Square, User, Volume2 } from "lucide-react";
 
 import { getCrisisResources } from "@/lib/ai/crisis-resources";
 import { cn } from "@/lib/utils";
@@ -117,6 +117,7 @@ export function NuroMessageBubble({
   crisisContacts,
   crisisTone = "alert",
   isStreaming,
+  readAloud,
 }: {
   role: MessageRole;
   content: string;
@@ -127,8 +128,11 @@ export function NuroMessageBubble({
   crisisTone?: "alert" | "calm";
   /** Reply still arriving: shows typing dots until the first text. */
   isStreaming?: boolean;
+  /** "Read aloud" for this reply (Neuro's finished replies only). */
+  readAloud?: { speaking: boolean; onToggle: () => void };
 }) {
   const isNuro = role !== "USER";
+  const showReadAloud = isNuro && readAloud && !isStreaming && content.trim().length > 0;
 
   return (
     <div
@@ -183,10 +187,25 @@ export function NuroMessageBubble({
             {recommendations.some((rec) => rec.type === "PROFESSIONAL") ? <TeleManasLine /> : null}
           </div>
         ) : null}
-        {createdAt ? (
-          <span className="px-1 text-xs text-muted-foreground">
-            {formatMessageTime(createdAt)}
-          </span>
+        {createdAt || showReadAloud ? (
+          <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+            {createdAt ? <span>{formatMessageTime(createdAt)}</span> : null}
+            {showReadAloud ? (
+              <button
+                type="button"
+                onClick={readAloud.onToggle}
+                aria-pressed={readAloud.speaking}
+                className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-medium transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+              >
+                {readAloud.speaking ? (
+                  <Square className="size-3 fill-current" aria-hidden="true" />
+                ) : (
+                  <Volume2 className="size-3.5" aria-hidden="true" />
+                )}
+                {readAloud.speaking ? "Stop" : "Read aloud"}
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </div>

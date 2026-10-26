@@ -3,6 +3,7 @@ package com.neuronest.backend.payment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.Mac;
@@ -15,8 +16,8 @@ import java.util.HexFormat;
 /**
  * Checks the X-Razorpay-Signature header of a webhook delivery: Razorpay's HMAC-SHA256 of the raw request
  * body with the webhook secret (set in the Razorpay dashboard when the webhook is added), as hex, compared
- * in constant time. The secret comes only from the RAZORPAY_WEBHOOK_SECRET environment variable and is
- * never logged. Without it every delivery is refused.
+ * in constant time. The secret comes from RAZORPAY_WEBHOOK_SECRET (an environment variable, or
+ * .env.properties locally) and is never logged. Without it every delivery is refused.
  */
 @Component
 public class RazorpayWebhookVerifier {
@@ -26,15 +27,10 @@ public class RazorpayWebhookVerifier {
     private final String secret;
 
     @Autowired
-    public RazorpayWebhookVerifier() {
-        this(System.getenv("RAZORPAY_WEBHOOK_SECRET"));
+    public RazorpayWebhookVerifier(@Value("${razorpay.webhook-secret:}") String secret) {
+        this.secret = secret == null || secret.isBlank() ? null : secret.trim();
         log.info(isConfigured() ? "Razorpay webhook is configured."
                 : "Razorpay webhook is not configured (RAZORPAY_WEBHOOK_SECRET): webhook deliveries are refused.");
-    }
-
-    // With an explicit secret, for tests.
-    public RazorpayWebhookVerifier(String secret) {
-        this.secret = secret == null || secret.isBlank() ? null : secret.trim();
     }
 
     public boolean isConfigured() {

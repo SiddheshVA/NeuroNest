@@ -13,6 +13,7 @@ import {
   NuroWellnessPanelContent,
 } from "@/components/nuro/nuro-wellness-panel";
 import { usePersistentPanelOpen } from "@/components/nuro/nuro-panel-controls";
+import { NuroVoiceChoiceDialog } from "@/components/nuro/nuro-voice-choice-dialog";
 import {
   NuroApiError,
   deleteConversation,
@@ -28,6 +29,8 @@ import {
 import { useSaveNeuroSuggestion } from "@/lib/relaxation/use-relaxation-activity";
 import { createStreamReveal } from "@/lib/stream-reveal";
 import { useSpeechOutput } from "@/lib/voice/use-speech-output";
+import type { SpeechLanguageCode } from "@/lib/voice/voice-client";
+import { DEFAULT_NEURO_VOICE, type NeuroVoice } from "@/lib/voice/voice-prefs";
 import {
   readLastConversation,
   writeLastConversation,
@@ -117,7 +120,7 @@ export function NuroApp() {
   // Voice replies. Nothing is spoken while the mic is on, so Neuro's voice
   // never ends up in the user's transcript.
   const speechOutput = useSpeechOutput();
-  const { speakReply, stop: stopSpeaking } = speechOutput;
+  const { speakReply, stop: stopSpeaking, setVoice, voice: chosenVoice } = speechOutput;
   const listeningRef = useRef(false);
   const handleListeningChange = useCallback(
     (listening: boolean) => {
@@ -125,6 +128,35 @@ export function NuroApp() {
       if (listening) stopSpeaking();
     },
     [stopSpeaking],
+  );
+
+  // The first time voice is used (read-aloud or the mic), Neuro's voice is chosen
+  // once in a small dialog. The dialog itself only saves the voice; the action
+  // that asked for it then carries on. Turning read-aloud on carries on only if
+  // the user pressed Continue, so dismissing the dialog leaves it off.
+  const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
+  const afterVoiceChoiceRef = useRef<{ then: () => void; needsContinue: boolean } | null>(null);
+  const withVoiceChosen = useCallback(
+    (then: () => void, needsContinue = false) => {
+      if (chosenVoice) {
+        then();
+        return;
+      }
+      afterVoiceChoiceRef.current = { then, needsContinue };
+      setVoiceDialogOpen(true);
+    },
+    [chosenVoice],
+  );
+  const finishVoiceChoice = useCallback(
+    (voice: NeuroVoice, confirmed: boolean) => {
+      stopSpeaking();
+      setVoice(voice);
+      setVoiceDialogOpen(false);
+      const pending = afterVoiceChoiceRef.current;
+      afterVoiceChoiceRef.current = null;
+      if (pending && (confirmed || !pending.needsContinue)) pending.then();
+    },
+    [setVoice, stopSpeaking],
   );
 
   // From MUI `md` up both side panels sit inline and remember whether they're
@@ -355,7 +387,11 @@ export function NuroApp() {
   const saveNeuroSuggestion = useSaveNeuroSuggestion();
 
   const handleSend = useCallback(
-    async (explicitText?: string) => {
+    async (
+      explicitText?: string,
+      // The language a mic message was spoken in, so its reply (if read aloud) matches it.
+      spokenLanguage?: SpeechLanguageCode,
+    ) => {
       const text = (explicitText ?? draft).trim();
       if (!text || isSending) return;
 
@@ -421,7 +457,8 @@ export function NuroApp() {
         const canSpeak = () => stillOnThisChat() && !listeningRef.current;
         if (result.outcome === "done") {
           // Speaking starts as soon as the whole reply is in; the typewriter keeps going.
-          if (canSpeak()) speakReply(reveal.received(), spokenCrisisContacts);
+          // Spoken only while "Read replies aloud" is on (checked inside speakReply).
+          if (canSpeak()) speakReply(reveal.received(), spokenCrisisContacts, spokenLanguage);
           await reveal.finished();
           // Recommendations only once the reply is fully shown, and only if one was given.
           updateAssistant({
@@ -565,26 +602,35 @@ export function NuroApp() {
         sendError={sendError}
         draft={draft}
         onDraftChange={setDraft}
-        onSend={(viaVoice) => {
-          // Speaking to Neuro switches spoken replies on; it then stays as the user leaves it.
-          if (viaVoice) speechOutput.setEnabled(true);
-          void handleSend();
+        onSend={(viaVoice, spokenLanguage) => {
+          // Typed or spoken, a reply is read aloud only if the user turned "Read replies
+          // aloud" on. The toggle is never changed here.
+          void handleSend(undefined, viaVoice ? spokenLanguage : undefined);
         }}
         onListeningChange={handleListeningChange}
+        onBeforeListening={(start) => withVoiceChosen(start)}
         readAloud={
           speechOutput.supported
             ? {
                 enabled: speechOutput.enabled,
                 speaking: speechOutput.speaking,
-                onToggle: () => speechOutput.setEnabled(!speechOutput.enabled),
+                onToggle: () => {
+                  if (speechOutput.enabled) speechOutput.setEnabled(false);
+                  else withVoiceChosen(() => speechOutput.setEnabled(true), true);
+                },
                 onStopSpeaking: stopSpeaking,
-                voices: speechOutput.voices,
-                voiceName: speechOutput.voiceName,
-                autoVoice: speechOutput.autoVoice,
-                onVoiceChange: speechOutput.setVoiceName,
+                voice: chosenVoice ?? DEFAULT_NEURO_VOICE,
+                onVoiceChange: setVoice,
                 // Never speak into an open mic.
-                onPreviewVoice: (name) => {
-                  if (!listeningRef.current) speechOutput.preview(name);
+                onPreviewVoice: (voice) => {
+                  if (!listeningRef.current) void speechOutput.preview(voice);
+                },
+                speakingMessageId: speechOutput.speakingMessageId,
+                // Plays only because the user tapped it, so the toggle doesn't apply.
+                onReadMessage: (message) => {
+                  if (!listeningRef.current) {
+                    speechOutput.speakMessage(message.id, message.content, message.crisisContacts);
+                  }
                 },
               }
             : undefined
@@ -595,6 +641,12 @@ export function NuroApp() {
         suggestionsOpen={suggestionsOpen}
         onOpenSuggestions={() => setSuggestionsOpen(true)}
         bannerContacts={bannerContacts}
+      />
+
+      <NuroVoiceChoiceDialog
+        open={voiceDialogOpen}
+        onPreview={(voice) => void speechOutput.preview(voice)}
+        onDone={finishVoiceChoice}
       />
 
       {isDesktop ? (

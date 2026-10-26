@@ -144,6 +144,8 @@ abstract class SecuritySuiteBase {
     @MockitoBean
     ChatService chatService;
     @MockitoBean
+    com.neuronest.backend.voice.VoiceService voiceService;
+    @MockitoBean
     AssessmentService assessmentService;
     @MockitoBean
     MemoryRepository memoryRepository;

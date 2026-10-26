@@ -3,19 +3,15 @@
  * guarded: when storage is blocked the defaults apply and nothing breaks.
  */
 
-export type RecognitionLang = "en-IN" | "hi-IN" | "mr-IN";
-
-export const RECOGNITION_LANGS: { value: RecognitionLang; label: string; short: string }[] = [
-  // en-IN copes with Hinglish (Hindi words in Latin script) as well.
-  { value: "en-IN", label: "English (India)", short: "EN" },
-  { value: "hi-IN", label: "हिन्दी", short: "हि" },
-  { value: "mr-IN", label: "मराठी", short: "मरा" },
-];
-
-const LANG_KEY = "nuronest:voice-lang";
-const READ_ALOUD_KEY = "nuronest:voice-read-aloud";
-const NOTE_KEY = "nuronest:voice-note-dismissed";
-const VOICE_NAME_KEY = "nuronest:voice-name";
+// The older "nuronest:voice-lang" key (a manual voice-input language) is no longer read:
+// the language is now detected from the recording.
+// v2: an earlier version switched read-aloud on by itself after using the mic and saved
+// that, so the old "nuronest:voice-read-aloud" key is no longer read: everyone starts off.
+const READ_ALOUD_KEY = "nuronest:voice-read-aloud-v2";
+// v2: the privacy note changed when recordings started going to the backend, so it shows once more.
+const NOTE_KEY = "nuronest:voice-note-dismissed-v2";
+// The older "nuronest:voice-name" key (a browser voice) is no longer read.
+const NEURO_VOICE_KEY = "nuronest:neuro-voice";
 
 function read(key: string): string | null {
   try {
@@ -33,20 +29,6 @@ function write(key: string, value: string) {
   }
 }
 
-// Also kept in memory, so spoken replies follow the selection even when storage is blocked.
-let currentRecognitionLang: RecognitionLang | null = null;
-
-export function readRecognitionLang(): RecognitionLang {
-  if (currentRecognitionLang) return currentRecognitionLang;
-  const stored = read(LANG_KEY);
-  return RECOGNITION_LANGS.find((option) => option.value === stored)?.value ?? "en-IN";
-}
-
-export function writeRecognitionLang(lang: RecognitionLang) {
-  currentRecognitionLang = lang;
-  write(LANG_KEY, lang);
-}
-
 export function readReadAloud(): boolean {
   return read(READ_ALOUD_KEY) === "on";
 }
@@ -55,18 +37,29 @@ export function writeReadAloud(on: boolean) {
   write(READ_ALOUD_KEY, on ? "on" : "off");
 }
 
-/** The chosen reply voice's name, or null for the automatic choice. */
-export function readVoiceName(): string | null {
-  return read(VOICE_NAME_KEY) || null;
+/** Neuro's spoken voice (Sarvam). Only these two are offered. */
+export type NeuroVoice = "aarti" | "anand";
+
+export const NEURO_VOICES: { value: NeuroVoice; label: string; detail: string }[] = [
+  { value: "aarti", label: "Aarti", detail: "Warm, calm female voice" },
+  { value: "anand", label: "Anand", detail: "Gentle, steady male voice" },
+];
+
+export const DEFAULT_NEURO_VOICE: NeuroVoice = "aarti";
+
+// Also kept in memory, so the choice holds for this visit even when storage is blocked.
+let currentNeuroVoice: NeuroVoice | null = null;
+
+/** The voice the user chose, or null before they have chosen one. */
+export function readNeuroVoice(): NeuroVoice | null {
+  if (currentNeuroVoice) return currentNeuroVoice;
+  const stored = read(NEURO_VOICE_KEY);
+  return NEURO_VOICES.find((option) => option.value === stored)?.value ?? null;
 }
 
-export function writeVoiceName(name: string | null) {
-  try {
-    if (name) window.localStorage.setItem(VOICE_NAME_KEY, name);
-    else window.localStorage.removeItem(VOICE_NAME_KEY);
-  } catch {
-    // Storage unavailable: the choice just lasts for this visit.
-  }
+export function writeNeuroVoice(voice: NeuroVoice) {
+  currentNeuroVoice = voice;
+  write(NEURO_VOICE_KEY, voice);
 }
 
 export function readVoiceNoteDismissed(): boolean {

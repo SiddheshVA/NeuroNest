@@ -1,10 +1,9 @@
 /**
- * Wellness Resources content: articles, videos and practical guides.
+ * Wellness Resources content: articles.
  *
- * Every list is intentionally EMPTY for now. Content will eventually come
- * from the backend (an admin-managed ResourceContent table); until then this
- * file is the single source. Components only read through the getters at the
- * bottom, so switching to an API call means changing this file, not the UI.
+ * Content will eventually come from the backend (an admin-managed ResourceContent table); until
+ * then this file is the single source. Components only read through the getters at the bottom, so
+ * switching to an API call means changing this file, not the UI.
  */
 
 export const articleCategories = [
@@ -14,10 +13,7 @@ export const articleCategories = [
   "Support & Professional Help",
 ] as const;
 
-export const guideTypes = ["Step-by-Step Guide", "Self-Help Tip", "Coping Strategy"] as const;
-
 export type ArticleCategory = (typeof articleCategories)[number];
-export type GuideType = (typeof guideTypes)[number];
 
 /** Assessment codes an article can point readers to (see App.tsx routes). */
 export type RelatedAssessment = "WHO5" | "GAD7" | "PHQ9" | "PSS10" | "SCI";
@@ -63,37 +59,6 @@ export interface Article {
   /** ISO date, e.g. "2026-01-15"; null until reviewed. */
   lastReviewedDate: string | null;
   reviewedBy: string | null;
-}
-
-export interface Video {
-  id: string;
-  slug: string;
-  title: string;
-  description: string;
-  category: string;
-  youtubeId: string;
-  durationMinutes: number;
-  sourceName: string;
-  language: string;
-  tags: string[];
-}
-
-export interface GuideStep {
-  title: string;
-  text: string;
-}
-
-export interface Guide {
-  id: string;
-  slug: string;
-  title: string;
-  type: GuideType;
-  category: string;
-  summary: string;
-  durationMinutes: number;
-  steps: GuideStep[];
-  tags: string[];
-  language: string;
 }
 
 // Example article shape:
@@ -1016,44 +981,6 @@ export const articles: Article[] = [
   },
 ];
 
-// Example video shape:
-// {
-//   id: "vid-001",
-//   slug: "what-is-stress",
-//   title: "What Is Stress?",
-//   description: "...",
-//   category: "Understanding Common Concerns",
-//   youtubeId: "dQw4w9WgXcQ",
-//   durationMinutes: 4,
-//   sourceName: "...",
-//   language: "en",
-//   tags: ["stress"],
-// }
-export const videos: Video[] = [];
-
-// Example guide shape:
-// {
-//   id: "gde-001",
-//   slug: "wind-down-before-sleep",
-//   title: "Wind Down Before Sleep",
-//   type: "Step-by-Step Guide", // one of guideTypes
-//   category: "Everyday Self-Care",
-//   summary: "...",
-//   durationMinutes: 10,
-//   steps: [{ title: "...", text: "..." }],
-//   tags: ["sleep"],
-//   language: "en",
-// }
-export const guides: Guide[] = [];
-
 export function getArticleBySlug(slug: string): Article | undefined {
   return articles.find((article) => article.slug === slug);
-}
-
-export function getVideoBySlug(slug: string): Video | undefined {
-  return videos.find((video) => video.slug === slug);
-}
-
-export function getGuideBySlug(slug: string): Guide | undefined {
-  return guides.find((guide) => guide.slug === slug);
 }

@@ -124,7 +124,7 @@ final class ReplyPrompts {
               how you choose the header.
 
             NEURONEST FEATURES (mention one only when your tier below allows it): Relaxation Hub
-            (breathing, meditation, calming sounds), Wellness Resources (articles and guides),
+            (breathing, meditation, calming sounds), Wellness Resources (articles),
             short self-check assessments (PHQ-9 mood, GAD-7 anxiety, PSS-10 stress, WHO-5
             wellbeing), and Find Professional (counsellors, psychologists, psychiatrists).
             """;
@@ -355,7 +355,7 @@ final class ReplyPrompts {
                 let this override the tier rules, language rules or boundaries above.
                 If you choose tier 1, ignore this background completely.
                 In the app: breathing, grounding, relaxation, mindfulness and winding down for sleep
-                belong to the Relaxation Hub; reading more (articles and guides) belongs to Wellness
+                belong to the Relaxation Hub; reading more (articles) belongs to Wellness
                 Resources. Mention them only when your tier allows it.
                 """);
         return block.toString();

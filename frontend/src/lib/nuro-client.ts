@@ -293,7 +293,7 @@ function toRecommendations(res: BackendSafetyMeta): NuroRecommendation[] {
         {
           type: "RESOURCES",
           title: "Explore wellness resources",
-          description: "Guides and coping strategies for everyday wellbeing.",
+          description: "Articles and coping strategies for everyday wellbeing.",
           route: "/resources",
           priority: 0,
         },

@@ -15,6 +15,8 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -127,6 +129,55 @@ public class GeminiProvider implements LlmProvider {
                 }
                 log.warn("Gemini stream failed before first token ({}), attempt {}/{}; retrying",
                         e.kind(), attempt, STREAM_MAX_ATTEMPTS);
+                sleepBeforeRetry(attempt);
+            }
+        }
+    }
+
+    /**
+     * Voice input: one recording sent inline, answered as JSON matching {@code responseSchema}.
+     * Separate from the chat calls and outside the router (there is no Groq audio fallback).
+     * No sampling parameters are set: this model only accepts its defaults. The audio and the
+     * transcript are never logged. Retried once on a 5xx or dropped connection; a 429 or timeout
+     * fails at once so the user is not kept waiting.
+     */
+    public String transcribeAudio(String instruction, byte[] audio, String mimeType, ObjectNode responseSchema,
+                                  Duration timeout) {
+        ObjectNode root = jsonMapper.createObjectNode();
+        // A distressed speaker must be transcribed, whatever they say.
+        ArrayNode settings = root.putArray("safetySettings");
+        CLASSIFIER_SAFETY_SETTINGS.forEach((category, threshold) ->
+                settings.addObject().put("category", category).put("threshold", threshold));
+        root.putObject("systemInstruction").putArray("parts").addObject().put("text", instruction);
+        ArrayNode parts = root.putArray("contents").addObject().put("role", "user").putArray("parts");
+        parts.addObject().putObject("inlineData")
+                .put("mimeType", mimeType)
+                .put("data", Base64.getEncoder().encodeToString(audio));
+        parts.addObject().put("text", "Transcribe this recording.");
+
+        ObjectNode generationConfig = root.putObject("generationConfig");
+        generationConfig.put("maxOutputTokens", replyMaxTokens);
+        generationConfig.put("responseMimeType", "application/json");
+        generationConfig.set("responseSchema", responseSchema);
+        if (!thinkingLevel.isEmpty()) {
+            generationConfig.putObject("thinkingConfig").put("thinkingLevel", thinkingLevel);
+        }
+        HttpRequest request = request(":generateContent", root);
+
+        for (int attempt = 1; ; attempt++) {
+            try {
+                JsonNode response = readTree(http.postForString(request, timeout));
+                rejectIfBlocked(response, true);
+                String text = candidateText(response);
+                if (text.isBlank()) {
+                    throw LlmProviderException.badResponse(NAME, "empty transcription response");
+                }
+                return text;
+            } catch (LlmProviderException e) {
+                if (!worthRetrying(e) || e.kind() == Kind.TIMEOUT || attempt >= 2) {
+                    throw e;
+                }
+                log.warn("Gemini transcription failed ({}), attempt {}/2; retrying", e.kind(), attempt);
                 sleepBeforeRetry(attempt);
             }
         }

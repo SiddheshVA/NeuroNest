@@ -31,7 +31,9 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.jpa.hibernate.ddl-auto=create",
         "app.jwt.secret=context-test-user-cookie-secret-0123456789abcdef",
         "GEMINI_API_KEY=context-test-not-a-key",
-        "JWT_SECRET=context-test-user-cookie-secret-0123456789abcdef"})
+        "JWT_SECRET=context-test-user-cookie-secret-0123456789abcdef",
+        "CLERK_JWKS_URL=https://clerk.context-test.invalid/.well-known/jwks.json",
+        "CLERK_ISSUER=https://clerk.context-test.invalid"})
 class BackendApplicationTests {
 
     private static final EmbeddedPostgres POSTGRES = start();

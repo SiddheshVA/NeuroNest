@@ -23,6 +23,8 @@ import {
   NuroTypingIndicator,
 } from "@/components/nuro/nuro-message";
 import type { CrisisContact, NuroMessage } from "@/lib/nuro-client";
+import type { SpeechLanguageCode } from "@/lib/voice/voice-client";
+import type { NeuroVoice } from "@/lib/voice/voice-prefs";
 
 const SUGGESTED_PROMPTS = [
   "I'm feeling anxious",
@@ -46,6 +48,7 @@ export function NuroConversation({
   onDraftChange,
   onSend,
   onListeningChange,
+  onBeforeListening,
   readAloud,
   onSuggestedPrompt,
   historyOpen,
@@ -60,21 +63,27 @@ export function NuroConversation({
   sendError: string | null;
   draft: string;
   onDraftChange: (value: string) => void;
-  /** `viaVoice`: the message was dictated with the mic. */
-  onSend: (viaVoice: boolean) => void;
+  /**
+   * `viaVoice`: the message was dictated with the mic; `spokenLanguage`: the
+   * language it was spoken in, for reading the reply aloud.
+   */
+  onSend: (viaVoice: boolean, spokenLanguage?: SpeechLanguageCode) => void;
   onListeningChange: (listening: boolean) => void;
-  /** "Read replies aloud" state; omitted when the browser can't speak. */
+  /** Runs before the mic starts (e.g. to ask for a voice first); calls `start` when ready. */
+  onBeforeListening?: (start: () => void) => void;
+  /** "Read replies aloud" state; omitted when the browser can't play audio. */
   readAloud?: {
     enabled: boolean;
     speaking: boolean;
     onToggle: () => void;
     onStopSpeaking: () => void;
-    voices: SpeechSynthesisVoice[];
-    /** The chosen voice's name, or null for the automatic choice. */
-    voiceName: string | null;
-    autoVoice: SpeechSynthesisVoice | null;
-    onVoiceChange: (name: string | null) => void;
-    onPreviewVoice: (name: string | null) => void;
+    voice: NeuroVoice;
+    onVoiceChange: (voice: NeuroVoice) => void;
+    onPreviewVoice: (voice: NeuroVoice) => void;
+    /** The message being read through its own "Read aloud" button, if any. */
+    speakingMessageId: string | null;
+    /** "Read aloud" on one reply: reads it, or stops it if it is being read. */
+    onReadMessage: (message: NuroMessage) => void;
   };
   onSuggestedPrompt: (text: string) => void;
   /** Whether the chat history panel is showing; its reopen button shows only when it isn't. */
@@ -176,9 +185,7 @@ export function NuroConversation({
           ) : null}
           {readAloud ? (
             <NuroVoicePicker
-              voices={readAloud.voices}
-              selectedName={readAloud.voiceName}
-              autoVoice={readAloud.autoVoice}
+              selected={readAloud.voice}
               onSelect={readAloud.onVoiceChange}
               onPreview={readAloud.onPreviewVoice}
             />
@@ -244,6 +251,14 @@ export function NuroConversation({
                   crisisContacts={message.crisisContacts}
                   crisisTone={message.crisisTone}
                   isStreaming={message.isStreaming}
+                  readAloud={
+                    readAloud
+                      ? {
+                          speaking: readAloud.speakingMessageId === message.id,
+                          onToggle: () => readAloud.onReadMessage(message),
+                        }
+                      : undefined
+                  }
                 />
               ))
             )}
@@ -270,6 +285,7 @@ export function NuroConversation({
             onChange={onDraftChange}
             onSend={onSend}
             onListeningChange={onListeningChange}
+            onBeforeListening={onBeforeListening}
             overlayHost={overlayHost}
             disabled={isSending}
           />

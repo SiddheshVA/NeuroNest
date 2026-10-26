@@ -1,11 +1,7 @@
-import { useRef, type CSSProperties } from "react";
+import { type CSSProperties } from "react";
 import MicRounded from "@mui/icons-material/MicRounded";
 
 import { cn } from "@/lib/utils";
-import { useMicLevel } from "@/lib/voice/use-mic-level";
-import type { SpeechCountdown } from "@/lib/voice/use-speech-input";
-
-const TRANSCRIPT_TAIL = 220;
 
 /** Rings around the mic, from inner to outer: size in px and how far each grows with the voice. */
 const RINGS = [
@@ -16,28 +12,29 @@ const RINGS = [
 
 /**
  * Shown over the message area while the mic is on: a mic in pulsing rings that
- * follow the voice, the words so far, and (during the pause before auto-send)
- * a "Keep talking" button.
+ * follow the voice and, during the pause before auto-send, a "Keep talking"
+ * button. Once recording ends it says "Understanding…" while the words are
+ * worked out.
  */
 export function NuroListeningOverlay({
-  transcript,
-  interim,
-  countdown,
+  understanding,
+  levelLive,
+  levelRef,
+  pausing,
   onStop,
   onKeepTalking,
 }: {
-  /** Text finalised during this recording. */
-  transcript: string;
-  /** Words still being recognised. */
-  interim: string;
-  countdown: SpeechCountdown | null;
+  /** The recording has ended and is being turned into text. */
+  understanding: boolean;
+  /** The rings follow the voice level; otherwise they pulse calmly. */
+  levelLive: boolean;
+  /** Receives the element whose `--voice-level` follows the mic. */
+  levelRef: (element: HTMLElement | null) => void;
+  pausing: boolean;
   onStop: () => void;
   onKeepTalking: () => void;
 }) {
-  const levelRef = useRef<HTMLDivElement>(null);
-  const live = useMicLevel(levelRef);
-
-  const spoken = transcript.length > TRANSCRIPT_TAIL ? `…${transcript.slice(-TRANSCRIPT_TAIL)}` : transcript;
+  const live = levelLive && !understanding;
 
   return (
     <div className="pointer-events-auto absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-background/75 px-6 text-center backdrop-blur-[1px]">
@@ -68,28 +65,21 @@ export function NuroListeningOverlay({
         <button
           type="button"
           onClick={onStop}
+          disabled={understanding}
           aria-label="Stop listening"
-          className="relative flex size-20 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-colors outline-none hover:bg-primary/90 focus-visible:ring-4 focus-visible:ring-ring/50"
+          className="relative flex size-20 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-colors outline-none hover:bg-primary/90 focus-visible:ring-4 focus-visible:ring-ring/50 disabled:cursor-default disabled:hover:bg-primary"
         >
           <MicRounded sx={{ fontSize: 36 }} />
         </button>
       </div>
 
-      <p className="text-sm font-medium text-primary">Listening… take your time</p>
-
-      <p className="max-w-xl text-base leading-relaxed text-foreground" aria-hidden="true">
-        {spoken}
-        {interim ? (
-          <span className="text-muted-foreground">
-            {spoken ? " " : ""}
-            {interim}
-          </span>
-        ) : null}
+      <p className="text-sm font-medium text-primary">
+        {understanding ? "Understanding…" : "Listening… take your time"}
       </p>
 
       {/* Fixed height so the layout doesn't jump when the pause controls appear. */}
       <div className="flex h-9 items-center gap-3">
-        {countdown ? (
+        {pausing && !understanding ? (
           <>
             <span className="text-xs text-muted-foreground">Pausing…</span>
             <button
