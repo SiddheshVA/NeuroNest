@@ -217,8 +217,9 @@ class BackgroundJobsTest {
     private BackgroundJobs newJobs() {
         MailRetryScheduler retries = mock(MailRetryScheduler.class);
         BookingNotificationListener listener = new BookingNotificationListener(bookings, professionals, directory,
-                new BookingEmails(settings), sender, settings, retries, new SessionMessages(settings),
-                new NotificationService(List.of(new EmailChannel(sender, settings)), retries));
+                new BookingEmails(settings), sender, settings, retries, new SessionMessages(settings, new com.neuronest.backend.meeting.MeetingWindow(5, clock)),
+                new NotificationService(List.of(new EmailChannel(sender, settings)), retries),
+                mock(com.neuronest.backend.meeting.MeetingLinkService.class));
         ApplicationEventPublisher publisher = event -> {
             published.add((BookingEvent) event);
             listener.onBookingEvent((BookingEvent) event);

@@ -9,6 +9,8 @@ import { BackLink } from "@/components/navigation/back-link";
 import { ConfirmDialog, ErrorNotice, LoadingBlock, primaryButtonClass, secondaryButtonClass } from "@/components/pro/pro-ui";
 import { SessionReviewControl } from "@/components/reviews/session-review-control";
 import { CrisisResourcesBox } from "@/components/shared/crisis-resources-box";
+import { JoinSessionButton } from "@/components/shared/join-session-button";
+import { awaitingVideoLink, isVideoSession, LINK_POLL_MS, LINK_SETTING_UP_MESSAGE } from "@/lib/join-session";
 import {
   acceptProposal,
   BookingApiError,
@@ -17,6 +19,7 @@ import {
   formatAmount,
   getBookingSummary,
   getMyBookings,
+  joinBooking,
   requestedMethodLabel,
   STATUS_LABELS,
   type AwaitingPaymentBooking,
@@ -131,18 +134,12 @@ function StatusText({ booking: b, status }: { booking: BookingView; status: Book
           ) : null}
           {b.meetingMethod === "PHONE" ? (
             <p>The professional will call you on the phone number you gave.</p>
-          ) : b.meetingMethod === "VIDEO" && b.meetingLink?.startsWith("https://") ? (
-            <p>
-              Video call link:{" "}
-              <a
-                href={b.meetingLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium break-all text-primary underline underline-offset-4"
-              >
-                {b.meetingLink}
-              </a>
-            </p>
+          ) : isVideoSession(b) ? (
+            b.videoLinkReady ? (
+              <JoinSessionButton join={() => joinBooking(b.id)} className="mt-1" />
+            ) : (
+              <p role="status" className="text-muted-foreground">{LINK_SETTING_UP_MESSAGE}</p>
+            )
           ) : b.meetingMethod === "IN_PERSON" && b.meetingAddress ? (
             <p className="whitespace-pre-line">Address: {b.meetingAddress}</p>
           ) : null}
@@ -469,6 +466,14 @@ export default function AppointmentsPage() {
       cancelled = true;
     };
   }, [page, reloadCount, navigate]);
+
+  // While a confirmed video session's link is being set up, check again every 20 seconds (quietly: no spinner).
+  const waitingForLink = state.status === "ready" && state.data.items.some((b) => awaitingVideoLink(b));
+  useEffect(() => {
+    if (!waitingForLink) return;
+    const timer = window.setInterval(() => setReloadCount((n) => n + 1), LINK_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [waitingForLink]);
 
   // Only bookings whose deadline has not passed can still be paid.
   const payable = awaiting.filter((a) => Date.parse(a.paymentDueAt) > now);

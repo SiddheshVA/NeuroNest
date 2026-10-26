@@ -5,7 +5,6 @@ import com.neuronest.backend.booking.BookingDtos.PaymentOrder;
 import com.neuronest.backend.booking.BookingDtos.VerifyPaymentRequest;
 import com.neuronest.backend.config.ApiValidationException;
 import com.neuronest.backend.config.ConflictException;
-import com.neuronest.backend.notification.BookingEvent;
 import com.neuronest.backend.payment.Payment;
 import com.neuronest.backend.payment.PaymentRepository;
 import com.neuronest.backend.payment.PaymentStatus;
@@ -16,7 +15,6 @@ import com.neuronest.backend.professional.ProfessionalRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,7 +50,7 @@ public class BookingPaymentService {
     private final PaymentRepository payments;
     private final ProfessionalRepository professionals;
     private final RazorpayGateway gateway;
-    private final ApplicationEventPublisher events;
+    private final BookingService bookingService;
     private final PaymentAmounts amounts;
     private final CommissionSplit commission;
     private final Clock clock;
@@ -60,19 +58,19 @@ public class BookingPaymentService {
     @Autowired
     public BookingPaymentService(BookingRepository bookings, PaymentRepository payments,
                                  ProfessionalRepository professionals, RazorpayGateway gateway,
-                                 ApplicationEventPublisher events, PaymentAmounts amounts, CommissionSplit commission) {
-        this(bookings, payments, professionals, gateway, events, amounts, commission,
+                                 BookingService bookingService, PaymentAmounts amounts, CommissionSplit commission) {
+        this(bookings, payments, professionals, gateway, bookingService, amounts, commission,
                 Clock.system(AvailabilityService.ZONE));
     }
 
     BookingPaymentService(BookingRepository bookings, PaymentRepository payments, ProfessionalRepository professionals,
-                          RazorpayGateway gateway, ApplicationEventPublisher events, PaymentAmounts amounts,
+                          RazorpayGateway gateway, BookingService bookingService, PaymentAmounts amounts,
                           CommissionSplit commission, Clock clock) {
         this.bookings = bookings;
         this.payments = payments;
         this.professionals = professionals;
         this.gateway = gateway;
-        this.events = events;
+        this.bookingService = bookingService;
         this.amounts = amounts;
         this.commission = commission;
         this.clock = clock;
@@ -188,8 +186,10 @@ public class BookingPaymentService {
                 });
     }
 
-    // Marks the locked payment PAID and, if the booking is still held, CONFIRMED. Returns the confirmed
-    // booking, or null when the payment arrived after the hold ended (kept PAID for a manual refund).
+    // Marks the locked payment PAID and, if the booking is still held and its session has not started,
+    // CONFIRMED. Returns the confirmed booking, or null when the payment arrived after the hold ended or once
+    // the session had already started (a last-minute slot): kept PAID for a manual refund either way, and the
+    // admin's refunds-needed list shows it (a PAID payment whose booking is not CONFIRMED).
     private Booking markPaidAndConfirm(Booking b, Payment payment, String paymentId) {
         Instant now = clock.instant();
         // The commission is fixed now, at the configured percent, and stored with the payment.
@@ -202,11 +202,18 @@ public class BookingPaymentService {
                     paymentId, payment.getRazorpayOrderId(), b.getId(), b.getStatus().name());
             return null;
         }
+        if (b.getPreferredDatetime() != null && !now.isBefore(b.getPreferredDatetime())) {
+            // The hold is capped at the slot's start, so this is a payment that came in after the hold ended,
+            // during the hold-release grace period. The hold-release job releases the booking.
+            log.warn("MANUAL REFUND NEEDED: payment {} (order {}) for booking {} arrived after its session had started",
+                    paymentId, payment.getRazorpayOrderId(), b.getId());
+            return null;
+        }
         b.setStatus(BookingStatus.CONFIRMED);
         Booking saved = bookings.saveAndFlush(b);
         // Only here, where the booking actually becomes CONFIRMED: a repeated verify or webhook returns
-        // earlier, so the confirmation emails go out once (after the commit, BookingNotificationListener).
-        events.publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, saved.getId()));
+        // earlier, so the Meet link and the confirmation emails are handled once (after the commit).
+        bookingService.onPaymentConfirmed(saved.getId());
         return saved;
     }
 

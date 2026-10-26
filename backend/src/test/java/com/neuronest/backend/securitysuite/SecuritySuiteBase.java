@@ -102,7 +102,10 @@ import java.util.UUID;
         AdminProfessionalService.class, AdminVerificationService.class, AdminBookingService.class,
         AdminBookingQueries.class, AdminSuspensionService.class, ReviewService.class,
         ProPhotoService.class, CloudinaryClient.class, RazorpayWebhookService.class, RazorpayWebhookVerifier.class,
-        ProBlockedSlotService.class,
+        ProBlockedSlotService.class, com.neuronest.backend.meeting.MeetingLinkService.class,
+        com.neuronest.backend.meeting.MeetingJoinService.class, com.neuronest.backend.meeting.MeetingWindow.class,
+        com.neuronest.backend.meeting.MeetingLinkRecovery.class, com.neuronest.backend.notification.SessionMessages.class,
+        com.neuronest.backend.notification.MailSettings.class,
         SecuritySuiteBase.SuiteBeans.class})
 abstract class SecuritySuiteBase {
 
@@ -156,6 +159,14 @@ abstract class SecuritySuiteBase {
     // test stubs isConfigured().
     @MockitoBean
     RazorpayGateway razorpay;
+    // Google Meet is never called: every Meet API call is a mock that a test stubs or verifies.
+    @MockitoBean
+    com.neuronest.backend.meeting.GoogleMeetService googleMeet;
+    // No email is sent: tests check what would be sent.
+    @MockitoBean
+    com.neuronest.backend.notification.NotificationService notifications;
+    @Autowired
+    com.neuronest.backend.meeting.MeetingLinkRecovery meetingLinkRecovery;
 
     @Autowired
     MockMvc mvc;

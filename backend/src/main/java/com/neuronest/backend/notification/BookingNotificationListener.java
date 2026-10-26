@@ -2,6 +2,7 @@ package com.neuronest.backend.notification;
 
 import com.neuronest.backend.booking.Booking;
 import com.neuronest.backend.booking.BookingRepository;
+import com.neuronest.backend.meeting.MeetingLinkService;
 import com.neuronest.backend.notification.BookingEmails.BookingEmail;
 import com.neuronest.backend.professional.Professional;
 import com.neuronest.backend.professional.ProfessionalRepository;
@@ -43,21 +44,24 @@ public class BookingNotificationListener {
     private final MailRetryScheduler retries;
     private final SessionMessages sessionMessages;
     private final NotificationService notifications;
+    private final MeetingLinkService meetingLinks;
     private final Clock clock;
 
     @Autowired
     public BookingNotificationListener(BookingRepository bookings, ProfessionalRepository professionals,
                                        PublicProfessionalService directory, BookingEmails emails, EmailSender sender,
                                        MailSettings settings, MailRetryScheduler retries,
-                                       SessionMessages sessionMessages, NotificationService notifications) {
+                                       SessionMessages sessionMessages, NotificationService notifications,
+                                       MeetingLinkService meetingLinks) {
         this(bookings, professionals, directory, emails, sender, settings, retries, sessionMessages, notifications,
-                Clock.systemUTC());
+                meetingLinks, Clock.systemUTC());
     }
 
     BookingNotificationListener(BookingRepository bookings, ProfessionalRepository professionals,
                                 PublicProfessionalService directory, BookingEmails emails, EmailSender sender,
                                 MailSettings settings, MailRetryScheduler retries,
-                                SessionMessages sessionMessages, NotificationService notifications, Clock clock) {
+                                SessionMessages sessionMessages, NotificationService notifications,
+                                MeetingLinkService meetingLinks, Clock clock) {
         this.bookings = bookings;
         this.professionals = professionals;
         this.directory = directory;
@@ -67,6 +71,7 @@ public class BookingNotificationListener {
         this.retries = retries;
         this.sessionMessages = sessionMessages;
         this.notifications = notifications;
+        this.meetingLinks = meetingLinks;
         this.clock = clock;
     }
 
@@ -78,6 +83,17 @@ public class BookingNotificationListener {
 
     void handle(BookingEvent event) {
         BookingEvent.Type type = event.type();
+        // A confirmed video session gets its Meet space first (RESTRICTED until its time window); a failure
+        // only leaves it without one (flagged for a manual link). A cancelled one has its space closed.
+        if (type == BookingEvent.Type.CONFIRMED) {
+            try {
+                meetingLinks.ensureLink(event.bookingId());
+            } catch (RuntimeException e) {
+                log.warn("Meeting link step failed ({}): {}", type, e.getClass().getName());
+            }
+        } else if (type == BookingEvent.Type.CANCELLED_BY_USER || type == BookingEvent.Type.CLOSED_BY_ADMIN) {
+            meetingLinks.closeSpace(event.bookingId());
+        }
         try {
             Optional<Booking> booking = bookings.findById(event.bookingId());
             Optional<Professional> professional = booking.flatMap(b -> professionals.findById(b.getProfessionalId()));

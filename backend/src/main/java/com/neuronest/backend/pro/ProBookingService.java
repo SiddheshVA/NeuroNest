@@ -10,6 +10,7 @@ import com.neuronest.backend.config.ApiValidationException;
 import com.neuronest.backend.config.ConflictException;
 import com.neuronest.backend.pro.ProBookingDtos.ConfirmRequest;
 import com.neuronest.backend.pro.ProBookingDtos.DeclineRequest;
+import com.neuronest.backend.pro.ProBookingDtos.MeetingLinkRequest;
 import com.neuronest.backend.pro.ProBookingDtos.ProBookingPage;
 import com.neuronest.backend.pro.ProBookingDtos.ProBookingSummary;
 import com.neuronest.backend.pro.ProBookingDtos.ProBookingView;
@@ -243,12 +244,11 @@ public class ProBookingService {
         }
     }
 
-    // The same rules as a user's booking: one of the professional's own slots, 24 hours to 60 days ahead,
-    // not taken by an AWAITING_PAYMENT or CONFIRMED booking.
+    // The same rules as a user's booking: one of the professional's own slots, from the earliest bookable
+    // start (SlotService.earliestStart) to 60 days ahead, not taken by an AWAITING_PAYMENT or CONFIRMED booking.
     private void requireFreeSlot(Professional p, Instant start, ZonedDateTime now) {
-        if (start.isBefore(now.plusHours(AvailabilityService.MIN_NOTICE_HOURS).toInstant())) {
-            throw new ApiValidationException("proposedSlot must be at least " + AvailabilityService.MIN_NOTICE_HOURS
-                    + " hours from now.");
+        if (start.isBefore(slots.earliestStart(now.toInstant()))) {
+            throw new ApiValidationException("proposedSlot has started or starts too soon. Please choose a later time.");
         }
         LocalDate lastDate = now.toLocalDate().plusDays(AvailabilityService.MAX_DAYS_AHEAD);
         if (start.atZone(AvailabilityService.ZONE).toLocalDate().isAfter(lastDate)) {
@@ -271,6 +271,39 @@ public class ProBookingService {
         b.setProfessionalNote(note);
         b.setRespondedBy("PROFESSIONAL");
         b.setRespondedAt(now);
+    }
+
+    /** This professional's own booking (for joining its session), with the same 404 for another's or a missing one. */
+    @Transactional(readOnly = true)
+    public Booking findOwn(ProPrincipal principal, String id) {
+        UUID professionalId = professionalId(principal);
+        return parseId(id).flatMap(uuid -> bookings.findByIdAndProfessionalId(uuid, professionalId))
+                .orElseThrow(ProExceptions.BookingNotFoundException::new);
+    }
+
+    // ---- A video link added by hand ----
+
+    /**
+     * Adds the video link to a CONFIRMED video session that has none: the automatic Google Meet link could
+     * not be created (manual_meeting_link_needed) or Google Meet is not set up. The person sees it on their
+     * appointment page. A session that already has a link keeps it.
+     */
+    @Transactional
+    public ProBookingView addMeetingLink(ProPrincipal principal, String id, MeetingLinkRequest r) {
+        String link = meetingLink(r == null ? null : r.meetingLink());
+        UUID professionalId = professionalId(principal);
+        Booking b = parseId(id).flatMap(bookings::findByIdForUpdate)
+                .filter(found -> professionalId.equals(found.getProfessionalId()))
+                .orElseThrow(ProExceptions.BookingNotFoundException::new);
+        if (b.getStatus() != BookingStatus.CONFIRMED || !b.isVideo()) {
+            throw new ConflictException("Only a confirmed video session can have a video link.");
+        }
+        if (b.getMeetingLink() != null) throw new ConflictException("This session already has a video link.");
+        b.setMeetingMethod("VIDEO");
+        b.setMeetingLink(link);
+        b.setManualMeetingLinkNeeded(false);
+        Booking saved = bookings.saveAndFlush(b);
+        return ProBookingView.from(saved, professionals.findById(professionalId).orElse(null), clock.instant());
     }
 
     // ---- Lookups ----

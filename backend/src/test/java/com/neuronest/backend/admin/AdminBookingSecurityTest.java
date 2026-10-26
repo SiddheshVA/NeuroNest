@@ -62,6 +62,10 @@ class AdminBookingSecurityTest {
     private MockMvc mvc;
 
     @MockitoBean
+    private com.neuronest.backend.meeting.MeetingLinkRecovery meetingLinkRecovery;
+    @MockitoBean
+    private com.neuronest.backend.booking.BookingRepository bookingRows;
+    @MockitoBean
     private AdminBookingService bookings;
     @MockitoBean
     private AdminSuspensionService suspensions;

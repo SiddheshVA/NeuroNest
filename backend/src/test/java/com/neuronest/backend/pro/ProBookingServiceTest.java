@@ -246,7 +246,9 @@ class ProBookingServiceTest {
             service.propose(me, accepted.getId().toString(), new ProposeRequest(THU_18, "VIDEO", LINK, null, null));
             BookingView acceptedView = userService.acceptProposal(userId, accepted.getId().toString());
             assertThat(acceptedView.status()).isEqualTo("CONFIRMED");
-            assertThat(acceptedView.meetingLink()).isEqualTo(LINK);
+            // Stored, but only the join endpoint gives the raw link out.
+            assertThat(accepted.getMeetingLink()).isEqualTo(LINK);
+            assertThat(acceptedView.meetingLink()).isNull();
             assertThat(accepted.getPaymentDueAt()).isNull();
 
             verify(events).publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, confirmed.getId()));
@@ -448,9 +450,9 @@ class ProBookingServiceTest {
         assertThatThrownBy(() -> service.propose(me, id,
                 new ProposeRequest("2026-10-14T18:30:00+05:30", "VIDEO", LINK, null, null)))
                 .isInstanceOf(ApiValidationException.class).hasMessageContaining("not one of your available times");
-        // Less than 24 hours ahead, and more than 60 days ahead.
-        assertThatThrownBy(() -> service.propose(me, id, new ProposeRequest("2026-10-12T18:00:00+05:30", "VIDEO", LINK, null, null)))
-                .isInstanceOf(ApiValidationException.class).hasMessageContaining("24 hours");
+        // Already started, and more than 60 days ahead.
+        assertThatThrownBy(() -> service.propose(me, id, new ProposeRequest("2026-10-12T09:00:00+05:30", "VIDEO", LINK, null, null)))
+                .isInstanceOf(ApiValidationException.class).hasMessageContaining("starts too soon");
         assertThatThrownBy(() -> service.propose(me, id, new ProposeRequest("2026-12-16T18:00:00+05:30", "VIDEO", LINK, null, null)))
                 .isInstanceOf(ApiValidationException.class).hasMessageContaining("60 days");
         // Taken by a confirmed booking.

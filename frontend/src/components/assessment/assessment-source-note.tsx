@@ -10,8 +10,8 @@ interface AssessmentSourceNoteProps {
 export function AssessmentSourceNote({ type, className = "" }: AssessmentSourceNoteProps) {
   const source = ASSESSMENT_SOURCES[type];
   return (
-    <div className={`text-xs leading-relaxed text-[#8A9690] ${className}`}>
-      <p className="mb-1 font-semibold uppercase tracking-[0.15em] text-[#66746E]">About this test</p>
+    <div className={`text-xs leading-relaxed text-[#4A5750] ${className}`}>
+      <p className="mb-1 font-semibold uppercase tracking-[0.15em] text-[#4F624F]">About this test</p>
       <p>{source.credit}</p>
       <p className="mt-1">{source.citation}</p>
     </div>

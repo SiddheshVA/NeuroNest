@@ -64,6 +64,7 @@ public final class BookingDtos {
             String preferredMethod,
             // The meeting details are only shown once the request is CONFIRMED; null otherwise.
             String meetingMethod,
+            // Always null: the raw video link is given out only by the join endpoint, inside the session window.
             String meetingLink,
             String meetingAddress,
             // Exactly what the user chose to share with the professional, or null.
@@ -85,7 +86,10 @@ public final class BookingDtos {
             OffsetDateTime endDatetime,
             // The professional's email and phone, only once the booking is CONFIRMED; null otherwise.
             String professionalEmail,
-            String professionalPhone) {
+            String professionalPhone,
+            // A confirmed video session whose link exists: "Join session" will work in its window. False while
+            // the link is being set up. The link itself only comes from GET /api/bookings/{id}/join.
+            boolean videoLinkReady) {
 
         static BookingView from(Booking b, Professional p) {
             return from(b, p, null, null);
@@ -99,14 +103,20 @@ public final class BookingDtos {
                     inIndia(b.getProposedDatetime()), b.getProfessionalNote(), b.getRespondedAt(),
                     ProfessionalSummary.from(p), b.getPreferredMethod(),
                     confirmed ? b.getMeetingMethod() : null,
-                    confirmed ? b.getMeetingLink() : null,
+                    // Never the raw video link: GET /api/bookings/{id}/join gives it out in the session's window.
+                    null,
                     confirmed ? b.getMeetingAddress() : null,
                     b.getSharedAssessment(), b.getAssessmentSharedAt(),
                     b.getStatus() == BookingStatus.AWAITING_PAYMENT || b.getStatus() == BookingStatus.EXPIRED
                             ? b.getPaymentDueAt() : null,
                     due == null ? null : due.paise(), due == null ? null : due.currency(),
                     paid == null || !confirmed ? null : paid.paise(), paid == null || !confirmed ? null : paid.currency(),
-                    b.getSessionCount(), inIndia(MeetingTimes.end(b, p)), contact.email(), contact.phone());
+                    b.getSessionCount(), inIndia(MeetingTimes.end(b, p)), contact.email(), contact.phone(),
+                    videoLinkReady(b));
+        }
+
+        static boolean videoLinkReady(Booking b) {
+            return b.getStatus() == BookingStatus.CONFIRMED && b.isVideo() && b.getMeetingLink() != null;
         }
 
         static OffsetDateTime inIndia(Instant instant) {
@@ -136,6 +146,7 @@ public final class BookingDtos {
             OffsetDateTime scheduledTime,
             String preferredMode,
             String meetingMethod,
+            // Always null: the raw video link is given out only by the join endpoint, inside the session window.
             String meetingLink,
             String meetingAddress,
             ProfessionalSummary professional,
@@ -147,7 +158,7 @@ public final class BookingDtos {
         static NextAppointment from(Booking b, Professional p) {
             Contact contact = b.getStatus() == BookingStatus.CONFIRMED ? Contact.of(p) : Contact.NONE;
             return new NextAppointment(b.getId(), BookingView.inIndia(b.getPreferredDatetime()), b.getPreferredMode(),
-                    b.getMeetingMethod(), b.getMeetingLink(), b.getMeetingAddress(), ProfessionalSummary.from(p),
+                    b.getMeetingMethod(), null, b.getMeetingAddress(), ProfessionalSummary.from(p),
                     b.getSessionCount(), BookingView.inIndia(MeetingTimes.end(b, p)), contact.email(),
                     contact.phone());
         }

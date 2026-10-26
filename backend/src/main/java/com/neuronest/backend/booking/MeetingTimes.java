@@ -16,6 +16,8 @@ public final class MeetingTimes {
 
     private static final DateTimeFormatter DAY =
             DateTimeFormatter.ofPattern("EEE, d MMM yyyy", Locale.ENGLISH).withZone(AvailabilityService.ZONE);
+    private static final DateTimeFormatter SHORT_DAY =
+            DateTimeFormatter.ofPattern("EEE, d MMM", Locale.ENGLISH).withZone(AvailabilityService.ZONE);
     private static final DateTimeFormatter TIME =
             DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH).withZone(AvailabilityService.ZONE);
 
@@ -50,6 +52,16 @@ public final class MeetingTimes {
         int sessions = Math.max(1, b.getSessionCount());
         return TIME.format(start) + " to " + TIME.format(end) + " IST ("
                 + sessions + (sessions == 1 ? " session, " : " sessions, ") + length(Duration.between(start, end)) + ")";
+    }
+
+    /** "4:30 PM IST on Thu, 29 Oct": a session's start, short enough for an email subject. */
+    public static String startForSubject(Instant start) {
+        return TIME.format(start) + " IST on " + SHORT_DAY.format(start);
+    }
+
+    /** "Thu, 29 Oct 2026, 7:40 PM" in India (no zone name: callers add " IST" or " (IST)"). */
+    public static String dayAndTime(Instant instant) {
+        return DAY.format(instant) + ", " + TIME.format(instant);
     }
 
     /** "2 hours", "1 hour 30 minutes", "45 minutes". */

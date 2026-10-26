@@ -157,3 +157,44 @@ input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+/* Sign-in / sign-up backdrop (routes/AuthPages.tsx): the misty valley artwork as a CSS background, so it
+   never holds up the form. The WebPs are made from login-design.png at the sizes screens need (900px for
+   phones, 1920px from 640px up, so it is never stretched soft); the PNG is only for a browser without
+   image-set(). A soft cream veil on top tones down the glare and the dark leaves: strongest behind the
+   cards, lighter lower down so the valley stays visible. */
+.auth-backdrop {
+  --auth-veil: linear-gradient(
+    180deg,
+    rgb(250 248 240 / 0.5) 0%,
+    rgb(250 248 240 / 0.38) 55%,
+    rgb(250 248 240 / 0.2) 100%
+  );
+  background-color: #eef0e4;
+  background-image: var(--auth-veil), url("/images/login-design.png");
+  background-image:
+    var(--auth-veil),
+    image-set(url("/images/login-design-mobile.webp") type("image/webp"), url("/images/login-design.png") type("image/png"));
+  background-size: cover;
+  background-position: center 62%;
+  background-repeat: no-repeat;
+}
+@media (min-width: 640px) {
+  .auth-backdrop {
+    background-image:
+      var(--auth-veil),
+      image-set(url("/images/login-design-desktop.webp") type("image/webp"), url("/images/login-design.png") type("image/png"));
+  }
+}
+/* Browser autofill: a light green tint and the usual text colour, instead of the browser's blue/yellow.
+   Keeps the green focus ring on an autofilled field. */
+.auth-backdrop input:-webkit-autofill {
+  -webkit-text-fill-color: #1c352d;
+  box-shadow: 0 0 0 1000px #edf3ea inset;
+  caret-color: #1c352d;
+}
+.auth-backdrop input:-webkit-autofill:focus {
+  box-shadow:
+    0 0 0 1000px #edf3ea inset,
+    0 0 0 3px rgb(35 62 51 / 0.22);
+}

@@ -67,6 +67,8 @@ public class BookingService {
     /** Consecutive sessions in one booking (the booking_requests_session_count_check constraint). */
     public static final int MAX_SESSIONS = 4;
     static final String TAKEN_MESSAGE = "This time is no longer available. Please choose another time.";
+    static final String TOO_SOON_MESSAGE = "This time has started or starts too soon to book and pay for it. "
+            + "Please choose a later time.";
     static final String NOT_CONSECUTIVE_MESSAGE = "The sessions you choose must follow one another on the same day. "
             + "Please choose fewer sessions or another start time.";
     /** How long a new booking holds its slots while the user pays (bookings.payment-hold-minutes). */
@@ -226,7 +228,8 @@ public class BookingService {
         // CONFIRMED once the payment is verified; a free session is CONFIRMED straight away.
         boolean paid = BookingPaymentService.requiresPayment(p);
         b.setStatus(paid ? BookingStatus.AWAITING_PAYMENT : BookingStatus.CONFIRMED);
-        b.setPaymentDueAt(paid ? nowInstant.plus(paymentHold) : null);
+        // The hold never outlasts the slot: for a session starting in 5 minutes it lasts at most 5 minutes.
+        b.setPaymentDueAt(paid ? earlier(nowInstant.plus(paymentHold), slotStart) : null);
         b.setRespondedBy(null);
         b.setCreatedAt(nowInstant);
         b.setConsentGivenAt(nowInstant);
@@ -241,16 +244,16 @@ public class BookingService {
         }
         // Emails go out only after this transaction commits (BookingNotificationListener). A held booking
         // sends nothing yet: the confirmation goes out once it is paid.
-        if (!paid) events.publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, saved.getId()));
+        if (!paid) onPaymentConfirmed(saved.getId());
         return view(saved, p);
     }
 
     // The start time must be one of the professional's free slots, and each further session the next free
     // slot straight after it on the same day.
     private void checkSlots(Professional p, Instant start, int count, ZonedDateTime now) {
-        if (start.isBefore(now.plusHours(AvailabilityService.MIN_NOTICE_HOURS).toInstant())) {
-            throw new ApiValidationException("slotStart must be at least " + AvailabilityService.MIN_NOTICE_HOURS
-                    + " hours from now.");
+        // The same rule the availability endpoint uses (booking.min-lead-minutes, booking.min-hold-seconds).
+        if (start.isBefore(slots.earliestStart(now.toInstant()))) {
+            throw new ApiValidationException(TOO_SOON_MESSAGE);
         }
         LocalDate lastDate = now.toLocalDate().plusDays(AvailabilityService.MAX_DAYS_AHEAD);
         if (start.atZone(AvailabilityService.ZONE).toLocalDate().isAfter(lastDate)) {
@@ -264,6 +267,10 @@ public class BookingService {
             case NOT_A_SLOT -> throw new ApiValidationException("slotStart is not one of this professional's available "
                     + "times. Please choose a time from their availability.");
         }
+    }
+
+    private static Instant earlier(Instant a, Instant b) {
+        return a.isBefore(b) ? a : b;
     }
 
     // 1 when not given; otherwise 1 to MAX_SESSIONS.
@@ -329,6 +336,28 @@ public class BookingService {
     private BookingView view(Booking b, Professional p) {
         PaymentAmounts.Amount due = b.getStatus() == BookingStatus.AWAITING_PAYMENT ? amounts.due(b, p).orElse(null) : null;
         return BookingView.from(b, p, due, amounts.paid(b).orElse(null));
+    }
+
+    /** The user's own booking (for joining its session), with the same 404 for someone else's or a missing one. */
+    @Transactional(readOnly = true)
+    public Booking findOwn(UUID userId, String id) {
+        return parseId(id).flatMap(uuid -> bookings.findByIdAndUserId(uuid, userId)).orElseThrow(BookingService::notFound);
+    }
+
+    // ---- Confirmed ----
+
+    /**
+     * THE follow-up once a booking has been marked CONFIRMED: by a verified payment (the checkout callback or
+     * the Razorpay webhook, both through BookingPaymentService) or, for a free session, at booking. Call it
+     * once, in or after the transaction that confirmed the booking. After that transaction commits, on the
+     * mail executor (BookingNotificationListener), a video session gets its Google Meet link
+     * (MeetingLinkService: idempotent, retried, flagged for a manual link if Google fails) and both sides get
+     * the confirmation, with the link when there is one. Nothing here waits for Google or email, so the
+     * payment and the webhook answer at once and are never affected by them.
+     */
+    @Transactional
+    public void onPaymentConfirmed(UUID bookingId) {
+        events.publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, bookingId));
     }
 
     // ---- Cancelling ----

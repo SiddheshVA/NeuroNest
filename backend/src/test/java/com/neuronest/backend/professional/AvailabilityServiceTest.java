@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AvailabilityServiceTest {
 
     private static final AvailabilityService SERVICE = new AvailabilityService();
-    // Monday 12 Oct 2026, 10:00 in India. Slots start from Tuesday 13 Oct 10:00 (24 hours later).
+    // Monday 12 Oct 2026, 10:00 in India. With the defaults, any slot starting at least a minute from now is offered.
     private static final ZonedDateTime NOW = ZonedDateTime.of(2026, 10, 12, 10, 0, 0, 0, AvailabilityService.ZONE);
     private static final LocalDate WED = LocalDate.of(2026, 10, 14);
 
@@ -59,6 +59,19 @@ class AvailabilityServiceTest {
     }
 
     @Test
+    void aMinimumLeadTimeAboveZeroIsHonoured() {
+        LocalDate today = NOW.toLocalDate();
+        var hours = hours("MON", "10:05", "13:05");
+        // booking.min-lead-minutes = 30: 10:05 (5 minutes away) is too soon, 11:05 is not.
+        AvailabilityService thirtyMinutes = new AvailabilityService(30, 60);
+        assertThat(times(thirtyMinutes.freeSlots(hours, 60, 0, today, today, NOW, Set.of()), today))
+                .containsExactly("11:05", "12:05");
+        assertThat(thirtyMinutes.earliestStart(NOW.toInstant())).isEqualTo(NOW.plusMinutes(30).toInstant());
+        // The defaults: no lead time, but at least the one-minute hold.
+        assertThat(SERVICE.earliestStart(NOW.toInstant())).isEqualTo(NOW.plusSeconds(60).toInstant());
+    }
+
+    @Test
     void twoRangesInOneDay() {
         assertThat(times(slots(hours("WED", "09:00", "10:00", "18:00", "19:30"), 45, 0, WED, WED), WED))
                 .containsExactly("09:00", "18:00", "18:45");
@@ -74,13 +87,19 @@ class AvailabilityServiceTest {
     }
 
     @Test
-    void slotsWithinTwentyFourHoursAndDatesBeyondSixtyDaysAreLeftOut() {
-        LocalDate tuesday = LocalDate.of(2026, 10, 13);
-        // Now + 24 hours is Tuesday 10:00: 09:00 is too soon, 10:00 is exactly allowed.
-        assertThat(times(slots(hours("TUE", "09:00", "12:00"), 60, 0, tuesday, tuesday), tuesday))
-                .containsExactly("10:00", "11:00");
-        // Today (Monday) is always too soon.
-        assertThat(slots(hours("MON", "09:00", "23:00"), 60, 0, NOW.toLocalDate(), NOW.toLocalDate())).isEmpty();
+    void slotsStartingSoonAreOfferedButNotOnesThatHaveStartedOrAreUnderAMinuteAwayAndNothingBeyondSixtyDays() {
+        LocalDate today = NOW.toLocalDate();
+        // 09:00 has started and 10:00 starts right now: both left out.
+        assertThat(slots(hours("MON", "09:00", "11:00"), 60, 0, today, today)).isEmpty();
+        // A slot 5 minutes away is offered, and so is the rest of the day.
+        assertThat(times(slots(hours("MON", "10:05", "12:05"), 60, 0, today, today), today))
+                .containsExactly("10:05", "11:05");
+        // 30 seconds before a slot: under booking.min-hold-seconds (60), so not offered.
+        var at0959 = SERVICE.freeSlots(hours("MON", "10:00", "11:00"), 60, 0, today, today, NOW.minusSeconds(30), Set.of());
+        assertThat(at0959).isEmpty();
+        // Exactly a minute before: offered.
+        assertThat(times(SERVICE.freeSlots(hours("MON", "10:00", "11:00"), 60, 0, today, today, NOW.minusSeconds(60),
+                Set.of()), today)).containsExactly("10:00");
 
         // 12 Oct + 60 days = 11 Dec (a Friday) is the last date offered; Friday 18 Dec is not.
         var fridays = slots(hours("FRI", "09:00", "10:00"), 60, 0, LocalDate.of(2026, 12, 1), LocalDate.of(2026, 12, 31));

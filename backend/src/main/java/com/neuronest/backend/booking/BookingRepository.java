@@ -165,4 +165,48 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     @Transactional
     @Query("update Booking b set b.expiryNotifiedAt = :at where b.id = :id")
     int markExpiryNotified(@Param("id") UUID id, @Param("at") Instant at);
+
+    // ---- Google Meet spaces and their time window (MeetingJoinService, MeetingAccessJob) ----
+
+    /** CONFIRMED sessions with a space not yet opened whose window has started (start <= openBy) and not ended. */
+    @Query("""
+            select b from Booking b
+            where b.status = com.neuronest.backend.booking.BookingStatus.CONFIRMED
+              and b.meetingSpaceName is not null and b.meetingAccessOpen = false and b.meetingAccessClosed = false
+              and b.preferredDatetime <= :openBy and b.endsAt > :now
+            order by b.preferredDatetime, b.id""")
+    List<Booking> findMeetingSpacesToOpen(@Param("openBy") Instant openBy, @Param("now") Instant now);
+
+    /** Spaces that were opened and whose session has ended (or that were cancelled meanwhile): to close. */
+    @Query("""
+            select b from Booking b
+            where b.meetingSpaceName is not null and b.meetingAccessOpen = true and b.meetingAccessClosed = false
+              and b.endsAt <= :now
+            order by b.endsAt, b.id""")
+    List<Booking> findMeetingSpacesToClose(@Param("now") Instant now);
+
+    /**
+     * CONFIRMED video sessions flagged for a missing link (their space could not be made) that have no link yet
+     * and have not ended: MeetingAccessJob tries to make it again.
+     */
+    @Query("""
+            select b from Booking b
+            where b.status = com.neuronest.backend.booking.BookingStatus.CONFIRMED
+              and b.manualMeetingLinkNeeded = true and b.meetingLink is null and b.endsAt > :now
+            order by b.preferredDatetime, b.id""")
+    List<Booking> findMeetingLinksToRetry(@Param("now") Instant now);
+
+    /** Marks the space open once; 0 when it was already open or closed. */
+    @Modifying
+    @Transactional
+    @Query("""
+            update Booking b set b.meetingAccessOpen = true
+            where b.id = :id and b.meetingAccessOpen = false and b.meetingAccessClosed = false""")
+    int markMeetingAccessOpen(@Param("id") UUID id);
+
+    /** Marks the space closed once; 0 when it was already closed. */
+    @Modifying
+    @Transactional
+    @Query("update Booking b set b.meetingAccessClosed = true where b.id = :id and b.meetingAccessClosed = false")
+    int markMeetingAccessClosed(@Param("id") UUID id);
 }

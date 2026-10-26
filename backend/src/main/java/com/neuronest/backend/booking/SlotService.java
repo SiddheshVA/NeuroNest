@@ -69,6 +69,11 @@ public class SlotService {
                 taken, off);
     }
 
+    /** The earliest start a slot may have to be offered or booked now (AvailabilityService.earliestStart). */
+    public Instant earliestStart(Instant now) {
+        return availability.earliestStart(now);
+    }
+
     /** Free slots per date, from and to included, with days off and taken slots removed. */
     public Map<LocalDate, List<ZonedDateTime>> freeSlots(Professional p, LocalDate from, LocalDate to, ZonedDateTime now) {
         List<DateRange> off = daysOff(p, from, to);

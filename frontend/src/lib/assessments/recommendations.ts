@@ -7,8 +7,8 @@ import type { AssessmentType } from "./types";
  * whatever comes back.
  *
  * AVAILABILITY: only entries whose destination exists carry an `action`
- * (Neuro, the Relaxation Hub pages, and the Tele-MANAS helpline). Journal and
- * Wellness Resources aren't built yet. A suggestion with no shipped route still appears as a plain
+ * (Neuro, the Relaxation Hub pages, Wellness Resources, and the Tele-MANAS helpline). Journal
+ * isn't built yet. A suggestion with no shipped route still appears as a plain
  * card — it just never renders as a clickable dead link. Wiring a feature up
  * later is a one-line `action` addition here, nowhere else.
  *
@@ -49,6 +49,8 @@ export interface RecommendationItem {
   title: string;
   /** One plain-language sentence — no medical claims. */
   description: string;
+  /** Where the card leads, when that page exists (the card is plain text otherwise). */
+  href?: string;
 }
 
 export interface ResultAction {
@@ -116,14 +118,17 @@ const DEFINITIONS: Record<RecommendationKind, RecommendationDefinition> = {
   "wellness-resources": {
     title: "Browse wellness resources",
     description: "Simple articles and guides with ideas that might help.",
+    action: { label: "Browse resources", href: "/resources" },
   },
   "stress-management-resources": {
     title: "Explore stress-easing ideas",
     description: "Practical tips for easing everyday stress.",
+    action: { label: "Browse resources", href: "/resources" },
   },
   "sleep-routine-resources": {
     title: "Build a steady sleep routine",
     description: "Small changes to your routine can support better sleep.",
+    action: { label: "Browse resources", href: "/resources" },
   },
   "talk-to-nuro": {
     title: "Talk to someone",
@@ -255,7 +260,12 @@ function getKinds(input: RecommendationInput): RecommendationKind[] {
 export function getRecommendations(input: RecommendationInput): RecommendationItem[] {
   return getKinds(input)
     .filter((kind) => kind !== "professional-support")
-    .map((kind) => ({ kind, title: DEFINITIONS[kind].title, description: DEFINITIONS[kind].description }));
+    .map((kind) => ({
+      kind,
+      title: DEFINITIONS[kind].title,
+      description: DEFINITIONS[kind].description,
+      href: DEFINITIONS[kind].action?.href,
+    }));
 }
 
 /**

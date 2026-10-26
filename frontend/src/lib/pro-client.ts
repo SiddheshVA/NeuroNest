@@ -13,6 +13,7 @@ import type {
   ProposeBookingBody,
 } from "./pro-bookings";
 import { normalizeProBooking, normalizeProBookingPage } from "./pro-bookings";
+import type { JoinLink } from "./join-session";
 import {
   normalizeDayOffCreated,
   normalizeProDashboard,
@@ -252,12 +253,16 @@ export class ProApiError extends Error {
   readonly kind: ProErrorKind;
   /** The backend's list of missing items, on a 400 from submit. */
   readonly missing: ProMissingItem[];
+  /** The error response's JSON body, when there was one (for example the join endpoint's 409 details). */
+  readonly body: unknown;
 
-  constructor(status: number, message: string, kind: ProErrorKind = "other", missing: ProMissingItem[] = []) {
+  constructor(status: number, message: string, kind: ProErrorKind = "other", missing: ProMissingItem[] = [],
+    body: unknown = null) {
     super(message);
     this.status = status;
     this.kind = kind;
     this.missing = missing;
+    this.body = body;
   }
 }
 
@@ -349,7 +354,8 @@ export function useProApi() {
         throw new ProApiError(404, message, "not-registered");
       }
       const missing = (body as { missing?: unknown } | null)?.missing;
-      throw new ProApiError(response.status, message, "other", Array.isArray(missing) ? (missing as ProMissingItem[]) : []);
+      throw new ProApiError(response.status, message, "other", Array.isArray(missing) ? (missing as ProMissingItem[]) : [],
+        body);
     },
     [freshToken, goToSignIn],
   );
@@ -393,6 +399,8 @@ export function useProApi() {
       proposeBooking: (id: string, body: ProposeBookingBody) =>
         request<ProBooking>(`/pro/bookings/${encodeURIComponent(id)}/propose`, { method: "POST", body: JSON.stringify(body) })
           .then(normalizeProBooking),
+      // The session's video link, only inside its time window (409 with the window otherwise).
+      joinBooking: (id: string) => request<JoinLink>(`/pro/bookings/${encodeURIComponent(id)}/join`),
       // Home summary, confirmed appointments and days off.
       dashboard: () => request<ProDashboard>("/pro/dashboard").then(normalizeProDashboard),
       appointments: (when: "upcoming" | "past", page: number, size: number) =>

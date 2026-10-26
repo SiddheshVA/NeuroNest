@@ -50,10 +50,10 @@ class BookingPaymentServiceTest {
     private final ProfessionalRepository professionals = mock(ProfessionalRepository.class);
     // The real signature check with a test secret; only the Razorpay API call (createOrder) is stubbed.
     private final RazorpayGateway gateway = spy(new RazorpayGateway(KEY_ID, SECRET));
-    private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
+    private final BookingService confirmations = mock(BookingService.class);
     private final PaymentAmounts amounts = new PaymentAmounts(paymentRepository);
     private final BookingPaymentService service = new BookingPaymentService(bookings, paymentRepository, professionals,
-            gateway, events, amounts, new CommissionSplit(10), CLOCK);
+            gateway, confirmations, amounts, new CommissionSplit(10), CLOCK);
 
     private final List<Booking> bookingStore = new ArrayList<>();
     private final List<Payment> paymentStore = new ArrayList<>();
@@ -219,7 +219,7 @@ class BookingPaymentServiceTest {
     @Test
     void withoutKeysThePaymentEndpointsSayPaymentsAreNotConfigured() {
         BookingPaymentService unconfigured = new BookingPaymentService(bookings, paymentRepository, professionals,
-                new RazorpayGateway(" ", null), events, amounts, new CommissionSplit(10), CLOCK);
+                new RazorpayGateway(" ", null), confirmations, amounts, new CommissionSplit(10), CLOCK);
         Booking b = awaiting();
 
         assertThatThrownBy(() -> unconfigured.createOrder(userId, b.getId().toString()))
@@ -259,7 +259,7 @@ class BookingPaymentServiceTest {
 
         // The setting changes to 15%: only later payments use it.
         BookingPaymentService at15 = new BookingPaymentService(bookings, paymentRepository, professionals, gateway,
-                events, amounts, new CommissionSplit(15), CLOCK);
+                confirmations, amounts, new CommissionSplit(15), CLOCK);
         Booking second = awaiting();
         doReturn("order_SECOND").when(gateway).createOrder(anyLong(), anyString(), anyString());
         at15.createOrder(userId, second.getId().toString());
@@ -342,9 +342,9 @@ class BookingPaymentServiceTest {
 
         assertThat(second).isEqualTo(first);
         assertThat(second.status()).isEqualTo("CONFIRMED");
-        // The confirmation emails' event goes out once, on the call that actually confirmed.
-        verify(events, times(1)).publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, b.getId()));
-        verifyNoMoreInteractions(events);
+        // The confirmation follow-up (Meet link, emails) runs once, on the call that actually confirmed.
+        verify(confirmations, times(1)).onPaymentConfirmed(b.getId());
+        verifyNoMoreInteractions(confirmations);
         // The payment was saved twice in all: once created, once paid.
         verify(paymentRepository, times(2)).saveAndFlush(any());
         verify(bookings, times(1)).saveAndFlush(any());
@@ -383,7 +383,7 @@ class BookingPaymentServiceTest {
         }
         verify(bookings, never()).saveAndFlush(any());
         // Not confirmed, so no confirmation email.
-        verifyNoInteractions(events);
+        verifyNoInteractions(confirmations);
     }
 
     @Test
@@ -424,11 +424,46 @@ class BookingPaymentServiceTest {
         assertThat(b.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
         assertThat(p.getStatus()).isEqualTo(PaymentStatus.PAID);
         assertThat(p.getRazorpayPaymentId()).isEqualTo("pay_1");
-        verify(events, times(1)).publishEvent(new BookingEvent(BookingEvent.Type.CONFIRMED, b.getId()));
+        verify(confirmations, times(1)).onPaymentConfirmed(b.getId());
         // The checkout callback arriving afterwards answers as confirmed and changes nothing.
         assertThat(service.verify(userId, b.getId().toString(), uncheckedSigned("order_TEST123", "pay_1")).status())
                 .isEqualTo("CONFIRMED");
-        verify(events, times(1)).publishEvent(any(Object.class));
+        verify(confirmations, times(1)).onPaymentConfirmed(any());
+    }
+
+    @Test
+    void aPaymentForALastMinuteSlotThatHasAlreadyStartedIsKeptPaidButDoesNotConfirm() throws Exception {
+        // Booked at 09:57 for 10:00: the hold was capped at the start. The payment arrives at 10:00, during
+        // the hold-release grace period, while the booking is still AWAITING_PAYMENT.
+        Booking b = awaiting();
+        b.setPreferredDatetime(NOW);
+        b.setPaymentDueAt(NOW);
+        Payment p = orderFor(b);
+
+        service.confirmFromWebhook("order_TEST123", "pay_late");
+
+        // The existing late-payment handling: PAID kept for the manual refund, nothing confirmed.
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.PAID);
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.AWAITING_PAYMENT);
+        verify(confirmations, never()).onPaymentConfirmed(any());
+
+        // The checkout callback for the same payment gets the usual "paid but not confirmed" answer.
+        assertThatThrownBy(() -> service.verify(userId, b.getId().toString(), uncheckedSigned("order_TEST123", "pay_late")))
+                .isInstanceOf(BookingExceptions.PaidButNotConfirmedException.class);
+        verify(confirmations, never()).onPaymentConfirmed(any());
+    }
+
+    @Test
+    void aPaymentJustBeforeALastMinuteSlotStartsConfirmsIt() {
+        Booking b = awaiting();
+        b.setPreferredDatetime(NOW.plus(Duration.ofMinutes(4)));
+        b.setPaymentDueAt(NOW.plus(Duration.ofMinutes(4)));
+        orderFor(b);
+
+        service.confirmFromWebhook("order_TEST123", "pay_in_time");
+
+        assertThat(b.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        verify(confirmations).onPaymentConfirmed(b.getId());
     }
 
     @Test
@@ -441,7 +476,7 @@ class BookingPaymentServiceTest {
 
         assertThat(b.getStatus()).isEqualTo(BookingStatus.EXPIRED);
         assertThat(p.getStatus()).isEqualTo(PaymentStatus.PAID);
-        verify(events, never()).publishEvent(any(Object.class));
+        verify(confirmations, never()).onPaymentConfirmed(any());
     }
 
     @Test
@@ -460,7 +495,7 @@ class BookingPaymentServiceTest {
     @Test
     void anUnknownOrderIsIgnored() {
         service.confirmFromWebhook("order_SOMEONE_ELSE", "pay_1");
-        verifyNoInteractions(events);
+        verifyNoInteractions(confirmations);
     }
 
     private static VerifyPaymentRequest uncheckedSigned(String orderId, String paymentId) {

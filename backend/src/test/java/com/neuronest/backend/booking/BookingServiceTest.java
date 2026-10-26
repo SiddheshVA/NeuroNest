@@ -187,12 +187,15 @@ class BookingServiceTest {
     }
 
     @Test
-    void aTimeLessThan24HoursAheadOrBeyond60DaysIsRejected() {
-        professional.setWeeklyHours(Map.of("TUE", List.of(Map.of("start", "09:00", "end", "12:00"))));
-        // Now + 24 hours is Tuesday 13 Oct 10:00: 09:00 is too soon, the next slot (10:15) is allowed.
-        assertThatThrownBy(() -> book("2026-10-13T09:00:00+05:30")).isInstanceOf(ApiValidationException.class)
-                .hasMessage("slotStart must be at least 24 hours from now.");
-        assertThat(book("2026-10-13T10:15:00+05:30").status()).isEqualTo("CONFIRMED");
+    void aTimeThatHasStartedOrStartsInUnderAMinuteOrIsBeyond60DaysIsRejected() {
+        // Monday 12 Oct, now 10:00: 09:30 has started, 10:00 starts now; 10:05 is still bookable.
+        professional.setWeeklyHours(Map.of("MON", List.of(Map.of("start", "08:15", "end", "09:30"),
+                Map.of("start", "09:30", "end", "10:00"), Map.of("start", "10:05", "end", "11:05"))));
+        for (String tooSoon : List.of("2026-10-12T08:15:00+05:30", "2026-10-12T09:30:00+05:30")) {
+            assertThatThrownBy(() -> book(tooSoon)).isInstanceOf(ApiValidationException.class)
+                    .hasMessage(BookingService.TOO_SOON_MESSAGE);
+        }
+        assertThat(book("2026-10-12T10:05:00+05:30").status()).isEqualTo("CONFIRMED");
         assertThatThrownBy(() -> book("2026-12-15T09:00:00+05:30")).hasMessage("slotStart must be within the next 60 days.");
     }
 
@@ -390,6 +393,70 @@ class BookingServiceTest {
                     "9876543210", WED_18, 1, null, true, "VIDEO", null, ticked));
             assertThat(savedBooking().isWhatsappOptIn()).as(String.valueOf(ticked)).isEqualTo(Boolean.TRUE.equals(ticked));
         }
+    }
+
+    // ---- last-minute bookings ----
+
+    // The same service at another moment, with the given booking.min-lead-minutes.
+    private BookingService serviceAt(String now, long minLeadMinutes) {
+        Clock clock = Clock.fixed(OffsetDateTime.parse(now).toInstant(), AvailabilityService.ZONE);
+        SlotService slotsWithLead = new SlotService(new AvailabilityService(minLeadMinutes, 60), bookings, daysOff, blocks);
+        return new BookingService(bookings, slotsWithLead, new PublicProfessionalService(directoryRepository, slotsWithLead, clock),
+                professionals, accounts, users, assessments, events, new PaymentAmounts(paymentRepository), clock);
+    }
+
+    @Test
+    void theAvailabilityOffersASlotStartingInFiveMinutes() {
+        // Monday 12 Oct, now 10:00.
+        professional.setWeeklyHours(Map.of("MON", List.of(Map.of("start", "10:05", "end", "11:05"))));
+
+        var availability = directory.availability(professionalId.toString(), "2026-10-12", "2026-10-12");
+
+        assertThat(availability.days()).singleElement().satisfies(day ->
+                assertThat(day.slots()).containsExactly("2026-10-12T10:05:00+05:30"));
+        assertThat(book("2026-10-12T10:05:00+05:30").status()).isEqualTo("CONFIRMED");
+    }
+
+    @Test
+    void aSlotStartingInThirtySecondsCannotBeBooked() {
+        professional.setWeeklyHours(Map.of("MON", List.of(Map.of("start", "10:05", "end", "11:05"))));
+        BookingService at100430 = serviceAt("2026-10-12T10:04:30+05:30", 0);
+
+        assertThatThrownBy(() -> at100430.create(userId, request("2026-10-12T10:05:00+05:30", 1, true)))
+                .isInstanceOf(ApiValidationException.class).hasMessage(BookingService.TOO_SOON_MESSAGE);
+        verify(bookings, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void theHoldNeverOutlastsTheSlot() {
+        professional.setConsultationFee(800);
+        when(paymentRepository.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(any(), any())).thenReturn(Optional.empty());
+        professional.setWeeklyHours(Map.of("MON", List.of(Map.of("start", "10:05", "end", "11:05")), "WED", WED_HOURS.get("WED")));
+
+        // Starts in 5 minutes: held until the start, not for the usual 10 minutes.
+        BookingView lastMinute = book("2026-10-12T10:05:00+05:30");
+        assertThat(lastMinute.status()).isEqualTo("AWAITING_PAYMENT");
+        assertThat(lastMinute.paymentDueAt()).isEqualTo(OffsetDateTime.parse("2026-10-12T10:05:00+05:30").toInstant());
+
+        // Days ahead: the usual 10 minutes.
+        reset(bookings);
+        setUpBookingDefaults();
+        assertThat(book(WED_18).paymentDueAt()).isEqualTo(NOW.plusSeconds(10 * 60));
+    }
+
+    @Test
+    void aMinimumLeadTimeAboveZeroAppliesToTheAvailabilityAndToBooking() {
+        // Slots at 10:05 and 11:20 (75 minutes apart: a session and its break).
+        professional.setWeeklyHours(Map.of("MON", List.of(Map.of("start", "10:05", "end", "12:20"))));
+        BookingService thirtyMinutes = serviceAt("2026-10-12T10:00:00+05:30", 30);
+        PublicProfessionalService thirtyMinuteDirectory = new PublicProfessionalService(directoryRepository,
+                new SlotService(new AvailabilityService(30, 60), bookings, daysOff, blocks), CLOCK);
+
+        assertThat(thirtyMinuteDirectory.availability(professionalId.toString(), "2026-10-12", "2026-10-12").days())
+                .singleElement().satisfies(day -> assertThat(day.slots()).containsExactly("2026-10-12T11:20:00+05:30"));
+        assertThatThrownBy(() -> thirtyMinutes.create(userId, request("2026-10-12T10:05:00+05:30", 1, true)))
+                .hasMessage(BookingService.TOO_SOON_MESSAGE);
+        assertThat(thirtyMinutes.create(userId, request("2026-10-12T11:20:00+05:30", 1, true)).status()).isEqualTo("CONFIRMED");
     }
 
     // ---- the session grid ----
@@ -783,7 +850,8 @@ class BookingServiceTest {
             assertThat(view.preferredMethod()).isEqualTo("VIDEO");
             if (status == BookingStatus.CONFIRMED) {
                 assertThat(view.meetingMethod()).isEqualTo("VIDEO");
-                assertThat(view.meetingLink()).isEqualTo("https://meet.example.com/abc");
+                // The raw video link never: only GET /api/bookings/{id}/join gives it, in the session's window.
+                assertThat(view.meetingLink()).isNull();
                 assertThat(view.meetingAddress()).isEqualTo("Clinic, Pune");
             } else {
                 assertThat(view.meetingMethod()).isNull();

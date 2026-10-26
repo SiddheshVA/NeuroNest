@@ -50,6 +50,8 @@ class BookingSummarySecurityTest {
     private MockMvc mvc;
 
     @MockitoBean
+    private com.neuronest.backend.meeting.MeetingJoinService meetingJoins;
+    @MockitoBean
     private BookingService service;
     @MockitoBean
     private BookingPaymentService payments;

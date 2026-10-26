@@ -10,6 +10,9 @@ import com.neuronest.backend.admin.AdminBookingDtos.StatusNoteRequest;
 import com.neuronest.backend.admin.AdminProfessionalDtos.PageResponse;
 import com.neuronest.backend.admin.AdminProfessionalDtos.ProfessionalDetail;
 import com.neuronest.backend.payment.PaymentReportQueries.AdminPaymentRow;
+import com.neuronest.backend.booking.BookingRepository;
+import com.neuronest.backend.meeting.MeetingLinkRecovery;
+import com.neuronest.backend.meeting.MeetingLinkService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,11 +31,19 @@ public class AdminBookingController {
 
     private final AdminBookingService bookings;
     private final AdminSuspensionService suspensions;
+    private final MeetingLinkRecovery meetingLinks;
+    private final BookingRepository bookingRows;
 
-    public AdminBookingController(AdminBookingService bookings, AdminSuspensionService suspensions) {
+    public AdminBookingController(AdminBookingService bookings, AdminSuspensionService suspensions,
+                                  MeetingLinkRecovery meetingLinks, BookingRepository bookingRows) {
         this.bookings = bookings;
         this.suspensions = suspensions;
+        this.meetingLinks = meetingLinks;
+        this.bookingRows = bookingRows;
     }
+
+    /** What a retry of a booking's video link did. */
+    public record MeetingLinkRetry(String result, String message) {}
 
     @GetMapping("/dashboard/summary")
     public DashboardSummary summary() {
@@ -56,6 +67,21 @@ public class AdminBookingController {
     @PostMapping("/bookings/{id}/close")
     public AdminBookingItem close(@PathVariable UUID id, @RequestBody(required = false) CloseRequest request) {
         return bookings.close(id, request);
+    }
+
+    // The same retry MeetingAccessJob runs every minute, for one booking now: makes its Google Meet space if it
+    // has none and, when that works, emails the link to both people.
+    @PostMapping("/bookings/{id}/retry-meeting-link")
+    public MeetingLinkRetry retryMeetingLink(@PathVariable UUID id) {
+        if (!bookingRows.existsById(id)) throw new AdminBookingNotFoundException();
+        MeetingLinkService.LinkResult result = meetingLinks.retry(id);
+        return new MeetingLinkRetry(result.name(), switch (result) {
+            case CREATED -> "The video link was created and emailed to both people.";
+            case ALREADY_HAS_LINK -> "This booking already has a video link.";
+            case FAILED -> "Google still could not create the meeting space. The server log has Google's reason "
+                    + "(the line starting \"Google Meet step\").";
+            case NOT_APPLICABLE -> "Only a confirmed video session that has not ended can get a video link.";
+        });
     }
 
     // Gross collected, commission and the professionals' share: all time and this month (India).

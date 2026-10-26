@@ -29,6 +29,9 @@ public final class ProBookingDtos {
 
     public record DeclineRequest(String note) {}
 
+    /** POST /api/pro/bookings/{id}/meeting-link: a video link (https://...) for a confirmed video session. */
+    public record MeetingLinkRequest(String meetingLink) {}
+
     // proposedSlot is ISO-8601 with an offset, for example 2026-10-20T18:00:00+05:30.
     public record ProposeRequest(String proposedSlot, String meetingMethod, String meetingLink, String meetingAddress,
                                  String note) {}
@@ -51,6 +54,7 @@ public final class ProBookingDtos {
             SharedAssessment sharedAssessment,
             Instant assessmentSharedAt,
             String meetingMethod,
+            // Always null: the raw video link is given out only by the join endpoint, inside the session window.
             String meetingLink,
             String meetingAddress,
             Instant respondedAt,
@@ -63,7 +67,13 @@ public final class ProBookingDtos {
             // How many consecutive sessions, and when the meeting ends (never the break after it); null
             // when no end is stored.
             int sessionCount,
-            OffsetDateTime endDatetime) {
+            OffsetDateTime endDatetime,
+            // True when the automatic Google Meet link could not be created: the professional adds one
+            // (POST /api/pro/bookings/{id}/meeting-link).
+            boolean meetingLinkNeeded,
+            // A confirmed video session whose link exists: "Join session" will work in its window. The link
+            // itself only comes from GET /api/pro/bookings/{id}/join.
+            boolean videoLinkReady) {
 
         static ProBookingView from(Booking b, Professional p, Instant now) {
             boolean contactVisible = contactVisible(b, now);
@@ -72,12 +82,15 @@ public final class ProBookingDtos {
                     inIndia(b.getPreferredDatetime()), inIndia(b.getAlternateDatetime()),
                     inIndia(b.getProposedDatetime()), b.getNote(), b.getProfessionalNote(),
                     b.getSharedAssessment(), b.getAssessmentSharedAt(),
-                    b.getMeetingMethod(), b.getMeetingLink(), b.getMeetingAddress(), b.getRespondedAt(),
+                    // Never the raw video link: GET /api/pro/bookings/{id}/join gives it out in the session's window.
+                    b.getMeetingMethod(), null, b.getMeetingAddress(), b.getRespondedAt(),
                     contactVisible ? b.getContactEmail() : null,
                     contactVisible ? b.getContactPhone() : null,
                     b.getStatus() == BookingStatus.AWAITING_PAYMENT || b.getStatus() == BookingStatus.EXPIRED
                             ? b.getPaymentDueAt() : null,
-                    b.getSessionCount(), inIndia(MeetingTimes.end(b, p)));
+                    b.getSessionCount(), inIndia(MeetingTimes.end(b, p)),
+                    b.getStatus() == BookingStatus.CONFIRMED && b.isVideo() && b.getMeetingLink() == null,
+                    b.getStatus() == BookingStatus.CONFIRMED && b.isVideo() && b.getMeetingLink() != null);
         }
 
         static boolean contactVisible(Booking b, Instant now) {
@@ -99,6 +112,7 @@ public final class ProBookingDtos {
             String contactName,
             String preferredMode,
             String meetingMethod,
+            // Always null: the raw video link is given out only by the join endpoint, inside the session window.
             String meetingLink,
             String meetingAddress,
             OffsetDateTime scheduledTime,

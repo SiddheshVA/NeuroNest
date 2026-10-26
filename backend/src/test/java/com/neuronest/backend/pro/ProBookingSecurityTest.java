@@ -52,6 +52,8 @@ class ProBookingSecurityTest {
     private MockMvc mvc;
 
     @MockitoBean
+    private com.neuronest.backend.meeting.MeetingJoinService meetingJoins;
+    @MockitoBean
     private ClerkTokenVerifier clerkTokenVerifier;
     @MockitoBean
     private ClerkUserService clerkUserService;

@@ -66,9 +66,28 @@ function post(sessionId: string, type: AssessmentType, responses: number[]) {
   });
 }
 
-export async function syncAssessmentToBackend(result: AnyAssessmentResult): Promise<void> {
+/** One crisis line as the backend sends it (com.neuronest.backend.safety.CrisisResource). */
+export interface ServerCrisisResource {
+  name: string;
+  /** One or more numbers in one string, e.g. "14416 or 1800-891-4416". */
+  phone: string;
+  availability: string | null;
+}
+
+/** What the backend answers when it saves a result (its AssessmentResponse). */
+export interface ServerAssessmentResponse {
+  id: string;
+  score: number;
+  severityBand: string;
+  riskFlag: boolean;
+  /** Present only when riskFlag is true. */
+  crisisResources: ServerCrisisResource[] | null;
+}
+
+/** Saves the result and returns the backend's answer, or null when it isn't saved (SCI, or an error). */
+export async function syncAssessmentToBackend(result: AnyAssessmentResult): Promise<ServerAssessmentResponse | null> {
   const itemCount = BACKEND_TYPES[result.assessmentType];
-  if (!itemCount) return;
+  if (!itemCount) return null;
 
   // Likert answers are keyed by question id 1..N; the backend wants them in order.
   const answers = result.responses as Record<number, number>;
@@ -86,7 +105,9 @@ export async function syncAssessmentToBackend(result: AnyAssessmentResult): Prom
       res = await post(sessionId, result.assessmentType, responses);
     }
     if (!res.ok) throw new Error(`Backend returned ${res.status}`);
+    return (await res.json()) as ServerAssessmentResponse;
   } catch (error) {
     console.warn("[assessments] could not save result to the server", error);
+    return null;
   }
 }

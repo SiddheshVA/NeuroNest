@@ -43,7 +43,7 @@ class SessionReminderJobTest {
     private final List<OutgoingEmail> sent = new ArrayList<>();
     private final MailSettings settings = new MailSettings("noreply@neuronest.example", "app-password", "NeuroNest", BASE_URL);
     private final SessionReminderJob job = new SessionReminderJob(store, bookings, professionals,
-            new SessionMessages(settings),
+            new SessionMessages(settings, new com.neuronest.backend.meeting.MeetingWindow(5, Clock.fixed(NOW, ZoneOffset.UTC))),
             new NotificationService(List.of(new EmailChannel(sent::add, settings)), mock(MailRetryScheduler.class)),
             10, Clock.fixed(NOW, ZoneOffset.UTC));
 

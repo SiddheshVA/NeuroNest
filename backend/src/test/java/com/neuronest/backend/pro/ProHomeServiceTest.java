@@ -233,7 +233,8 @@ class ProHomeServiceTest {
         assertThat(pastPage.getValue().getSort().getOrderFor("preferredDatetime").getDirection()).isEqualTo(Sort.Direction.DESC);
 
         assertThat(upcoming.get(0).contactPhone()).isEqualTo("+919876543210");
-        assertThat(upcoming.get(0).meetingLink()).isEqualTo("https://meet.example.com/room");
+        // The raw video link never: only GET /api/pro/bookings/{id}/join gives it, in the session's window.
+        assertThat(upcoming.get(0).meetingLink()).isNull();
         assertThat(upcoming.get(0).professionalNote()).isEqualTo("See you then.");
         assertThat(past.get(0).contactEmail()).isEqualTo("user@example.com");
         // More than 7 days after the appointment the contact details are gone.

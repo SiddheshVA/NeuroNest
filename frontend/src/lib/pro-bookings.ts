@@ -24,6 +24,8 @@ export interface ProBooking {
   /** How many sessions in a row, and when the meeting ends (never the break after it); null without a stored end. */
   sessionCount: number;
   endDatetime: string | null;
+  /** A confirmed video session whose link exists ("Join session" works in its window); false while it is set up. */
+  videoLinkReady: boolean;
   alternateDatetime: string | null;
   proposedDatetime: string | null;
   note: string | null;
@@ -142,7 +144,7 @@ export function isAgreed(b: Pick<ProBooking, "status">): boolean {
 
 /** A missing newer field reads as null and a missing list as [], so an older response never breaks a page. */
 export function normalizeProBooking(b: ProBooking): ProBooking {
-  return { ...b, paymentDueAt: b?.paymentDueAt ?? null };
+  return { ...b, paymentDueAt: b?.paymentDueAt ?? null, videoLinkReady: b?.videoLinkReady ?? false };
 }
 
 export function normalizeProBookingPage(p: ProBookingPage): ProBookingPage {

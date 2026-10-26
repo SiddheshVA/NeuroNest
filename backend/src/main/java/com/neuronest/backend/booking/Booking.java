@@ -153,6 +153,23 @@ public class Booking {
     @Column(name = "session_reminder_sent", nullable = false)
     private boolean sessionReminderSent;
 
+    // V19: whether creating the automatic Meet link failed, so the professional has to add one by hand.
+    // (V19's google_event_id, from the earlier Calendar-based links, is no longer used.)
+    @Column(name = "manual_meeting_link_needed", nullable = false)
+    private boolean manualMeetingLinkNeeded;
+
+    // V20: the Google Meet space behind an automatic link (meeting_link holds its meetingUri; a link the
+    // professional pasted has no space), and where its time window is: opened for the session (anyone with
+    // the link may enter) and closed again after it (RESTRICTED). See MeetingAccessJob and MeetingJoinService.
+    @Column(name = "meeting_space_name")
+    private String meetingSpaceName;
+
+    @Column(name = "meeting_access_open", nullable = false)
+    private boolean meetingAccessOpen;
+
+    @Column(name = "meeting_access_closed", nullable = false)
+    private boolean meetingAccessClosed;
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
@@ -287,5 +304,23 @@ public class Booking {
 
     public boolean isSessionReminderSent() { return sessionReminderSent; }
     public void setSessionReminderSent(boolean sessionReminderSent) { this.sessionReminderSent = sessionReminderSent; }
+
+    public String getMeetingSpaceName() { return meetingSpaceName; }
+    public void setMeetingSpaceName(String meetingSpaceName) { this.meetingSpaceName = meetingSpaceName; }
+
+    public boolean isMeetingAccessOpen() { return meetingAccessOpen; }
+    public void setMeetingAccessOpen(boolean meetingAccessOpen) { this.meetingAccessOpen = meetingAccessOpen; }
+
+    public boolean isMeetingAccessClosed() { return meetingAccessClosed; }
+    public void setMeetingAccessClosed(boolean meetingAccessClosed) { this.meetingAccessClosed = meetingAccessClosed; }
+
+    public boolean isManualMeetingLinkNeeded() { return manualMeetingLinkNeeded; }
+    public void setManualMeetingLinkNeeded(boolean manualMeetingLinkNeeded) { this.manualMeetingLinkNeeded = manualMeetingLinkNeeded; }
+
+    /** A video session: online by video call (asked for when booking, or set as the meeting method). */
+    public boolean isVideo() {
+        return "VIDEO".equals(meetingMethod) || (meetingMethod == null && "ONLINE".equals(preferredMode)
+                && "VIDEO".equals(preferredMethod));
+    }
     public void setPaymentExpiredAt(Instant paymentExpiredAt) { this.paymentExpiredAt = paymentExpiredAt; }
 }

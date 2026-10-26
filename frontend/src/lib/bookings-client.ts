@@ -1,4 +1,5 @@
 import { apiFetch } from "./api";
+import type { JoinLink } from "./join-session";
 
 /**
  * Client for a signed-in user's booking requests (POST /api/bookings, GET /api/bookings/mine,
@@ -66,6 +67,8 @@ export interface BookingView {
   /** The professional's email and phone, only once the booking is CONFIRMED. */
   professionalEmail: string | null;
   professionalPhone: string | null;
+  /** A confirmed video session whose link exists ("Join session" works in its window); false while it is set up. */
+  videoLinkReady: boolean;
 }
 
 export interface BookingPage {
@@ -94,10 +97,13 @@ export interface CreateBookingRequest {
 
 export class BookingApiError extends Error {
   readonly status: number;
+  /** The error response's JSON body, when there was one (for example the join endpoint's 409 details). */
+  readonly body: unknown;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, body: unknown = null) {
     super(message);
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -120,13 +126,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (!response.ok) {
     let message = "Something went wrong. Please try again.";
+    let body: unknown = null;
     try {
-      const body = await response.json();
-      if (body && typeof body.error === "string") message = body.error;
+      body = await response.json();
+      const error = (body as { error?: unknown } | null)?.error;
+      if (typeof error === "string") message = error;
     } catch {
       // Not JSON; keep the generic message.
     }
-    throw new BookingApiError(response.status, message);
+    throw new BookingApiError(response.status, message, body);
   }
   return (await response.json()) as T;
 }
@@ -147,6 +155,7 @@ function normalizeView(b: BookingView): BookingView {
     currency: b.currency ?? null,
     paidAmount: b.paidAmount ?? null,
     paidCurrency: b.paidCurrency ?? null,
+    videoLinkReady: b.videoLinkReady ?? false,
   };
 }
 
@@ -185,6 +194,11 @@ export async function createBooking(body: CreateBookingRequest) {
 
 export async function getMyBookings(page: number, size: number) {
   return normalizePage(await request<BookingPage>(`/bookings/mine?page=${page}&size=${size}`));
+}
+
+/** The session's video link, only inside its time window (409 with the window otherwise). */
+export async function joinBooking(id: string) {
+  return request<JoinLink>(`/bookings/${encodeURIComponent(id)}/join`);
 }
 
 export async function cancelBooking(id: string) {

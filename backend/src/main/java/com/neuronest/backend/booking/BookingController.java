@@ -7,6 +7,7 @@ import com.neuronest.backend.booking.BookingDtos.BookingView;
 import com.neuronest.backend.booking.BookingDtos.CreateBookingRequest;
 import com.neuronest.backend.booking.BookingDtos.PaymentOrder;
 import com.neuronest.backend.booking.BookingDtos.VerifyPaymentRequest;
+import com.neuronest.backend.meeting.MeetingJoinService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -29,10 +30,12 @@ public class BookingController {
 
     private final BookingService service;
     private final BookingPaymentService payments;
+    private final MeetingJoinService meetings;
 
-    public BookingController(BookingService service, BookingPaymentService payments) {
+    public BookingController(BookingService service, BookingPaymentService payments, MeetingJoinService meetings) {
         this.service = service;
         this.payments = payments;
+        this.meetings = meetings;
     }
 
     @PostMapping
@@ -58,6 +61,13 @@ public class BookingController {
     @GetMapping("/{id}")
     public BookingView get(Authentication authentication, @PathVariable String id) {
         return service.get(userId(authentication), id);
+    }
+
+    // The video link of the user's own confirmed video session, only inside its time window (409 otherwise,
+    // without the link). The only place the user gets the raw link.
+    @GetMapping("/{id}/join")
+    public MeetingJoinService.JoinLink join(Authentication authentication, @PathVariable String id) {
+        return meetings.join(service.findOwn(userId(authentication), id));
     }
 
     @PostMapping("/{id}/cancel")

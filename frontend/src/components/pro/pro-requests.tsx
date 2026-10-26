@@ -29,6 +29,8 @@ import {
   type ProBookingPage,
 } from "@/lib/pro-bookings";
 import { useNow } from "@/lib/use-now";
+import { JoinSessionButton } from "@/components/shared/join-session-button";
+import { awaitingVideoLink, isVideoSession, LINK_POLL_MS, LINK_SETTING_UP_MESSAGE, type JoinLink } from "@/lib/join-session";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 10;
@@ -361,20 +363,13 @@ function ContactBlock({ booking: b, onCopied }: { booking: ProBooking; onCopied:
   );
 }
 
-function MeetingDetails({ booking: b }: { booking: ProBooking }) {
-  if (b.meetingMethod === "VIDEO" && b.meetingLink) {
+function MeetingDetails({ booking: b, join }: { booking: ProBooking; join: () => Promise<JoinLink> }) {
+  // The video link itself is never in the booking: the button asks for it inside the session's window.
+  if (b.status === "CONFIRMED" && isVideoSession(b)) {
     return (
       <Detail
-        label="Video call link"
-        value={
-          b.meetingLink.startsWith("https://") ? (
-            <a href={b.meetingLink} target="_blank" rel="noopener noreferrer" className="font-medium break-all text-primary underline underline-offset-4">
-              {b.meetingLink}
-            </a>
-          ) : (
-            b.meetingLink
-          )
-        }
+        label="Video call"
+        value={b.videoLinkReady ? <JoinSessionButton join={join} /> : <span role="status">{LINK_SETTING_UP_MESSAGE}</span>}
       />
     );
   }
@@ -425,6 +420,21 @@ export function ProRequestPage() {
       cancelled = true;
     };
   }, [ready, api, id, key]);
+
+  // While the session's video link is being set up, fetch the booking again every 20 seconds, in place.
+  const waitingForLink = state?.key === key && state.status === "ready" && awaitingVideoLink(state.booking);
+  useEffect(() => {
+    if (!waitingForLink) return;
+    const timer = window.setInterval(() => {
+      api
+        .booking(id)
+        .then((booking) => setState((current) => (current?.key === key ? { key, status: "ready", booking } : current)))
+        .catch(() => {
+          // Tried again on the next tick.
+        });
+    }, LINK_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [waitingForLink, api, id, key]);
 
   const reload = () => setReloadCount((n) => n + 1);
   const frame = (children: ReactNode) => (
@@ -531,7 +541,7 @@ export function ProRequestPage() {
         <Card title="Meeting details">
           <dl className="flex flex-col gap-3">
             {b.meetingMethod ? <Detail label="How you will meet" value={METHOD_LABELS[b.meetingMethod]} /> : null}
-            <MeetingDetails booking={b} />
+            <MeetingDetails booking={b} join={() => api.joinBooking(b.id)} />
             <Detail
               label="Your note"
               value={b.professionalNote?.trim() ? <span className="whitespace-pre-line">{b.professionalNote}</span> : "You did not add a note."}
