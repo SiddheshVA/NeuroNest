@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 // Wellness check-in. These paths are on the main security chain (open to guests); the user comes only from
@@ -31,9 +32,21 @@ public class WellnessController {
         this.service = service;
     }
 
+    // ?save=false scores without storing anything, even for a signed-in user (what-if previews). Only "true"
+    // or "false" (any case) are accepted; anything else is a 400. Default true.
     @PostMapping("/checkin")
-    public CheckinResponse checkin(Authentication authentication, @RequestBody(required = false) CheckinRequest request) {
-        return service.checkin(request, AuthUtil.currentUserId(authentication));
+    public CheckinResponse checkin(Authentication authentication,
+                                   @RequestParam(name = "save", required = false) String save,
+                                   @RequestBody(required = false) CheckinRequest request) {
+        return service.checkin(request, AuthUtil.currentUserId(authentication), parseSave(save));
+    }
+
+    static boolean parseSave(String save) {
+        if (save == null) return true;
+        if ("true".equalsIgnoreCase(save.trim())) return true;
+        if ("false".equalsIgnoreCase(save.trim())) return false;
+        throw new WellnessExceptions.InvalidInputException(
+                List.of(new WellnessDtos.FieldError("save", "must be true or false")));
     }
 
     @GetMapping("/checkins")

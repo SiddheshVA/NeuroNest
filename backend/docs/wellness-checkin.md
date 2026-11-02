@@ -20,13 +20,20 @@ The app starts without the ML service and without the key. A check-in then answe
 
 | Method | Path | Auth | Result |
 |---|---|---|---|
-| POST | `/api/wellness/checkin` | optional | 200. Guests: result only (`saved: false`, nothing stored). Signed in: stored, with `id`. |
+| POST | `/api/wellness/checkin[?save=false]` | optional | 200. Guests: result only (`saved: false`, nothing stored). Signed in: stored, with `id`, unless `save=false`. |
 | GET | `/api/wellness/checkins?page=0&size=10` | required | Own check-ins, newest first, `{items, page, size, totalElements, totalPages}`; size 1–50 |
 | GET | `/api/wellness/checkins/latest` | required | 200 with the latest, or 204 if none |
 | DELETE | `/api/wellness/checkins/{id}` | required | 204. Another user's id gets the same 404 as a missing one. |
 | DELETE | `/api/wellness/checkins` | required | 204. Deletes all of the user's own check-ins. |
 
 Ownership is enforced in `WellnessCheckinService`: every query is scoped to the signed-in user.
+
+**`save` query parameter** (optional, default `true`). With `save=false` the answers are scored and the normal
+result is returned, but nothing is written, even for a signed-in user: the response has `saved: false`,
+`id: null` and `createdAt: null`, exactly like a guest's. The frontend's what-if previews use it so slider moves
+never create history. Guests behave the same either way. Only `true` or `false` (any case) are accepted; any
+other value (`1`, `yes`, empty, ...) is a 400 `WELLNESS_INVALID_INPUT` with `fields: [{"field": "save", ...}]`,
+returned before the ML service is called.
 
 **Request** (camelCase; any other field is rejected with 400, so for example `gender` or `city` is never sent on):
 

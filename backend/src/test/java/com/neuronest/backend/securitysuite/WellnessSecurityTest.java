@@ -127,6 +127,55 @@ class WellnessSecurityTest extends SecuritySuiteBase {
         assertThat(rows(userB.getId())).isZero();
     }
 
+    // ---- ?save=false (what-if previews) ----
+
+    @Test
+    void saveFalseScoresASignedInUsersAnswersButStoresNothing() throws Exception {
+        for (String value : new String[]{"false", "FALSE", " false "}) {
+            MvcResult r = as(tokenA, checkinRequest(WellnessTestData.requestJson()).param("save", value));
+            assertThat(r.getResponse().getStatus()).as(value).isEqualTo(200);
+            JsonNode body = body(r);
+            assertThat(body.path("saved").asBoolean()).isFalse();
+            assertThat(body.path("id").isNull()).isTrue();
+            assertThat(body.path("createdAt").isNull()).isTrue();
+            assertThat(body.path("result").path("mood").path("risk_band").asString()).isEqualTo("High");
+            assertThat(JSON.convertValue(body.path("suggestedActions"), List.class)).isNotEmpty();
+        }
+        assertThat(allRows()).isZero();
+        assertThat(as(tokenA, get(HISTORY + "/latest")).getResponse().getStatus()).isEqualTo(204);
+    }
+
+    @Test
+    void theDefaultAndSaveTrueStillStore() throws Exception {
+        assertThat(body(as(tokenA, checkinRequest(WellnessTestData.requestJson()))).path("saved").asBoolean()).isTrue();
+        assertThat(body(as(tokenA, checkinRequest(WellnessTestData.requestJson()).param("save", "true")))
+                .path("saved").asBoolean()).isTrue();
+        assertThat(rows(userA.getId())).isEqualTo(2);
+    }
+
+    @Test
+    void guestsAreUnchangedWithSaveFalse() throws Exception {
+        for (String value : new String[]{"false", "true"}) {
+            JsonNode body = body(as(null, checkinRequest(WellnessTestData.requestJson()).param("save", value)));
+            assertThat(body.path("saved").asBoolean()).isFalse();
+            assertThat(body.path("id").isNull()).isTrue();
+        }
+        assertThat(allRows()).isZero();
+    }
+
+    @Test
+    void anInvalidSaveValueIsA400BeforeTheMlServiceIsCalled() throws Exception {
+        for (String value : new String[]{"maybe", "1", "yes", "", "no"}) {
+            MvcResult r = as(tokenA, checkinRequest(WellnessTestData.requestJson()).param("save", value));
+            assertThat(r.getResponse().getStatus()).as("save=" + value).isEqualTo(400);
+            JsonNode body = body(r);
+            assertThat(body.path("code").asString()).isEqualTo("WELLNESS_INVALID_INPUT");
+            assertThat(body.path("fields").path(0).path("field").asString()).isEqualTo("save");
+        }
+        WellnessMlStubs.neverCalled(wellnessMl);
+        assertThat(allRows()).isZero();
+    }
+
     @Test
     void whenTheMlServiceFailsTheAnswerIsA503AndNothingIsSaved() throws Exception {
         WellnessMlStubs.unavailable(wellnessMl);

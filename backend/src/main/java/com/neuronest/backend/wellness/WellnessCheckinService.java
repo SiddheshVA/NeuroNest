@@ -46,6 +46,14 @@ public class WellnessCheckinService {
 
     /** Scores the answers; stores them with the result only when currentUserId is not null. */
     public CheckinResponse checkin(CheckinRequest request, UUID currentUserId) {
+        return checkin(request, currentUserId, true);
+    }
+
+    /**
+     * Scores the answers. With save=false nothing is ever written, even for a signed-in user: the answer is
+     * the same as a guest's (saved=false, id and createdAt null). Used for what-if previews.
+     */
+    public CheckinResponse checkin(CheckinRequest request, UUID currentUserId, boolean save) {
         MlCheckinRequest mlRequest = WellnessInputs.toMl(request);
         MlCheckinResult result = ml.checkin(mlRequest);
 
@@ -54,7 +62,7 @@ public class WellnessCheckinService {
         Boolean seeDoctor = sleepClass == null ? null : result.sleep().seeDoctor();
         var actions = WellnessSuggestedActions.codes(result.mood().riskBand(), sleepClass, seeDoctor);
 
-        if (currentUserId == null) {
+        if (currentUserId == null || !save) {
             return new CheckinResponse(null, false, null, resultJson, actions);
         }
         WellnessCheckin row = new WellnessCheckin();
