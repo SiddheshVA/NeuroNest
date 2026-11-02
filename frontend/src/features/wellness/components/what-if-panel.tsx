@@ -9,9 +9,9 @@ import { BandChip, DriverList } from "./result-parts.tsx";
 import { card, muted } from "./styles.ts";
 
 /**
- * "What if I slept more / stressed less / moved more?" Live only when WHAT_IF_ENABLED is on AND a `preview`
- * function is given that scores WITHOUT saving. The backend has no such option yet, so nobody passes one and
- * the panel renders disabled: what-if must never create saved check-ins.
+ * "What if I slept more / stressed less / moved more?" Live when WHAT_IF_ENABLED is on and a `preview`
+ * function is given. `preview` must score WITHOUT saving (api.ts previewCheckin, ?save=false): what-if must
+ * never create saved check-ins. Re-runs are debounced and only the latest answer is shown.
  */
 export function WhatIfPanel({
   base,
@@ -91,7 +91,10 @@ export function WhatIfPanel({
             <p className="text-sm text-[#8A3324]">{WHAT_IF.failed}</p>
           ) : state.status === "ready" ? (
             <div className="flex flex-col gap-3">
-              <BandChip band={state.response.result.mood.risk_band} />
+              <p className="flex items-center gap-2 text-sm font-semibold text-[#1C352D]">
+                {WHAT_IF.result}
+                <BandChip band={state.response.result.mood.risk_band} />
+              </p>
               <DriverList drivers={state.response.result.mood.drivers} kind="mood" />
             </div>
           ) : null}

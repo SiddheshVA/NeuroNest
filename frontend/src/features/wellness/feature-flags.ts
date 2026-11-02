@@ -1,11 +1,9 @@
 /**
- * What-if panel. OFF until the backend has a way to score a check-in WITHOUT saving it.
- *
- * POST /api/wellness/checkin always stores the check-in for a signed-in user and has no "don't save" option
- * (backend/docs/wellness-checkin.md, WellnessCheckinService), so every slider move would create a saved
- * check-in. Turn this on only once such an option exists and api.ts uses it for what-if calls.
+ * What-if panel. Safe to keep on because what-if calls go through previewCheckin (api.ts), which always sends
+ * POST /api/wellness/checkin?save=false: the backend then never stores anything, even for a signed-in user.
+ * Switch off to hide the live panel (it then renders disabled).
  */
-export const WHAT_IF_ENABLED = false;
+export const WHAT_IF_ENABLED = true;
 
-/** Debounce for what-if re-runs once enabled. */
+/** Debounce for what-if re-runs. */
 export const WHAT_IF_DEBOUNCE_MS = 400;

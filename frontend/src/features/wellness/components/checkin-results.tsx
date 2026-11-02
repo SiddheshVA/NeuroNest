@@ -13,6 +13,7 @@ import {
   showCrisisResources,
   sleepView,
 } from "../results.ts";
+import { previewCheckin } from "../api.ts";
 import type { CheckinRequest, CheckinResponse } from "../types.ts";
 import { ActionList, BandScale, DriverList } from "./result-parts.tsx";
 import { card, muted, primaryButton, secondaryButton, textLink } from "./styles.ts";
@@ -140,7 +141,7 @@ export function CheckinResults({
         <ActionList codes={suggestedActions} />
       </section>
 
-      <WhatIfPanel base={request} />
+      <WhatIfPanel base={request} preview={previewCheckin} />
 
       <aside className="flex gap-3 rounded-2xl border border-[#E5E8E1] bg-[#FBF9F4] p-4 text-sm text-[#3D4A43]" aria-label={RESULT.disclaimerTitle}>
         <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />

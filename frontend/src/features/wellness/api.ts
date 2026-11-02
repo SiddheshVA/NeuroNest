@@ -35,6 +35,19 @@ export async function submitCheckin(request: CheckinRequest): Promise<CheckinRes
   return (await response.json()) as CheckinResponse;
 }
 
+/**
+ * What-if preview: the same scoring with ?save=false, so nothing is ever stored, even for a signed-in user
+ * (backend/docs/wellness-checkin.md). The only call the what-if panel may make.
+ */
+export async function previewCheckin(request: CheckinRequest): Promise<CheckinResponse> {
+  const response = await call("/wellness/checkin?save=false", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return (await response.json()) as CheckinResponse;
+}
+
 export async function listCheckins(page: number, size: number): Promise<CheckinPage> {
   const response = await call(`/wellness/checkins?page=${page}&size=${size}`);
   const p = (await response.json()) as Partial<CheckinPage> | null;
