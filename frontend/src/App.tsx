@@ -13,6 +13,7 @@ import AssessmentResultPage from "@/routes/AssessmentResultPage";
 import CheckInResultPage from "@/routes/CheckInResultPage";
 import { AssessmentPage, Gad7Page, K10Page, Phq9Page, Pss10Page, SciPage } from "@/routes/AssessmentPages";
 import { ArticleRoute, ResourcesPage } from "@/routes/ResourcesPages";
+import { WellnessCheckinPage, WellnessHistoryPage } from "@/routes/WellnessCheckinPages";
 import { LoginPage, RequireAuth, SignUpPage } from "@/routes/AuthPages";
 import { FindProfessionalRedirect, ProfessionalProfileRoute, ProfessionalsPage } from "@/routes/ProfessionalsPages";
 import {
@@ -73,6 +74,17 @@ export default function App() {
         <Route path="/assessment/k10" element={<K10Page />} />
         <Route path="/assessment/sci" element={<SciPage />} />
         <Route path="/assessment/result/:type" element={<AssessmentResultPage />} />
+
+        {/* Wellness check-in: open to guests (not stored); history needs a signed-in user. */}
+        <Route path="/wellness-check-in" element={<WellnessCheckinPage />} />
+        <Route
+          path="/wellness-check-in/history"
+          element={
+            <RequireAuth>
+              <WellnessHistoryPage />
+            </RequireAuth>
+          }
+        />
 
         <Route path="/relaxation" element={<RelaxationLayout />}>
           <Route index element={<RelaxationPage />} />

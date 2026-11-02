@@ -14,6 +14,7 @@ import {
 import { AppointmentsSummary } from "@/components/dashboard/appointments-summary";
 import { DashboardSectionHeader } from "@/components/dashboard/dashboard-section-header";
 import { Container } from "@/components/layout/container";
+import { WellnessDashboardCard } from "@/features/wellness/components/dashboard-card.tsx";
 import { BackLink } from "@/components/navigation/back-link";
 import { apiFetch } from "@/lib/api";
 import { SCORE_RANGES } from "@/lib/assessments/ranges";
@@ -253,6 +254,8 @@ export default function DashboardPage() {
                 </Link>
               </section>
             </div>
+
+            <WellnessDashboardCard />
 
             <AppointmentsSummary />
           </div>
