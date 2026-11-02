@@ -106,6 +106,8 @@ import java.util.UUID;
         com.neuronest.backend.meeting.MeetingJoinService.class, com.neuronest.backend.meeting.MeetingWindow.class,
         com.neuronest.backend.meeting.MeetingLinkRecovery.class, com.neuronest.backend.notification.SessionMessages.class,
         com.neuronest.backend.notification.MailSettings.class,
+        com.neuronest.backend.wellness.WellnessCheckinService.class,
+        com.neuronest.backend.wellness.WellnessContextProvider.class,
         SecuritySuiteBase.SuiteBeans.class})
 abstract class SecuritySuiteBase {
 
@@ -167,6 +169,9 @@ abstract class SecuritySuiteBase {
     // No email is sent: tests check what would be sent.
     @MockitoBean
     com.neuronest.backend.notification.NotificationService notifications;
+    // The ML service is never called: wellness tests stub its answer (or its failure).
+    @MockitoBean
+    com.neuronest.backend.wellness.WellnessMlClient wellnessMl;
     @Autowired
     com.neuronest.backend.meeting.MeetingLinkRecovery meetingLinkRecovery;
 
