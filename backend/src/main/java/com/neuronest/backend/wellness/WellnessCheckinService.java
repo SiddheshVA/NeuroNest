@@ -51,7 +51,8 @@ public class WellnessCheckinService {
 
         String sleepClass = Boolean.TRUE.equals(result.sleep().inRange()) ? result.sleep().patternCode() : null;
         Map<String, Object> resultJson = json.convertValue(result, MAP);
-        var actions = WellnessSuggestedActions.codes(result.mood().riskBand(), sleepClass);
+        Boolean seeDoctor = sleepClass == null ? null : result.sleep().seeDoctor();
+        var actions = WellnessSuggestedActions.codes(result.mood().riskBand(), sleepClass, seeDoctor);
 
         if (currentUserId == null) {
             return new CheckinResponse(null, false, null, resultJson, actions);
@@ -107,6 +108,7 @@ public class WellnessCheckinService {
 
     static CheckinItem item(WellnessCheckin row) {
         return new CheckinItem(row.getId(), row.getCreatedAt(), row.getSegment(), row.getResult(),
-                WellnessSuggestedActions.codes(row.getMoodBand(), row.getSleepClass()));
+                WellnessSuggestedActions.codes(row.getMoodBand(), row.getSleepClass(),
+                        WellnessSuggestedActions.seeDoctorOf(row.getResult())));
     }
 }

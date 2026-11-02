@@ -27,17 +27,22 @@ public final class WellnessTestData {
                  "heartRate":%d,"dailySteps":%d}""".formatted(SECRET_HEART_RATE, SECRET_STEPS);
     }
 
-    /** A 200 from the ML service; band and sleep code are parameters. */
+    /** A 200 from the ML service; see_doctor as ml-service sets it (true for insomnia_like and apnea_like). */
     public static String mlResponse(String band, boolean sleepInRange, String sleepCode) {
+        return mlResponse(band, sleepInRange, sleepCode, sleepCode != null && !"none".equals(sleepCode));
+    }
+
+    /** A 200 from the ML service with an explicit sleep.see_doctor flag. */
+    public static String mlResponse(String band, boolean sleepInRange, String sleepCode, boolean seeDoctor) {
         String sleep = sleepInRange ? """
                 {"model":"sleep_pattern_extended","in_range":true,"reason":null,"pattern_code":"%s",
-                 "display_text":"Your answers resemble a pattern.","see_doctor":true,"probability":0.5717,
+                 "display_text":"Your answers resemble a pattern.","see_doctor":%s,"probability":0.5717,
                  "probabilities":{"none":0.241,"insomnia_like":0.5717,"apnea_like":0.1873},
                  "probabilities_calibrated":false,"confidence":"medium",
                  "confidence_reasons":["model quality limits confidence to 'medium'"],
                  "drivers":[{"feature":"sleep_duration","label":"Sleep duration (h)","value":6.5,
                    "direction":"increases","effect":"increases likelihood of insomnia-like pattern","impact":0.6758}],
-                 "imputed":[],"out_of_range":[],%s}""".formatted(sleepCode, GUIDANCE)
+                 "imputed":[],"out_of_range":[],%s}""".formatted(sleepCode, seeDoctor, GUIDANCE)
                 : """
                 {"model":null,"in_range":false,"reason":"The sleep-pattern model was built from adults aged 27-59.",
                  "pattern_code":null,"display_text":null,"see_doctor":null,"probability":null,"probabilities":null,

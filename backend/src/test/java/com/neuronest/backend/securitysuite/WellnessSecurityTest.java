@@ -275,6 +275,26 @@ class WellnessSecurityTest extends SecuritySuiteBase {
         assertThat(context.latestSummary(null)).isEmpty();
     }
 
+    @Test
+    void seeDoctorComesFromTheMlFlagInTheAnswerAndInHistory() throws Exception {
+        WellnessMlStubs.answers(wellnessMl, WellnessTestData.mlResponse("Low", true, "insomnia_like"));
+        JsonNode answer = body(as(tokenA, checkinRequest(WellnessTestData.requestJson())));
+        assertThat(JSON.convertValue(answer.path("suggestedActions"), List.class))
+                .containsExactly("KEEP_TRACKING", "RELAXATION_SLEEP", "SEE_DOCTOR");
+
+        // If ml-service ever stops flagging a class, SEE_DOCTOR follows it: nothing is hard-coded per class.
+        WellnessMlStubs.answers(wellnessMl, WellnessTestData.mlResponse("Low", true, "insomnia_like", false));
+        JsonNode unflagged = body(as(tokenB, checkinRequest(WellnessTestData.requestJson())));
+        assertThat(JSON.convertValue(unflagged.path("suggestedActions"), List.class))
+                .containsExactly("KEEP_TRACKING", "RELAXATION_SLEEP");
+
+        // History recomputes from the stored result's flag.
+        assertThat(JSON.convertValue(body(as(tokenA, get(HISTORY + "/latest"))).path("suggestedActions"), List.class))
+                .containsExactly("KEEP_TRACKING", "RELAXATION_SLEEP", "SEE_DOCTOR");
+        assertThat(JSON.convertValue(body(as(tokenB, get(HISTORY + "/latest"))).path("suggestedActions"), List.class))
+                .containsExactly("KEEP_TRACKING", "RELAXATION_SLEEP");
+    }
+
     // ---- Privacy ----
 
     @Test
