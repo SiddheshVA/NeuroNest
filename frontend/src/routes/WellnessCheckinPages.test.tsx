@@ -84,13 +84,13 @@ describe("questionnaire", () => {
     expect(screen.getByText(/EMIs/)).toBeInTheDocument();
   });
 
-  test("the payload has numbers from the chips; skipped optionals are omitted; no BMI is asked", async () => {
+  test("the payload has numbers from the chips; skipped optionals are omitted; no sleep boosters are asked", async () => {
     submit.mockResolvedValue(response("Moderate"));
     renderAt(<WellnessCheckinPage />);
     await fillRequired("Working");
     await userEvent.click(screen.getByRole("button", { name: /sharpen your result/i }));
-    expect(screen.queryByText(/bmi|weight/i)).not.toBeInTheDocument();
-    await userEvent.click(screen.getByLabelText("60–70 bpm"));
+    expect(screen.queryByText(/bmi|weight|heart rate|daily steps|bpm/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("8–10 h"));
     await userEvent.click(screen.getByLabelText("Prefer not to say"));
     await userEvent.click(screen.getByRole("button", { name: /see my result/i }));
 
@@ -105,7 +105,7 @@ describe("questionnaire", () => {
       satisfaction: 2,
       financialStress: 3,
       stressLevel: 7,
-      heartRate: 65,
+      workStudyHours: 9,
     });
     expect(await screen.findByRole("heading", { name: "Your Wellness Snapshot" })).toBeInTheDocument();
   });

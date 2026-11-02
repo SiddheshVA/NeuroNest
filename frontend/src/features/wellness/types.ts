@@ -6,8 +6,9 @@ export type DietaryHabits = "unhealthy" | "moderate" | "healthy";
 
 /**
  * POST /api/wellness/checkin body: fields WellnessDtos.CheckinRequest accepts (any other field is rejected by
- * the API). Optional fields are left out when not answered (never sent as null). The API also accepts
- * bmiCategory, but the app deliberately never asks for weight, height or BMI, so it is not part of this type.
+ * the API). Optional fields are left out when not answered (never sent as null). The API also accepts the
+ * sleep "booster" inputs bmiCategory, heartRate and dailySteps; the app deliberately never asks for them, so
+ * the sleep result always uses the core model (no imputed inputs, confidence stays at medium when in range).
  */
 export interface CheckinRequest {
   segment: Segment;
@@ -29,8 +30,6 @@ export interface CheckinRequest {
   dietaryHabits?: DietaryHabits;
   workStudyHours?: number;
   familyHistory?: boolean;
-  heartRate?: number;
-  dailySteps?: number;
 }
 
 export type RiskBand = "Low" | "Moderate" | "High";

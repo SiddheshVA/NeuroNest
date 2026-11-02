@@ -7,11 +7,9 @@ import {
   AGE_MIN,
   AGE_START,
   DIET_OPTIONS,
-  HEART_RATE_OPTIONS,
   MOVEMENT_OPTIONS,
   SEGMENTS,
   SLEEP_OPTIONS,
-  STEPS_OPTIONS,
   WORK_STUDY_HOURS_OPTIONS,
   missingInStep,
   type Answers,
@@ -36,7 +34,7 @@ function withSkip<V>(list: Chip<V>[]): Chip<V | null>[] {
   return [{ key: "skip", value: null, label: NAV.skip }, ...list];
 }
 
-const OPTIONAL_KEYS: (keyof Answers)[] = ["workStudyHours", "dietaryHabits", "familyHistory", "heartRate", "dailySteps"];
+const OPTIONAL_KEYS: (keyof Answers)[] = ["workStudyHours", "dietaryHabits", "familyHistory"];
 
 const FAMILY_CHIPS: Chip<FamilyHistoryAnswer>[] = [
   { key: "yes", value: "yes", label: OPTIONAL.familyHistory.options.yes },
@@ -305,29 +303,6 @@ export function CheckinQuestionnaire({
                   onChange={(familyHistory) => onChange({ familyHistory })}
                 />
               </Question>
-
-              <div className="flex flex-col gap-5 border-t border-[#E5E8E1] pt-5">
-                <div>
-                  <p className="text-sm font-semibold text-[#1C352D]">{OPTIONAL.sleepExtrasTitle}</p>
-                  <p className="text-xs text-[#5A6E5A]">{OPTIONAL.sleepExtrasHint}</p>
-                </div>
-                <Question label={OPTIONAL.heartRate.label} error={fieldErrors.heartRate}>
-                  <ChipGroup
-                    name="heartRate"
-                    chips={withSkip(chips(HEART_RATE_OPTIONS, OPTIONAL.heartRate.options))}
-                    value={answers.heartRate}
-                    onChange={(heartRate) => onChange({ heartRate })}
-                  />
-                </Question>
-                <Question label={OPTIONAL.dailySteps.label} error={fieldErrors.dailySteps}>
-                  <ChipGroup
-                    name="dailySteps"
-                    chips={withSkip(chips(STEPS_OPTIONS, OPTIONAL.dailySteps.options))}
-                    value={answers.dailySteps}
-                    onChange={(dailySteps) => onChange({ dailySteps })}
-                  />
-                </Question>
-              </div>
             </div>
           </section>
         </>

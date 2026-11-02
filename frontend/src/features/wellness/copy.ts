@@ -166,16 +166,6 @@ export const OPTIONAL = {
     hint: "Adds accuracy to your mood estimate. Completely optional.",
     options: { yes: "Yes", no: "No" },
   },
-  sleepExtrasTitle: "If you track your health (phone or watch)",
-  sleepExtrasHint: "Adds detail to your sleep result.",
-  heartRate: {
-    label: "Resting heart rate",
-    options: { lt60: "Under 60 bpm", b60to70: "60–70 bpm", b70to80: "70–80 bpm", gt80: "Over 80 bpm" },
-  },
-  dailySteps: {
-    label: "Daily steps",
-    options: { lt3k: "Under 3,000", s3to6k: "3,000–6,000", s6to9k: "6,000–9,000", gt9k: "9,000+" },
-  },
 } as const;
 
 // ---- Results ----
@@ -235,8 +225,6 @@ export const DRIVER_LABELS: Record<string, string> = {
   quality_of_sleep: "How rested you wake up",
   stress_level: "Stress this week",
   physical_activity_minutes: "Daily movement",
-  heart_rate: "Resting heart rate",
-  daily_steps: "Daily steps",
 };
 
 /**

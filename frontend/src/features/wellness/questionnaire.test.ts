@@ -88,14 +88,11 @@ describe("toRequest", () => {
 
   test("answered optionals are included; prefer-not-to-say family history is omitted", () => {
     const req = toRequest(
-      complete({ workStudyHours: 9, dietaryHabits: "moderate", familyHistory: "yes", heartRate: 65, dailySteps: 7500 }),
+      complete({ workStudyHours: 9, dietaryHabits: "moderate", familyHistory: "yes" }),
     );
     assert.equal(req.workStudyHours, 9);
     assert.equal(req.dietaryHabits, "moderate");
     assert.equal(req.familyHistory, true);
-    assert.equal(req.heartRate, 65);
-    assert.equal(req.dailySteps, 7500);
-    assert.ok(!("bmiCategory" in req));
     assert.equal(toRequest(complete({ familyHistory: "no" })).familyHistory, false);
     assert.ok(!("familyHistory" in toRequest(complete({ familyHistory: "prefer_not" }))));
   });
@@ -106,27 +103,26 @@ describe("toRequest", () => {
       "dietaryHabits",
       "workStudyHours",
       "familyHistory",
-      "heartRate",
-      "dailySteps",
     ]);
     const req = toRequest(
       complete({
         workStudyHours: 3,
         dietaryHabits: "healthy",
         familyHistory: "no",
-        heartRate: 55,
-        dailySteps: 2500,
       }),
     );
     for (const key of Object.keys(req)) assert.ok(allowed.has(key), key);
   });
 
-  test("weight, height and BMI are never asked for or sent", () => {
-    const req = toRequest(complete({ heartRate: 65, dailySteps: 4500, workStudyHours: 5 }));
-    assert.ok(!("bmiCategory" in req));
-    assert.ok(!("bmiCategory" in EMPTY_ANSWERS));
+  test("sleep boosters (BMI, heart rate, daily steps) are never asked for or sent", () => {
+    // The sleep result then always uses the core model: nothing imputed, confidence stays at medium in range.
+    const req = toRequest(complete({ workStudyHours: 5, dietaryHabits: "healthy", familyHistory: "no" }));
+    for (const key of ["bmiCategory", "heartRate", "dailySteps"]) {
+      assert.ok(!(key in req), key);
+      assert.ok(!(key in EMPTY_ANSWERS), key);
+    }
     const allCopy = readFileSync(new URL("./copy.ts", import.meta.url), "utf8");
-    assert.doesNotMatch(allCopy, /\bBMI\b|\bweight\b|\bheight\b/i);
+    assert.doesNotMatch(allCopy, /\bBMI\b|\bweight\b|\bheight\b|heart rate|daily steps|\bbpm\b/i);
   });
 
   test("incomplete answers are refused", () => {
@@ -167,7 +163,7 @@ describe("validation", () => {
       stress: "Input should be less than or equal to 10",
       movementMinutes: "Field required",
     });
-    assert.equal(stepForFieldErrors([{ field: "dailySteps", message: "x" }]), 3);
+    assert.equal(stepForFieldErrors([{ field: "workStudyHours", message: "x" }]), 3);
     assert.equal(stepForFieldErrors([{ field: null, message: "x" }]), null);
   });
 });

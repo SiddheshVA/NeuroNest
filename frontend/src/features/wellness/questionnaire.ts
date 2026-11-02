@@ -41,20 +41,6 @@ export const DIET_OPTIONS: ChipOption<DietaryHabits>[] = [
   { id: "healthy", value: "healthy" },
 ];
 
-export const HEART_RATE_OPTIONS: ChipOption<number>[] = [
-  { id: "lt60", value: 55 },
-  { id: "b60to70", value: 65 },
-  { id: "b70to80", value: 75 },
-  { id: "gt80", value: 85 },
-];
-
-export const STEPS_OPTIONS: ChipOption<number>[] = [
-  { id: "lt3k", value: 2500 },
-  { id: "s3to6k", value: 4500 },
-  { id: "s6to9k", value: 7500 },
-  { id: "gt9k", value: 10500 },
-];
-
 export const SEGMENTS: Segment[] = ["student", "working", "both"];
 
 export const AGE_MIN = 16;
@@ -79,8 +65,6 @@ export interface Answers {
   workStudyHours: number | null;
   dietaryHabits: DietaryHabits | null;
   familyHistory: FamilyHistoryAnswer | null;
-  heartRate: number | null;
-  dailySteps: number | null;
 }
 
 export const EMPTY_ANSWERS: Answers = {
@@ -96,8 +80,6 @@ export const EMPTY_ANSWERS: Answers = {
   workStudyHours: null,
   dietaryHabits: null,
   familyHistory: null,
-  heartRate: null,
-  dailySteps: null,
 };
 
 export type RequiredKey =
@@ -133,8 +115,6 @@ export const API_FIELD_TO_ANSWER: Record<string, keyof Answers> = {
   workStudyHours: "workStudyHours",
   dietaryHabits: "dietaryHabits",
   familyHistory: "familyHistory",
-  heartRate: "heartRate",
-  dailySteps: "dailySteps",
 };
 
 const RANGES: Partial<Record<RequiredKey, [number, number]>> = {
@@ -205,8 +185,6 @@ export function toRequest(answers: Answers): CheckinRequest {
   if (answers.dietaryHabits !== null) req.dietaryHabits = answers.dietaryHabits;
   if (answers.familyHistory === "yes") req.familyHistory = true;
   if (answers.familyHistory === "no") req.familyHistory = false;
-  if (answers.heartRate !== null) req.heartRate = answers.heartRate;
-  if (answers.dailySteps !== null) req.dailySteps = answers.dailySteps;
   return req;
 }
 
