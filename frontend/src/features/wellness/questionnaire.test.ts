@@ -1,6 +1,7 @@
 /// <reference types="node" />
 // Run with `npm test` (Node's built-in test runner; no extra dependencies).
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 
 import { OPTIONAL, Q, bySegment } from "./copy.ts";
@@ -105,7 +106,6 @@ describe("toRequest", () => {
       "dietaryHabits",
       "workStudyHours",
       "familyHistory",
-      "bmiCategory",
       "heartRate",
       "dailySteps",
     ]);
@@ -114,12 +114,19 @@ describe("toRequest", () => {
         workStudyHours: 3,
         dietaryHabits: "healthy",
         familyHistory: "no",
-        bmiCategory: "normal",
         heartRate: 55,
         dailySteps: 2500,
       }),
     );
     for (const key of Object.keys(req)) assert.ok(allowed.has(key), key);
+  });
+
+  test("weight, height and BMI are never asked for or sent", () => {
+    const req = toRequest(complete({ heartRate: 65, dailySteps: 4500, workStudyHours: 5 }));
+    assert.ok(!("bmiCategory" in req));
+    assert.ok(!("bmiCategory" in EMPTY_ANSWERS));
+    const allCopy = readFileSync(new URL("./copy.ts", import.meta.url), "utf8");
+    assert.doesNotMatch(allCopy, /\bBMI\b|\bweight\b|\bheight\b/i);
   });
 
   test("incomplete answers are refused", () => {

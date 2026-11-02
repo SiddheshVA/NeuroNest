@@ -75,10 +75,10 @@ export default function App() {
         <Route path="/assessment/sci" element={<SciPage />} />
         <Route path="/assessment/result/:type" element={<AssessmentResultPage />} />
 
-        {/* Wellness check-in: open to guests (not stored); history needs a signed-in user. */}
-        <Route path="/wellness-check-in" element={<WellnessCheckinPage />} />
+        {/* Wellness Snapshot (API: wellness check-in): open to guests (not stored); history needs a signed-in user. */}
+        <Route path="/wellness-snapshot" element={<WellnessCheckinPage />} />
         <Route
-          path="/wellness-check-in/history"
+          path="/wellness-snapshot/history"
           element={
             <RequireAuth>
               <WellnessHistoryPage />

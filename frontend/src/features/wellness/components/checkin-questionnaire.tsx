@@ -6,7 +6,6 @@ import {
   AGE_MAX,
   AGE_MIN,
   AGE_START,
-  BMI_OPTIONS,
   DIET_OPTIONS,
   HEART_RATE_OPTIONS,
   MOVEMENT_OPTIONS,
@@ -37,7 +36,7 @@ function withSkip<V>(list: Chip<V>[]): Chip<V | null>[] {
   return [{ key: "skip", value: null, label: NAV.skip }, ...list];
 }
 
-const OPTIONAL_KEYS: (keyof Answers)[] = ["workStudyHours", "dietaryHabits", "familyHistory", "bmiCategory", "heartRate", "dailySteps"];
+const OPTIONAL_KEYS: (keyof Answers)[] = ["workStudyHours", "dietaryHabits", "familyHistory", "heartRate", "dailySteps"];
 
 const FAMILY_CHIPS: Chip<FamilyHistoryAnswer>[] = [
   { key: "yes", value: "yes", label: OPTIONAL.familyHistory.options.yes },
@@ -312,14 +311,6 @@ export function CheckinQuestionnaire({
                   <p className="text-sm font-semibold text-[#1C352D]">{OPTIONAL.sleepExtrasTitle}</p>
                   <p className="text-xs text-[#5A6E5A]">{OPTIONAL.sleepExtrasHint}</p>
                 </div>
-                <Question label={OPTIONAL.bmiCategory.label} error={fieldErrors.bmiCategory}>
-                  <ChipGroup
-                    name="bmiCategory"
-                    chips={withSkip(chips(BMI_OPTIONS, OPTIONAL.bmiCategory.options))}
-                    value={answers.bmiCategory}
-                    onChange={(bmiCategory) => onChange({ bmiCategory })}
-                  />
-                </Question>
                 <Question label={OPTIONAL.heartRate.label} error={fieldErrors.heartRate}>
                   <ChipGroup
                     name="heartRate"

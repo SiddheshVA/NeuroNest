@@ -10,8 +10,8 @@ import {
 import type { CheckinResponse, Driver, Guidance, RiskBand, SleepResult } from "./types.ts";
 
 export const WELLNESS_ROUTES = {
-  checkin: "/wellness-check-in",
-  history: "/wellness-check-in/history",
+  checkin: "/wellness-snapshot",
+  history: "/wellness-snapshot/history",
 } as const;
 
 export const BANDS: RiskBand[] = ["Low", "Moderate", "High"];

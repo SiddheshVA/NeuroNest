@@ -2,7 +2,7 @@
 // are unit-tested with Node's test runner. Ranges mirror backend/docs/wellness-checkin.md; the ML service is
 // still the source of truth and its 400 field messages are shown inline.
 
-import type { BmiCategory, CheckinRequest, DietaryHabits, FieldError, Segment } from "./types.ts";
+import type { CheckinRequest, DietaryHabits, FieldError, Segment } from "./types.ts";
 
 /** A chip: what the user taps, and the number (or value) that is sent. */
 export interface ChipOption<V> {
@@ -39,12 +39,6 @@ export const DIET_OPTIONS: ChipOption<DietaryHabits>[] = [
   { id: "unhealthy", value: "unhealthy" },
   { id: "moderate", value: "moderate" },
   { id: "healthy", value: "healthy" },
-];
-
-export const BMI_OPTIONS: ChipOption<BmiCategory>[] = [
-  { id: "normal", value: "normal" },
-  { id: "overweight", value: "overweight" },
-  { id: "obese", value: "obese" },
 ];
 
 export const HEART_RATE_OPTIONS: ChipOption<number>[] = [
@@ -85,7 +79,6 @@ export interface Answers {
   workStudyHours: number | null;
   dietaryHabits: DietaryHabits | null;
   familyHistory: FamilyHistoryAnswer | null;
-  bmiCategory: BmiCategory | null;
   heartRate: number | null;
   dailySteps: number | null;
 }
@@ -103,7 +96,6 @@ export const EMPTY_ANSWERS: Answers = {
   workStudyHours: null,
   dietaryHabits: null,
   familyHistory: null,
-  bmiCategory: null,
   heartRate: null,
   dailySteps: null,
 };
@@ -141,7 +133,6 @@ export const API_FIELD_TO_ANSWER: Record<string, keyof Answers> = {
   workStudyHours: "workStudyHours",
   dietaryHabits: "dietaryHabits",
   familyHistory: "familyHistory",
-  bmiCategory: "bmiCategory",
   heartRate: "heartRate",
   dailySteps: "dailySteps",
 };
@@ -214,7 +205,6 @@ export function toRequest(answers: Answers): CheckinRequest {
   if (answers.dietaryHabits !== null) req.dietaryHabits = answers.dietaryHabits;
   if (answers.familyHistory === "yes") req.familyHistory = true;
   if (answers.familyHistory === "no") req.familyHistory = false;
-  if (answers.bmiCategory !== null) req.bmiCategory = answers.bmiCategory;
   if (answers.heartRate !== null) req.heartRate = answers.heartRate;
   if (answers.dailySteps !== null) req.dailySteps = answers.dailySteps;
   return req;

@@ -14,7 +14,7 @@ export const mainNavLinks: NavLink[] = [
   { label: "Home", href: "/" },
   { label: "Chat with Neuro", href: "/ai-companion" },
   { label: "Assessments", href: "/assessment" },
-  { label: "Wellness Check-in", href: "/wellness-check-in" },
+  { label: "Wellness Snapshot", href: "/wellness-snapshot" },
   { label: "Relaxation", href: "/relaxation" },
   { label: "Resources", href: "/resources" },
   { label: "Find Licensed Professional", href: "/professionals" },

@@ -1,4 +1,4 @@
-// Every user-facing string of the wellness check-in, in one place. Plain, warm, non-clinical wording; results
+// Every user-facing string of the Wellness Snapshot (API name: wellness check-in), in one place. Plain, warm, non-clinical wording; results
 // are estimates for self-reflection, never a diagnosis. Option *values* live in questionnaire.ts.
 
 import type { Confidence, RiskBand, Segment } from "./types.ts";
@@ -13,13 +13,13 @@ export const COMMON = {
 } as const;
 
 export const PAGE = {
-  eyebrow: "Wellness check-in",
+  eyebrow: "Wellness Snapshot",
   title: "How are you really doing?",
   intro:
     "Four quick steps, about a minute. You'll get a gentle read on your mood strain and sleep, what's moving them, and a few next steps.",
   privacy: "Your answers are only sent to work out your result. Nothing is kept in this browser.",
-  historyTitle: "Your wellness check-ins",
-  historyIntro: "Every check-in you've saved, newest first. Only you can see these.",
+  historyTitle: "Your wellness snapshots",
+  historyIntro: "Every snapshot you've saved, newest first. Only you can see these.",
 } as const;
 
 export const STEPS = [
@@ -40,7 +40,7 @@ export const NAV = {
   required: "Please choose an answer to continue.",
   skip: "Skip",
   preferNotToSay: "Prefer not to say",
-  startAgain: "Start a new check-in",
+  startAgain: "Take a new snapshot",
   editAnswers: "Change my answers",
   sliderPrompt: "Slide or use the arrow keys",
   sliderNotAnswered: "Not answered yet",
@@ -167,11 +167,7 @@ export const OPTIONAL = {
     options: { yes: "Yes", no: "No" },
   },
   sleepExtrasTitle: "If you track your health (phone or watch)",
-  sleepExtrasHint: "Adds detail to your sleep result. Works best when you add all three.",
-  bmiCategory: {
-    label: "Your weight range (BMI)",
-    options: { normal: "Healthy range", overweight: "Above the healthy range", obese: "Well above it" },
-  },
+  sleepExtrasHint: "Adds detail to your sleep result.",
   heartRate: {
     label: "Resting heart rate",
     options: { lt60: "Under 60 bpm", b60to70: "60–70 bpm", b70to80: "70–80 bpm", gt80: "Over 80 bpm" },
@@ -185,7 +181,7 @@ export const OPTIONAL = {
 // ---- Results ----
 
 export const RESULT = {
-  heading: "Your check-in",
+  heading: "Your Wellness Snapshot",
   moodTitle: "Mood strain",
   moodSubtitle: "How much strain your answers point to right now.",
   bands: {
@@ -217,9 +213,9 @@ export const RESULT = {
   seeDoctor: "If this sounds familiar and it's been going on for a while, it's worth mentioning to a doctor.",
   actionsTitle: "Next steps you might like",
   disclaimerTitle: "Good to know",
-  savedTitle: "Saved to your check-ins",
+  savedTitle: "Saved to your snapshots",
   savedLink: "See your history",
-  anonTitle: "Sign in to save your check-ins and see your progress",
+  anonTitle: "Sign in to save your snapshots and see your progress",
   anonText: "This result is shown once and isn't stored anywhere.",
   anonButton: "Sign in or create an account",
   crisisIntro:
@@ -239,7 +235,6 @@ export const DRIVER_LABELS: Record<string, string> = {
   quality_of_sleep: "How rested you wake up",
   stress_level: "Stress this week",
   physical_activity_minutes: "Daily movement",
-  bmi_category: "Weight range",
   heart_rate: "Resting heart rate",
   daily_steps: "Daily steps",
 };
@@ -274,14 +269,15 @@ export const ACTIONS: Record<string, ActionCopy> = {
     label: "Consider talking to your doctor",
     description: "A GP can check what's behind ongoing sleep problems.",
   },
-  KEEP_TRACKING: { label: "Check in again next week", description: "Spot changes over time in your history." },
+  KEEP_TRACKING: { label: "Take another snapshot next week", description: "Spot changes over time in your history." },
 };
 
 export const WHAT_IF = {
   title: "What-if",
   badge: "Not saved",
-  intro: "Move the sliders to see how changes might shift your result.",
-  disabled: "Coming soon. What-if needs a server option that never saves, so it's switched off for now.",
+  intro: "Move the sliders to see how changes might shift your mood strain. Just exploring: nothing here is saved.",
+  disabled: "What-if is switched off right now.",
+  result: "With these changes",
   sleep: "Sleep (hours)",
   stress: "Stress this week",
   movement: "Movement (minutes a day)",
@@ -292,22 +288,22 @@ export const WHAT_IF = {
 // ---- Errors ----
 
 export const ERRORS = {
-  unavailable: "The check-in service is resting for a moment, please try again shortly. Your answers are still here.",
+  unavailable: "The snapshot service is resting for a moment, please try again shortly. Your answers are still here.",
   network: "We couldn't reach NeuroNest. Please check your connection and try again.",
   invalid: "A few answers need another look.",
   generic: "Something went wrong. Please try again.",
   retry: "Try again",
-  loadHistory: "We couldn't load your check-ins.",
+  loadHistory: "We couldn't load your snapshots.",
   deleteFailed: "We couldn't delete that just now. Please try again.",
 } as const;
 
 // ---- History and dashboard ----
 
 export const HISTORY = {
-  empty: "No check-ins yet",
-  emptyText: "Take a one-minute check-in to start seeing how you're doing over time.",
-  start: "Take a check-in",
-  newCheckin: "New check-in",
+  empty: "No snapshots yet",
+  emptyText: "Take a one-minute snapshot to start seeing how you're doing over time.",
+  start: "Take a snapshot",
+  newCheckin: "New snapshot",
   details: "Details",
   hideDetails: "Hide details",
   delete: "Delete",
@@ -318,11 +314,11 @@ export const HISTORY = {
   sleepConcern: "Sleep worth a look",
   sleepOk: "Sleep okay",
   sleepGuidance: "Sleep tips only",
-  confirmOneTitle: "Delete this check-in?",
+  confirmOneTitle: "Delete this snapshot?",
   confirmOneText: "It will be removed from your history for good.",
-  confirmAllTitle: "Delete all your check-ins?",
+  confirmAllTitle: "Delete all your snapshots?",
   confirmAllText: (n: number) =>
-    `This permanently removes all ${n} check-in${n === 1 ? "" : "s"} from your history. This can't be undone.`,
+    `This permanently removes all ${n} snapshot${n === 1 ? "" : "s"} from your history. This can't be undone.`,
   confirmAllType: "To confirm, type DELETE",
   confirmWord: "DELETE",
   cancel: "Keep it",
@@ -332,12 +328,12 @@ export const HISTORY = {
 } as const;
 
 export const DASHBOARD = {
-  title: "Wellness check-in",
+  title: "Wellness Snapshot",
   latest: "Latest mood strain",
-  none: "No wellness check-ins yet",
-  noneText: "A one-minute check-in on your mood strain and sleep.",
-  start: "Take a check-in",
+  none: "No Wellness Snapshots yet",
+  noneText: "A one-minute snapshot of your mood strain and sleep.",
+  start: "Take a snapshot",
   history: "See history",
-  again: "Check in again",
-  failed: "Your latest check-in couldn't be loaded right now.",
+  again: "Take a new snapshot",
+  failed: "Your latest snapshot couldn't be loaded right now.",
 } as const;

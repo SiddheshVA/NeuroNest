@@ -39,7 +39,7 @@ import type { CheckinItem, CheckinRequest, CheckinResponse } from "@/features/we
 
 type FieldErrors = Partial<Record<keyof Answers, string>>;
 
-/** /wellness-check-in: the questionnaire, then the result. Open to guests (their result is not stored). */
+/** /wellness-snapshot: the questionnaire, then the result. Open to guests (their result is not stored). */
 export function WellnessCheckinPage() {
   const [answers, setAnswers] = useState<Answers>(EMPTY_ANSWERS);
   const [step, setStep] = useState(0);
@@ -134,7 +134,7 @@ function formatDate(value: string) {
 
 const SLEEP_FLAG_TEXT = { concern: HISTORY.sleepConcern, ok: HISTORY.sleepOk, guidance: HISTORY.sleepGuidance };
 
-/** /wellness-check-in/history: the signed-in user's own check-ins (RequireAuth in App.tsx). */
+/** /wellness-snapshot/history: the signed-in user's own check-ins (RequireAuth in App.tsx). */
 export function WellnessHistoryPage() {
   const [page, setPage] = useState(0);
   const { state, setState, reload, retry } = useCheckinHistory(page, HISTORY_PAGE_SIZE);

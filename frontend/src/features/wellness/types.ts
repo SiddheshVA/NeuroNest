@@ -3,11 +3,11 @@
 
 export type Segment = "student" | "working" | "both";
 export type DietaryHabits = "unhealthy" | "moderate" | "healthy";
-export type BmiCategory = "normal" | "overweight" | "obese";
 
 /**
- * POST /api/wellness/checkin body. Exactly the fields WellnessDtos.CheckinRequest accepts: any other field
- * is rejected by the API. Optional fields are left out when not answered (never sent as null).
+ * POST /api/wellness/checkin body: fields WellnessDtos.CheckinRequest accepts (any other field is rejected by
+ * the API). Optional fields are left out when not answered (never sent as null). The API also accepts
+ * bmiCategory, but the app deliberately never asks for weight, height or BMI, so it is not part of this type.
  */
 export interface CheckinRequest {
   segment: Segment;
@@ -29,7 +29,6 @@ export interface CheckinRequest {
   dietaryHabits?: DietaryHabits;
   workStudyHours?: number;
   familyHistory?: boolean;
-  bmiCategory?: BmiCategory;
   heartRate?: number;
   dailySteps?: number;
 }
