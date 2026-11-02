@@ -8,6 +8,10 @@ export function bySegment<T>(segment: Segment | null, text: { student: T; workin
   return text[segment ?? "both"];
 }
 
+export const COMMON = {
+  loading: "Loading",
+} as const;
+
 export const PAGE = {
   eyebrow: "Wellness check-in",
   title: "How are you really doing?",
@@ -38,6 +42,9 @@ export const NAV = {
   preferNotToSay: "Prefer not to say",
   startAgain: "Start a new check-in",
   editAnswers: "Change my answers",
+  sliderPrompt: "Slide or use the arrow keys",
+  sliderNotAnswered: "Not answered yet",
+  sliderValue: (value: number, max: number) => `${value} out of ${max}`,
 } as const;
 
 // ---- Questions ----
@@ -133,6 +140,8 @@ export const Q = {
 export const OPTIONAL = {
   title: "Sharpen your result",
   subtitle: "Optional. Skip any of these; your result works without them.",
+  show: "Add a few optional details",
+  added: (hint: string) => `Added: ${hint.charAt(0).toLowerCase()}${hint.slice(1)}`,
   workStudyHours: {
     label: (s: Segment | null) =>
       bySegment(s, {
