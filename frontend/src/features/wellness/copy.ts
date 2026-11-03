@@ -1,5 +1,7 @@
 // Every user-facing string of the Wellness Snapshot (API name: wellness check-in), in one place. Plain, warm, non-clinical wording; results
-// are estimates for self-reflection, never a diagnosis. Option *values* live in questionnaire.ts.
+// are estimates for self-reflection, never a diagnosis. Option *values* live in questionnaire.ts. The only
+// figures written here are the two documented guidelines (adults: 7+ hours of sleep; WHO: 150+ minutes of
+// activity a week); everything else shown comes from the user's own answers or the API response.
 
 import type { Confidence, RiskBand, Segment } from "./types.ts";
 
@@ -14,37 +16,34 @@ export const COMMON = {
 
 export const PAGE = {
   eyebrow: "Wellness Snapshot",
-  title: "How are you really doing?",
-  intro:
-    "Four quick steps, about a minute. You'll get a gentle read on your mood strain and sleep, what's moving them, and a few next steps.",
+  promise: "About 2 minutes. No account needed, and nothing is saved unless you are signed in.",
+  stepsLabel: "Snapshot steps",
   privacy: "Your answers are only sent to work out your result. Nothing is kept in this browser.",
   historyTitle: "Your wellness snapshots",
-  historyIntro: "Every snapshot you've saved, newest first. Only you can see these.",
+  historyPrivacy: "Only you can see these. Delete any entry, or all of them, whenever you like.",
 } as const;
 
+/** `title` names the step in the step list; `heading` is the step's page heading. */
 export const STEPS = [
-  { title: "Your day", subtitle: "A little about your routine" },
-  { title: "Your sleep", subtitle: "The sleep you actually get" },
-  { title: "Your load", subtitle: "What's on your plate lately" },
-  { title: "This week", subtitle: "One last thing, then your result" },
+  { title: "Your day", heading: "Let's start with your day" },
+  { title: "Your sleep", heading: "Let's talk about your sleep" },
+  { title: "Your load", heading: "What's been on your plate" },
+  { title: "This week", heading: "Last one: how this week felt" },
 ] as const;
 
 export const NAV = {
   back: "Back",
-  next: "Next",
+  next: "Continue",
   seeResult: "See my result",
   checking: "Working it out…",
   progress: (step: number, total: number) => `Step ${step} of ${total}`,
+  stepDone: "done",
+  hint: "You can go back and change any answer.",
   whyWeAsk: "Why we ask",
-  hideWhy: "Hide",
   required: "Please choose an answer to continue.",
   skip: "Skip",
   preferNotToSay: "Prefer not to say",
-  startAgain: "Take a new snapshot",
-  editAnswers: "Change my answers",
-  sliderPrompt: "Slide or use the arrow keys",
-  sliderNotAnswered: "Not answered yet",
-  sliderValue: (value: number, max: number) => `${value} out of ${max}`,
+  scaleValue: (value: number, max: number) => `${value} out of ${max}`,
 } as const;
 
 // ---- Questions ----
@@ -52,11 +51,13 @@ export const NAV = {
 export const Q = {
   segment: {
     label: "Right now, are you mostly…",
+    hint: "Pick the one that takes up most of your week.",
     why: "Study and work stress feel different, so we use a model trained on people in a similar situation.",
     options: { student: "Studying", working: "Working", both: "Both" },
   },
   age: {
     label: "How old are you?",
+    hint: "Use the buttons or type it in.",
     why: "How stress shows up shifts with age, so it helps the estimate fit you better.",
     decrease: "One year younger",
     increase: "One year older",
@@ -81,6 +82,7 @@ export const Q = {
   },
   rested: {
     label: "How rested do you feel when you wake up?",
+    hint: "1 is running on empty, 10 is fully recharged.",
     why: "Feeling unrefreshed can matter as much as hours slept, and it helps spot sleep patterns.",
     low: "Exhausted",
     high: "Fully recharged",
@@ -130,7 +132,7 @@ export const Q = {
   },
   stress: {
     label: "Overall, how stressed have you felt this week?",
-    hint: "Think of the week as a whole, not just today.",
+    hint: "Think of the week as a whole, not just today. 1 is calm, 10 is overwhelmed.",
     why: "Your own sense of stress connects how you're sleeping with how you're feeling.",
     low: "Calm",
     high: "Overwhelmed",
@@ -168,12 +170,48 @@ export const OPTIONAL = {
   },
 } as const;
 
+// ---- Live feedback while answering ----
+
+export const INSIGHT = {
+  /** Sleep feedback by the chosen sleep chip (its representative hours). */
+  sleep: (hours: number) =>
+    hours < 5
+      ? "Well under the 7+ hours most adults are advised to get. Worth a closer look in your results."
+      : hours < 6
+        ? "Below the 7+ hours adults are generally advised to get."
+        : hours < 7
+          ? "Close, but a little under the 7+ hours adults are generally advised to get."
+          : hours < 8
+            ? "Right in the range adults are generally advised to aim for (7 or more hours)."
+            : "Plenty of time asleep. If you still wake up tired, the rested rating matters more.",
+  /** A word for the 1-10 rested score. */
+  restedWord: (score: number) =>
+    score <= 2 ? "exhausted" : score <= 4 ? "tired" : score <= 6 ? "so-so" : score <= 8 ? "fairly rested" : "fully recharged",
+  sleepTitle: (chipLabel: string, restedWord: string | null) =>
+    restedWord ? `${chipLabel}, feeling ${restedWord}` : chipLabel,
+  sleepPrompt: "Pick your usual sleep to see how it compares with general guidance.",
+  sleepPromptTitle: "How your sleep compares",
+  movementTitle: "Your movement this week",
+  movement: (weeklyMinutes: number) =>
+    weeklyMinutes >= 150
+      ? `Roughly ${weeklyMinutes} minutes a week, which meets the WHO's 150+ minutes a week for adults.`
+      : `Roughly ${weeklyMinutes} minutes a week. The WHO suggests adults aim for 150 or more.`,
+  movementPrompt: "Pick how much you move to see how it compares with the WHO's activity guideline.",
+  loadTitle: "Why these three",
+  load: "Load, how you feel about it and money worries together shape your mood estimate. Be honest; only you see this.",
+  stressTitle: "Nearly there",
+  stress: "Your result shows what's moving your mood, and you can try a what-if afterwards without saving anything.",
+} as const;
+
 // ---- Results ----
 
 export const RESULT = {
-  heading: "Your Wellness Snapshot",
+  eyebrow: "Wellness Snapshot",
+  heading: "Here is your snapshot",
+  lede: "An estimate to guide your next step, never a diagnosis.",
+  checkAgain: "Check in again",
+  editAnswers: "Change my answers",
   moodTitle: "Mood strain",
-  moodSubtitle: "How much strain your answers point to right now.",
   bands: {
     Low: { label: "Low", text: "Your answers point to a fairly steady place right now. Keep doing what's working." },
     Moderate: {
@@ -186,27 +224,55 @@ export const RESULT = {
     },
   } satisfies Record<RiskBand, { label: string; text: string }>,
   scaleLabel: (band: string) => `Mood strain: ${band}`,
+  you: "You",
   confidence: {
     label: (c: Confidence) => `${c[0].toUpperCase()}${c.slice(1)} confidence`,
-    whyTitle: "Why this confidence?",
+    whyTitle: (c: Confidence) => `Why ${c} confidence?`,
     fullAnswers: "Based on complete answers that look typical for the data the estimate learned from.",
+    addNow: "Add it now",
   },
-  driversTitle: "What's moving this",
+  driversTitle: "What is moving this",
   driversEmpty: "Nothing stood out strongly either way.",
+  driverTag: { up: "Raises", down: "Eases" },
   direction: {
     mood: { increases: "adds to your strain", decreases: "eases your strain" },
     sleep: { increases: "points toward this pattern", decreases: "points away from it" },
   },
   sleepTitle: "Sleep",
-  sleepGuidanceTitle: "Sleep tips for you",
   sleepGuidanceIntro: "Here's what general sleep and activity guidelines say about your answers.",
+  sleepMeter: {
+    label: "Sleep a night",
+    min: "4 h",
+    max: "10 h",
+    zone: "Advised range: 7 h or more",
+    value: (hours: number) => `${hours} h`,
+    aria: (hours: number) =>
+      `Sleep: about ${hours} hours a night. Adults are generally advised to get 7 or more hours.`,
+  },
+  movementMeter: {
+    label: "Movement a week",
+    min: "0",
+    max: "300+ min",
+    zone: "WHO guideline: 150 min or more",
+    value: (minutes: number) => `${minutes} min`,
+    aria: (minutes: number) =>
+      `Movement: about ${minutes} minutes a week. The WHO suggests adults get at least 150 minutes a week.`,
+  },
+  restedNote: (word: string, meetsActivity: boolean) =>
+    `You wake up feeling ${word}. ${
+      meetsActivity
+        ? "Your movement meets the weekly guideline, which helps sleep too."
+        : "A little more movement could help you reach the weekly guideline and sleep better."
+    }`,
   seeDoctor: "If this sounds familiar and it's been going on for a while, it's worth mentioning to a doctor.",
-  actionsTitle: "Next steps you might like",
+  actionsTitle: "Suggested next steps",
+  actionGo: "Go",
+  browseProfessionals: "Browse verified professionals",
   disclaimerTitle: "Good to know",
-  savedTitle: "Saved to your snapshots",
-  savedLink: "See your history",
+  crisisLink: "Need crisis support?",
+  crisisHide: "Hide crisis support",
+  savedPill: "Saved to your history",
   anonTitle: "Sign in to save your snapshots and see your progress",
-  anonText: "This result is shown once and isn't stored anywhere.",
   anonButton: "Sign in or create an account",
   crisisIntro:
     "If things feel like too much right now, or you're thinking about harming yourself, please reach out right away:",
@@ -226,6 +292,22 @@ export const DRIVER_LABELS: Record<string, string> = {
   stress_level: "Stress this week",
   physical_activity_minutes: "Daily movement",
 };
+
+/** The small line under a driver, from the value the API returned. Unknown features show no value line. */
+export const DRIVER_VALUES: Record<string, (value: string) => string> = {
+  pressure: (v) => `You rated it ${v} out of 5`,
+  satisfaction: (v) => `You rated it ${v} out of 5`,
+  financial_stress: (v) => `You rated it ${v} out of 5`,
+  stress_level: (v) => `You rated it ${v} out of 10`,
+  quality_of_sleep: (v) => `You rated it ${v} out of 10`,
+  sleep_duration: (v) => `About ${v} h a night`,
+  physical_activity_minutes: (v) => `About ${v} min a day`,
+  work_study_hours: (v) => `About ${v} h a day`,
+  age: (v) => `${v} years`,
+  family_history: (v) => `You answered: ${v}`,
+  dietary_habits: (v) => `You answered: ${v}`,
+};
+export const YES_NO = { yes: "Yes", no: "No" } as const;
 
 /**
  * Plain-language versions of the API's confidence reasons, matched by their start. Unknown reasons are not
@@ -261,16 +343,25 @@ export const ACTIONS: Record<string, ActionCopy> = {
 };
 
 export const WHAT_IF = {
-  title: "What-if",
-  badge: "Not saved",
-  intro: "Move the sliders to see how changes might shift your mood strain. Just exploring: nothing here is saved.",
+  title: "What if things shifted a little?",
+  intro: "Move a slider to see how your mood strain might change. Just exploring: nothing here is saved.",
+  badge: "Illustrative / not saved",
   disabled: "What-if is switched off right now.",
   result: "With these changes",
-  sleep: "Sleep (hours)",
-  stress: "Stress this week",
-  movement: "Movement (minutes a day)",
+  now: "Your snapshot now",
+  sleep: "Sleep",
+  stress: "Stress",
+  movement: "Movement",
+  sleepValue: (v: number) => `${v} h`,
+  stressValue: (v: number) => `${v}/10`,
+  movementValue: (v: number) => `${v} min/day`,
+  start: "Move a slider to see how your result might shift.",
+  same: "Same band as your snapshot.",
+  lower: "Lower than your snapshot.",
+  higher: "Higher than your snapshot.",
   updating: "Updating…",
   failed: "Couldn't update the what-if right now.",
+  openAll: "Open all sliders",
 } as const;
 
 // ---- Errors ----
@@ -289,16 +380,18 @@ export const ERRORS = {
 
 export const HISTORY = {
   empty: "No snapshots yet",
-  emptyText: "Take a one-minute snapshot to start seeing how you're doing over time.",
-  start: "Take a snapshot",
-  newCheckin: "New snapshot",
-  details: "Details",
-  hideDetails: "Hide details",
+  emptyText: "Take a two-minute snapshot to start seeing how you're doing over time.",
+  start: "Take your first snapshot",
+  newCheckin: "Check in again",
+  view: "View",
+  hide: "Hide",
   delete: "Delete",
-  deleteAll: "Delete all",
+  deleteAll: "Delete all history",
   previous: "Newer",
   next: "Older",
   pageOf: (page: number, total: number) => `Page ${page} of ${total}`,
+  relative: (days: number) =>
+    days <= 0 ? "Today" : days === 1 ? "Yesterday" : days < 14 ? `${days} days ago` : `${Math.floor(days / 7)} weeks ago`,
   sleepConcern: "Sleep worth a look",
   sleepOk: "Sleep okay",
   sleepGuidance: "Sleep tips only",
@@ -312,16 +405,24 @@ export const HISTORY = {
   cancel: "Keep it",
   cancelAll: "Keep them",
   confirmDelete: "Delete",
+  confirmDeleteAll: "Delete all",
   deleting: "Deleting…",
 } as const;
 
 export const DASHBOARD = {
   title: "Wellness Snapshot",
-  latest: "Latest mood strain",
+  latest: "Latest",
   none: "No Wellness Snapshots yet",
-  noneText: "A one-minute snapshot of your mood strain and sleep.",
-  start: "Take a snapshot",
-  history: "See history",
-  again: "Take a new snapshot",
+  noneText: "A two-minute snapshot of your mood strain and sleep.",
+  start: "Take your first snapshot",
+  history: "See full history",
+  again: "Check in again",
   failed: "Your latest snapshot couldn't be loaded right now.",
+} as const;
+
+export const TREND = {
+  summary: (bands: string[]) =>
+    bands.length === 1
+      ? `Your latest snapshot: ${bands[0]}.`
+      : `Your last ${bands.length} snapshots, oldest to newest: ${bands.join(", ")}.`,
 } as const;

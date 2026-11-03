@@ -1,11 +1,17 @@
 import Link from "next/link";
 import { HeartPulse, Loader2, RotateCcw } from "lucide-react";
 
-import { COMMON, DASHBOARD, ERRORS, HISTORY } from "../copy.ts";
-import { useLatestCheckin } from "../hooks.ts";
+import { COMMON, DASHBOARD, ERRORS, HISTORY, TREND } from "../copy.ts";
+import { useRecentCheckins } from "../hooks.ts";
 import { WELLNESS_ROUTES, sleepFlag } from "../results.ts";
-import { BandChip } from "./result-parts.tsx";
-import { card, muted, primaryButton, secondaryButton } from "./styles.ts";
+import type { CheckinItem } from "../types.ts";
+import { SparklineTrend } from "./charts.tsx";
+import { ghostButton, h2, primaryButton } from "./styles.ts";
+import { WellnessSurface } from "./shell.tsx";
+import { BandPill, Card, CardTint, Pill } from "./ui.tsx";
+
+/** How many snapshots the trend shows. */
+const TREND_COUNT = 6;
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -15,65 +21,78 @@ function formatDate(value: string) {
 
 const SLEEP_FLAG_TEXT = { concern: HISTORY.sleepConcern, ok: HISTORY.sleepOk, guidance: HISTORY.sleepGuidance };
 
-/** Self-contained Dashboard card: the latest wellness check-in, or a friendly prompt when there is none. */
+/**
+ * Self-contained Dashboard card: the latest snapshot, a trend of up to the last six, or a friendly prompt when
+ * there is none. It carries its own scoped tokens and fonts (WellnessSurface), so the Dashboard is unchanged.
+ */
 export function WellnessDashboardCard() {
-  const { state, retry } = useLatestCheckin();
+  const { state, retry } = useRecentCheckins(TREND_COUNT);
 
   return (
-    <section className={card} aria-labelledby="wellness-checkin-card">
-      <div className="mb-4 flex items-center gap-2">
-        <span className="flex size-9 items-center justify-center rounded-full bg-[#ECEFE6] text-[#233E33]">
-          <HeartPulse className="size-5" aria-hidden="true" />
-        </span>
-        <h2 id="wellness-checkin-card" className="text-lg font-semibold text-[#1C352D]">
-          {DASHBOARD.title}
-        </h2>
-      </div>
+    <WellnessSurface>
+      <Card aria-labelledby="wellness-snapshot-card" className="flex flex-col gap-5">
+        <div className="flex items-center gap-3">
+          <span className="flex size-10 items-center justify-center rounded-[12px] bg-(--wn-brand-soft) text-(--wn-brand)">
+            <HeartPulse className="size-5" strokeWidth={2} aria-hidden="true" />
+          </span>
+          <h2 id="wellness-snapshot-card" className={h2}>
+            {DASHBOARD.title}
+          </h2>
+        </div>
 
-      {state.status === "loading" ? (
-        <div className="flex justify-center py-6 text-[#4A5750]">
-          <Loader2 className="size-5 motion-safe:animate-spin" aria-label={COMMON.loading} />
-        </div>
-      ) : state.status === "error" ? (
-        <div className="flex flex-col items-start gap-3">
-          <p className={`text-sm ${muted}`}>{DASHBOARD.failed}</p>
-          <button type="button" onClick={retry} className={secondaryButton}>
-            <RotateCcw className="size-4" aria-hidden="true" />
-            {ERRORS.retry}
-          </button>
-        </div>
-      ) : state.data === null ? (
-        <div className="flex flex-col items-start gap-3 rounded-2xl bg-[#FBF9F4] p-5">
-          <div>
-            <p className="text-sm font-semibold text-[#1C352D]">{DASHBOARD.none}</p>
-            <p className={`text-sm ${muted}`}>{DASHBOARD.noneText}</p>
+        {state.status === "loading" ? (
+          <div className="flex justify-center py-6 text-(--wn-ink-2)">
+            <Loader2 className="size-5 motion-safe:animate-spin" strokeWidth={2} aria-label={COMMON.loading} />
           </div>
-          <Link href={WELLNESS_ROUTES.checkin} className={primaryButton}>
-            {DASHBOARD.start}
-          </Link>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className={`text-sm ${muted}`}>{DASHBOARD.latest}</span>
-            <BandChip band={state.data.result.mood.risk_band} />
-            <span className="rounded-full bg-[#F5F7F2] px-3 py-1 text-xs font-medium text-[#3D4A43]">
-              {SLEEP_FLAG_TEXT[sleepFlag(state.data.result.sleep, state.data.suggestedActions)]}
-            </span>
+        ) : state.status === "error" ? (
+          <div className="flex flex-col items-start gap-3">
+            <p className="text-[15px] text-(--wn-ink-2)">{DASHBOARD.failed}</p>
+            <button type="button" onClick={retry} className={ghostButton}>
+              <RotateCcw className="size-4" strokeWidth={2} aria-hidden="true" />
+              {ERRORS.retry}
+            </button>
           </div>
-          <p className={`text-xs ${muted}`}>
-            <time dateTime={state.data.createdAt}>{formatDate(state.data.createdAt)}</time>
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <Link href={WELLNESS_ROUTES.history} className={secondaryButton}>
-              {DASHBOARD.history}
+        ) : state.data.length === 0 ? (
+          <CardTint className="flex flex-col items-start gap-3">
+            <div>
+              <p className="text-[16px] font-bold text-(--wn-ink)">{DASHBOARD.none}</p>
+              <p className="text-[15px] text-(--wn-ink-2)">{DASHBOARD.noneText}</p>
+            </div>
+            <Link href={WELLNESS_ROUTES.checkin} className={primaryButton}>
+              {DASHBOARD.start}
             </Link>
-            <Link href={WELLNESS_ROUTES.checkin} className={secondaryButton}>
-              {DASHBOARD.again}
-            </Link>
-          </div>
-        </div>
-      )}
-    </section>
+          </CardTint>
+        ) : (
+          <LatestAndTrend items={state.data} />
+        )}
+      </Card>
+    </WellnessSurface>
+  );
+}
+
+function LatestAndTrend({ items }: { items: CheckinItem[] }) {
+  const latest = items[0];
+  // Oldest to newest, left to right.
+  const bands = items.map((i) => i.result.mood.risk_band).reverse();
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <span className="text-sm font-semibold text-(--wn-ink-2)">{DASHBOARD.latest}</span>
+        <BandPill band={latest.result.mood.risk_band} />
+        <Pill variant="brand">{SLEEP_FLAG_TEXT[sleepFlag(latest.result.sleep, latest.suggestedActions)]}</Pill>
+        <span className="text-sm text-(--wn-ink-2)">
+          <time dateTime={latest.createdAt}>{formatDate(latest.createdAt)}</time>
+        </span>
+      </div>
+      <SparklineTrend bands={bands} summary={TREND.summary(bands)} />
+      <div className="flex flex-wrap gap-3">
+        <Link href={WELLNESS_ROUTES.checkin} className={primaryButton}>
+          {DASHBOARD.again}
+        </Link>
+        <Link href={WELLNESS_ROUTES.history} className={ghostButton}>
+          {DASHBOARD.history}
+        </Link>
+      </div>
+    </div>
   );
 }

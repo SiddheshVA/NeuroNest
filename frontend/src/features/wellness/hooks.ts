@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { loginHref } from "@/lib/safe-redirect";
-import { latestCheckin, listCheckins } from "./api.ts";
+import { listCheckins } from "./api.ts";
 import { errorKind } from "./errors.ts";
 import type { CheckinItem, CheckinPage } from "./types.ts";
 
@@ -18,16 +18,16 @@ export function useRelogin() {
 
 type Load<T> = { status: "loading" } | { status: "error"; error: unknown } | { status: "ready"; data: T };
 
-/** The latest stored check-in (null when there is none yet). */
-export function useLatestCheckin() {
+/** The user's most recent stored check-ins, newest first (an empty list when there are none yet). */
+export function useRecentCheckins(count: number) {
   const relogin = useRelogin();
-  const [state, setState] = useState<Load<CheckinItem | null>>({ status: "loading" });
+  const [state, setState] = useState<Load<CheckinItem[]>>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    latestCheckin()
-      .then((data) => !cancelled && setState({ status: "ready", data }))
+    listCheckins(0, count)
+      .then((data) => !cancelled && setState({ status: "ready", data: data.items }))
       .catch((error: unknown) => {
         if (cancelled) return;
         if (errorKind(error) === "unauthorized") relogin();
@@ -36,7 +36,7 @@ export function useLatestCheckin() {
     return () => {
       cancelled = true;
     };
-  }, [attempt, relogin]);
+  }, [count, attempt, relogin]);
 
   const retry = useCallback(() => {
     setState({ status: "loading" });

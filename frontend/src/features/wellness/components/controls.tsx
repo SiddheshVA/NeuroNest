@@ -1,10 +1,13 @@
-import { useId, useState, type ReactNode } from "react";
-import { ChevronDown, Info, Minus, Plus } from "lucide-react";
+import { useId, type ReactNode } from "react";
+import { Info, Minus, Plus } from "lucide-react";
 
 import { NAV, Q } from "../copy.ts";
-import { focusRing, muted } from "./styles.ts";
+import { focusRing, h2 } from "./styles.ts";
 
-/** A question: label (legend), optional hint, a tap-to-reveal "why we ask", the control and an inline error. */
+/**
+ * A question: an h2, a one-line helper, the control (a labelled group), a "Why we ask" line and an inline
+ * error. The group is named by the heading and described by the helper and the error.
+ */
 export function Question({
   label,
   hint,
@@ -21,43 +24,46 @@ export function Question({
   extra?: string;
   children: ReactNode;
 }) {
+  const headingId = useId();
+  const hintId = useId();
   const errorId = useId();
+  const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(" ") || undefined;
   return (
-    <fieldset className="flex flex-col gap-3" aria-describedby={error ? errorId : undefined}>
-      <legend className="mb-1 text-base font-semibold text-[#1C352D]">{label}</legend>
-      {hint ? <p className={`-mt-2 text-sm ${muted}`}>{hint}</p> : null}
-      {children}
-      {extra ? <p className="text-xs text-[#5A6E5A]">{extra}</p> : null}
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <h2 id={headingId} className={h2}>
+          {label}
+        </h2>
+        {hint ? (
+          <p id={hintId} className="text-[15px] text-(--wn-ink-2)">
+            {hint}
+          </p>
+        ) : null}
+      </div>
+      <div role="group" aria-labelledby={headingId} aria-describedby={describedBy}>
+        {children}
+      </div>
+      {extra ? <p className="text-sm text-(--wn-ink-2)">{extra}</p> : null}
       {why ? <WhyWeAsk text={why} /> : null}
       {error ? (
-        <p id={errorId} role="alert" className="text-sm font-medium text-[#8A3324]">
+        <p id={errorId} role="alert" className="text-sm font-semibold text-(--wn-high-text)">
           {error}
         </p>
       ) : null}
-    </fieldset>
+    </div>
   );
 }
 
+/** "Why we ask" with an info icon, always visible as one short line. */
 export function WhyWeAsk({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
-  const id = useId();
   return (
-    <div>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={id}
-        onClick={() => setOpen((o) => !o)}
-        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-1 text-xs font-medium text-[#5A6E5A] hover:text-[#233E33] ${focusRing}`}
-      >
-        <Info className="size-3.5" aria-hidden="true" />
-        {open ? NAV.hideWhy : NAV.whyWeAsk}
-        <ChevronDown className={`size-3.5 motion-safe:transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
-      </button>
-      <p id={id} hidden={!open} className="mt-1.5 rounded-xl bg-[#F5F7F2] px-3 py-2 text-sm text-[#3D4A43]">
+    <p className="flex gap-2 text-sm text-(--wn-ink-2)">
+      <Info className="mt-0.5 size-4 shrink-0 text-(--wn-brand)" strokeWidth={2} aria-hidden="true" />
+      <span>
+        <span className="font-semibold text-(--wn-ink)">{NAV.whyWeAsk}: </span>
         {text}
-      </p>
-    </div>
+      </span>
+    </p>
   );
 }
 
@@ -68,56 +74,46 @@ export interface Chip<V> {
 }
 
 /**
- * Single-choice chips built on native radio buttons: arrow keys move between them, screen readers announce
- * the group and the choice. `value` null means nothing chosen (or a chip whose value is null, e.g. Skip).
+ * Single-choice chips as toggle buttons (aria-pressed); the surrounding Question names the group. `value` null
+ * means nothing chosen (or a chip whose value is null, e.g. Skip).
  */
 export function ChipGroup<V>({
-  name,
   chips,
   value,
   onChange,
   invalid,
 }: {
-  name: string;
   chips: Chip<V>[];
   value: V | null;
   onChange: (value: V) => void;
   invalid?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2.5">
       {chips.map((chip) => {
-        const checked = chip.value === value;
+        const selected = chip.value === value;
         return (
-          <label
+          <button
             key={chip.key}
-            className={`cursor-pointer select-none rounded-full border px-4 py-2 text-sm font-medium motion-safe:transition-colors motion-safe:duration-150 has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50 ${
-              checked
-                ? "border-[#233E33] bg-[#233E33] text-white"
-                : `bg-white text-[#1C352D] hover:bg-[#F4F6F0] ${invalid ? "border-[#B5654F]" : "border-[#C8CEBE]"}`
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onChange(chip.value)}
+            className={`min-h-[46px] cursor-pointer rounded-[14px] border-[1.5px] px-4 text-[15px] font-semibold motion-safe:transition-colors motion-safe:duration-150 ${focusRing} ${
+              selected
+                ? "border-(--wn-brand) bg-(--wn-brand-soft) text-(--wn-brand-dark)"
+                : `bg-(--wn-surface) text-(--wn-ink) hover:border-(--wn-brand) ${invalid ? "border-(--wn-high-fill)" : "border-(--wn-line)"}`
             }`}
           >
-            <input
-              type="radio"
-              name={name}
-              className="sr-only"
-              checked={checked}
-              onChange={() => onChange(chip.value)}
-            />
             {chip.label}
-          </label>
+          </button>
         );
       })}
     </div>
   );
 }
 
-/**
- * A 1-to-max slider. Until the user touches it the answer stays empty (shown as "not answered yet"); any
- * pointer or keyboard interaction, including picking the middle, records it.
- */
-export function ScaleSlider({
-  label,
+/** 1-to-max as round 46px buttons; the selected one is filled with the brand colour. */
+export function ScaleButtons({
   value,
   onChange,
   min = 1,
@@ -125,9 +121,7 @@ export function ScaleSlider({
   lowLabel,
   highLabel,
   invalid,
-  disabled,
 }: {
-  label: string;
   value: number | null;
   onChange: (value: number) => void;
   min?: number;
@@ -135,40 +129,39 @@ export function ScaleSlider({
   lowLabel: string;
   highLabel: string;
   invalid?: boolean;
-  disabled?: boolean;
 }) {
-  const mid = Math.round((min + max) / 2);
-  const shown = value ?? mid;
-  const record = (v: number) => onChange(Math.min(max, Math.max(min, Math.round(v))));
+  const values = Array.from({ length: max - min + 1 }, (_, i) => min + i);
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between">
-        <span className={`text-2xl font-semibold tabular-nums ${value === null ? "text-[#9AA59C]" : "text-[#1C352D]"}`}>
-          {value === null ? "–" : value}
-          <span className={`text-sm font-normal ${muted}`}> / {max}</span>
-        </span>
-        {value === null ? <span className={`text-xs ${muted}`}>{NAV.sliderPrompt}</span> : null}
+    // A container query: ten in a row when the card has room, otherwise two rows of five.
+    <div className="@container flex flex-col gap-2">
+      <div className="grid w-fit grid-cols-5 gap-2 @[540px]:grid-cols-10">
+        {values.map((v) => {
+          const selected = v === value;
+          return (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={selected}
+              aria-label={NAV.scaleValue(v, max)}
+              onClick={() => onChange(v)}
+              className={`flex size-[46px] cursor-pointer items-center justify-center rounded-full border-[1.5px] text-[15px] font-bold tabular-nums motion-safe:transition-colors motion-safe:duration-150 ${focusRing} ${
+                selected
+                  ? "border-(--wn-brand) bg-(--wn-brand) text-white"
+                  : `bg-(--wn-surface) text-(--wn-ink) hover:border-(--wn-brand) ${invalid ? "border-(--wn-high-fill)" : "border-(--wn-line)"}`
+              }`}
+            >
+              {v}
+            </button>
+          );
+        })}
       </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={1}
-        value={shown}
-        disabled={disabled}
-        aria-label={label}
-        aria-valuetext={value === null ? NAV.sliderNotAnswered : NAV.sliderValue(value, max)}
-        aria-invalid={invalid || undefined}
-        onChange={(e) => record(Number(e.target.value))}
-        onPointerUp={(e) => record(Number((e.target as HTMLInputElement).value))}
-        onKeyUp={(e) => {
-          if (["Enter", " ", "Home", "End"].includes(e.key)) record(Number((e.target as HTMLInputElement).value));
-        }}
-        className={`w-full cursor-pointer accent-[#233E33] disabled:cursor-not-allowed ${value === null ? "opacity-60" : ""} ${focusRing}`}
-      />
-      <div className={`flex justify-between text-xs ${muted}`} aria-hidden="true">
-        <span>{lowLabel}</span>
-        <span>{highLabel}</span>
+      <div className="flex w-full max-w-[262px] justify-between text-sm text-(--wn-ink-2) @[540px]:max-w-[532px]" aria-hidden="true">
+        <span>
+          {min} {lowLabel}
+        </span>
+        <span>
+          {highLabel} {max}
+        </span>
       </div>
     </div>
   );
@@ -194,11 +187,11 @@ export function AgeStepper({
     const base = value ?? start - delta;
     onChange(Math.min(max, Math.max(min, base + delta)));
   };
-  const button = `flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-[#C8CEBE] bg-white text-[#233E33] hover:bg-[#F4F6F0] disabled:cursor-not-allowed disabled:opacity-40 ${focusRing}`;
+  const button = `flex size-[46px] shrink-0 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-(--wn-line) bg-(--wn-surface) text-(--wn-ink) hover:border-(--wn-brand) disabled:cursor-not-allowed disabled:opacity-40 ${focusRing}`;
   return (
     <div className="flex items-center gap-3">
       <button type="button" className={button} onClick={() => step(-1)} disabled={value !== null && value <= min} aria-label={Q.age.decrease}>
-        <Minus className="size-4" aria-hidden="true" />
+        <Minus className="size-4" strokeWidth={2} aria-hidden="true" />
       </button>
       <label className="flex items-baseline gap-2">
         <span className="sr-only">{Q.age.label}</span>
@@ -214,14 +207,14 @@ export function AgeStepper({
             const raw = e.target.value;
             onChange(raw === "" ? null : Math.trunc(Number(raw)));
           }}
-          className={`w-20 rounded-xl border bg-white px-3 py-2 text-center text-xl font-semibold tabular-nums text-[#1C352D] ${
-            invalid ? "border-[#B5654F]" : "border-[#C8CEBE]"
+          className={`h-[46px] w-20 rounded-[14px] border-[1.5px] bg-(--wn-surface) px-3 text-center text-xl font-bold tabular-nums text-(--wn-ink) ${
+            invalid ? "border-(--wn-high-fill)" : "border-(--wn-line)"
           } ${focusRing}`}
         />
-        <span className={`text-sm ${muted}`}>{Q.age.unit}</span>
+        <span className="text-[15px] text-(--wn-ink-2)">{Q.age.unit}</span>
       </label>
       <button type="button" className={button} onClick={() => step(1)} disabled={value !== null && value >= max} aria-label={Q.age.increase}>
-        <Plus className="size-4" aria-hidden="true" />
+        <Plus className="size-4" strokeWidth={2} aria-hidden="true" />
       </button>
     </div>
   );

@@ -3,13 +3,21 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { CONFIDENCE_REASON_FALLBACK, RESULT } from "./copy.ts";
+import { CONFIDENCE_REASON_FALLBACK, HISTORY, INSIGHT, RESULT, TREND } from "./copy.ts";
 import { WellnessApiError, errorKind, friendlyMessage, parseErrorBody } from "./errors.ts";
 import {
+  MOVEMENT_METER,
+  SLEEP_METER,
   actionLinks,
+  bandChange,
   bandCopy,
   bandIndex,
+  daysAgo,
+  driverValueText,
   driverViews,
+  meterPercent,
+  skippedOptional,
+  weeklyMinutes,
   friendlyConfidenceReasons,
   saveState,
   showCrisisResources,
@@ -201,5 +209,70 @@ describe("errors", () => {
     assert.deepEqual(e.fields[0], { field: "pressure", message: "Input should be less than or equal to 5" });
     assert.equal(e.fields[1].field, null);
     assert.equal(parseErrorBody(500, "not json").fields.length, 0);
+  });
+});
+
+describe("design helpers", () => {
+  test("driver values in words, from what the API returned", () => {
+    assert.equal(driverValueText("pressure", 4), "You rated it 4 out of 5");
+    assert.equal(driverValueText("stress_level", 7), "You rated it 7 out of 10");
+    assert.equal(driverValueText("sleep_duration", "7-8"), "About 7-8 h a night");
+    assert.equal(driverValueText("physical_activity_minutes", 45), "About 45 min a day");
+    assert.equal(driverValueText("family_history", true), "You answered: Yes");
+    assert.equal(driverValueText("dietary_habits", "Moderate"), "You answered: A mix");
+    assert.equal(driverValueText("brand_new_feature", 3), null);
+    assert.equal(driverValueText("pressure", null), null);
+    const [view] = driverViews([{ feature: "pressure", label: "", value: 4, direction: "increases", effect: "", impact: 1 }], "mood");
+    assert.equal(view.valueText, "You rated it 4 out of 5");
+  });
+
+  test("skipped optional answers are detected from imputed inputs or the confidence reason", () => {
+    assert.equal(skippedOptional({ imputed: ["family_history"], confidence_reasons: [] }), true);
+    assert.equal(skippedOptional({ imputed: [], confidence_reasons: ["optional input(s) not provided: ['x']"] }), true);
+    assert.equal(skippedOptional({ imputed: [], confidence_reasons: ["model quality limits confidence to 'medium'"] }), false);
+  });
+
+  test("what-if band comparison", () => {
+    assert.equal(bandChange("High", "Low"), "lower");
+    assert.equal(bandChange("Low", "Moderate"), "higher");
+    assert.equal(bandChange("Moderate", "Moderate"), "same");
+    assert.equal(bandChange("Moderate", "Unknown"), null);
+  });
+
+  test("meters use the two documented guidelines and clamp values to the scale", () => {
+    assert.deepEqual(SLEEP_METER, { min: 4, max: 10, zoneFrom: 7, zoneTo: 9 });
+    assert.equal(MOVEMENT_METER.zoneFrom, 150);
+    assert.equal(weeklyMinutes(45), 315);
+    assert.equal(meterPercent(7, SLEEP_METER), 50);
+    assert.equal(meterPercent(3, SLEEP_METER), 0);
+    assert.equal(meterPercent(12, SLEEP_METER), 100);
+    assert.equal(meterPercent(525, MOVEMENT_METER), 100);
+  });
+
+  test("relative dates count calendar days", () => {
+    const now = new Date(2026, 10, 3, 9, 0);
+    assert.equal(daysAgo(new Date(2026, 10, 3, 1, 0).toISOString(), now), 0);
+    assert.equal(daysAgo(new Date(2026, 10, 2, 23, 0).toISOString(), now), 1);
+    assert.equal(daysAgo(new Date(2026, 9, 20, 12, 0).toISOString(), now), 14);
+    assert.equal(daysAgo("not a date", now), 0);
+    assert.equal(HISTORY.relative(0), "Today");
+    assert.equal(HISTORY.relative(1), "Yesterday");
+    assert.equal(HISTORY.relative(5), "5 days ago");
+    assert.equal(HISTORY.relative(14), "2 weeks ago");
+  });
+
+  test("live sleep feedback uses the agreed copy for each chip", () => {
+    assert.match(INSIGHT.sleep(4.5), /^Well under the 7\+ hours/);
+    assert.match(INSIGHT.sleep(5.5), /^Below the 7\+ hours/);
+    assert.match(INSIGHT.sleep(6.5), /^Close, but a little under/);
+    assert.match(INSIGHT.sleep(7.5), /^Right in the range/);
+    assert.match(INSIGHT.sleep(8.5), /^Plenty of time asleep/);
+    assert.equal(INSIGHT.sleepTitle("6–7 h", INSIGHT.restedWord(2)), "6–7 h, feeling exhausted");
+    assert.equal(INSIGHT.sleepTitle("6–7 h", null), "6–7 h");
+  });
+
+  test("trend summary text", () => {
+    assert.equal(TREND.summary(["Low"]), "Your latest snapshot: Low.");
+    assert.equal(TREND.summary(["Low", "High"]), "Your last 2 snapshots, oldest to newest: Low, High.");
   });
 });

@@ -1,6 +1,6 @@
 // Component tests for the Wellness Snapshot pages (Vitest + React Testing Library). The API module is mocked;
 // nothing reaches a server.
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -28,26 +28,26 @@ function renderAt(ui: React.ReactElement, path = "/wellness-snapshot") {
   return render(<MemoryRouter initialEntries={[path]}>{ui}</MemoryRouter>);
 }
 
-const next = () => userEvent.click(screen.getByRole("button", { name: /^next/i }));
+const next = () => userEvent.click(screen.getByRole("button", { name: /^continue/i }));
+const pick = (name: string | RegExp) => userEvent.click(screen.getByRole("button", { name }));
 
 /** Fills all four steps as a working person; returns before submitting. */
 async function fillRequired(segment: "Studying" | "Working" | "Both" = "Working") {
-  await userEvent.click(screen.getByLabelText(segment));
-  await userEvent.click(screen.getByRole("button", { name: "One year older" }));
-  await userEvent.click(screen.getByLabelText("Some (30–60 min)"));
+  await pick(segment);
+  await pick("One year older");
+  await pick("Some (30–60 min)");
   await next();
-  await userEvent.click(screen.getByLabelText("6–7 h"));
-  // 6 is where an untouched slider sits; picking the middle is recorded on key-up (or pointer-up).
-  const rested = screen.getByRole("slider", { name: /rested/i });
-  expect(rested).toHaveAttribute("aria-valuetext", "Not answered yet");
-  fireEvent.keyUp(rested, { key: "Enter" });
-  expect(rested).toHaveAttribute("aria-valuetext", "6 out of 10");
+  await pick("6–7 h");
+  const rested = screen.getByRole("button", { name: "6 out of 10" });
+  expect(rested).toHaveAttribute("aria-pressed", "false");
+  await userEvent.click(rested);
+  expect(rested).toHaveAttribute("aria-pressed", "true");
   await next();
-  await userEvent.click(screen.getByLabelText("Heavy"));
-  await userEvent.click(screen.getByLabelText("Not great"));
-  await userEvent.click(screen.getByLabelText("Sometimes"));
+  await pick("Heavy");
+  await pick("Not great");
+  await pick("Sometimes");
   await next();
-  fireEvent.change(screen.getByRole("slider", { name: /stressed/i }), { target: { value: "7" } });
+  await pick("7 out of 10");
 }
 
 beforeEach(() => {
@@ -59,25 +59,70 @@ describe("questionnaire", () => {
     renderAt(<WellnessCheckinPage />);
     await next();
     expect(screen.getAllByText("Please choose an answer to continue.")).toHaveLength(3);
-    expect(screen.getByRole("heading", { name: "Your day" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Let's start with your day" })).toBeInTheDocument();
     expect(submit).not.toHaveBeenCalled();
+  });
+
+  test("the step list marks the current step; chips and the 1-10 scale are toggle buttons", async () => {
+    renderAt(<WellnessCheckinPage />);
+    const stepItems = () => within(screen.getByRole("list", { name: "Snapshot steps" })).getAllByRole("listitem");
+    expect(stepItems()[0]).toHaveAttribute("aria-current", "step");
+    expect(stepItems()[1]).not.toHaveAttribute("aria-current");
+    const working = screen.getByRole("button", { name: "Working" });
+    expect(working).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(working);
+    expect(working).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("group", { name: "Right now, are you mostly…" })).toContainElement(working);
+    await pick("One year older");
+    await pick("Plenty (1 hr+)");
+    expect(screen.getByText(/Roughly 525 minutes a week, which meets the WHO's 150\+ minutes/)).toBeInTheDocument();
+    await next();
+    expect(stepItems()[1]).toHaveAttribute("aria-current", "step");
+    expect(stepItems()[0]).toHaveTextContent("(done)");
+  });
+
+  test("live sleep feedback follows the chip and the rested score", async () => {
+    renderAt(<WellnessCheckinPage />);
+    await pick("Both");
+    await pick("One year older");
+    await pick("A bit (15–30 min)");
+    await next();
+    await pick("Under 5 h");
+    expect(screen.getByText(/Well under the 7\+ hours most adults are advised to get/)).toBeInTheDocument();
+    await pick("6–7 h");
+    await pick("5 out of 10");
+    expect(screen.getByText("6–7 h, feeling so-so")).toBeInTheDocument();
+    expect(screen.getByText("Close, but a little under the 7+ hours adults are generally advised to get.")).toBeInTheDocument();
+    await pick("8 h+");
+    expect(screen.getByText(/Plenty of time asleep/)).toBeInTheDocument();
+  });
+
+  test("Add it now returns to the last step with the optional answers open", async () => {
+    submit.mockResolvedValue(response("Moderate"));
+    renderAt(<WellnessCheckinPage />);
+    await fillRequired();
+    await pick(/see my result/i);
+    await userEvent.click(await screen.findByRole("button", { name: /add it now/i }));
+    expect(screen.getByRole("heading", { level: 1, name: "Last one: how this week felt" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sharpen your result/i })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "7 out of 10" })).toHaveAttribute("aria-pressed", "true");
   });
 
   test("wording adapts to studying vs working", async () => {
     renderAt(<WellnessCheckinPage />);
-    await userEvent.click(screen.getByLabelText("Studying"));
-    await userEvent.click(screen.getByRole("button", { name: "One year older" }));
-    await userEvent.click(screen.getByLabelText("A bit (15–30 min)"));
+    await pick("Studying");
+    await pick("One year older");
+    await pick("A bit (15–30 min)");
     await next();
-    await userEvent.click(screen.getByLabelText("7–8 h"));
-    fireEvent.change(screen.getByRole("slider", { name: /rested/i }), { target: { value: "8" } });
+    await pick("7–8 h");
+    await pick("8 out of 10");
     await next();
     expect(screen.getByText("How heavy has your study load felt lately?")).toBeInTheDocument();
     expect(screen.getByText(/fees, rent, loans/i)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /back/i }));
     await userEvent.click(screen.getByRole("button", { name: /back/i }));
-    await userEvent.click(screen.getByLabelText("Working"));
+    await pick("Working");
     await next();
     await next();
     expect(screen.getByText("How heavy has your workload felt lately?")).toBeInTheDocument();
@@ -90,8 +135,8 @@ describe("questionnaire", () => {
     await fillRequired("Working");
     await userEvent.click(screen.getByRole("button", { name: /sharpen your result/i }));
     expect(screen.queryByText(/bmi|weight|heart rate|daily steps|bpm/i)).not.toBeInTheDocument();
-    await userEvent.click(screen.getByLabelText("8–10 h"));
-    await userEvent.click(screen.getByLabelText("Prefer not to say"));
+    await pick("8–10 h");
+    await pick("Prefer not to say");
     await userEvent.click(screen.getByRole("button", { name: /see my result/i }));
 
     await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
@@ -107,7 +152,7 @@ describe("questionnaire", () => {
       stressLevel: 7,
       workStudyHours: 9,
     });
-    expect(await screen.findByRole("heading", { name: "Your Wellness Snapshot" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Here is your snapshot" })).toBeInTheDocument();
   });
 
   test("a 503 keeps the answers and offers a retry", async () => {
@@ -118,11 +163,11 @@ describe("questionnaire", () => {
     await userEvent.click(screen.getByRole("button", { name: /see my result/i }));
 
     expect(await screen.findByText(/resting for a moment/i)).toBeInTheDocument();
-    expect(screen.getByRole("slider", { name: /stressed/i })).toHaveValue("7");
+    expect(screen.getByRole("button", { name: "7 out of 10" })).toHaveAttribute("aria-pressed", "true");
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
     expect(submit.mock.calls[1][0]).toEqual(submit.mock.calls[0][0]);
-    expect(await screen.findByRole("heading", { name: "Your Wellness Snapshot" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Here is your snapshot" })).toBeInTheDocument();
   });
 
   test("a 400 shows the field message inline on the right step", async () => {
@@ -135,7 +180,7 @@ describe("questionnaire", () => {
     await fillRequired();
     await userEvent.click(screen.getByRole("button", { name: /see my result/i }));
 
-    expect(await screen.findByRole("heading", { name: "Your load" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "What's been on your plate" })).toBeInTheDocument();
     expect(screen.getByText("Input should be less than or equal to 5")).toBeInTheDocument();
   });
 });
@@ -171,6 +216,7 @@ describe("history", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
     await waitFor(() => expect(deleteOne).toHaveBeenCalledWith("a1"));
     await waitFor(() => expect(screen.queryByText("High")).not.toBeInTheDocument());
+    expect(screen.queryByText("Delete this snapshot?")).not.toBeInTheDocument();
     expect(screen.getByText("Low")).toBeInTheDocument();
   });
 
@@ -179,8 +225,9 @@ describe("history", () => {
     renderAt(<WellnessHistoryPage />, "/wellness-snapshot/history");
     await screen.findAllByRole("listitem");
 
-    await userEvent.click(screen.getByRole("button", { name: "Delete all" }));
-    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(screen.getByRole("button", { name: "Delete all history" }));
+    const dialog = await screen.findByRole("group", { name: "Delete all your snapshots?" });
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
     const confirm = within(dialog).getByRole("button", { name: "Delete all" });
     expect(confirm).toBeDisabled();
     await userEvent.type(within(dialog).getByLabelText(/type DELETE/i), "delete");
