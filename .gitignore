@@ -90,3 +90,6 @@ samples/
 scripts/output/
 backend.zip
 frontend.zip
+
+# ---------- Report evaluation (local only) ----------
+report-eval/
