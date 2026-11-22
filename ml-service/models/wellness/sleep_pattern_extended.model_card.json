@@ -1,0 +1,407 @@
+{
+  "name": "sleep_pattern_extended",
+  "bundle_version": 1,
+  "trained_at_utc": "2026-11-02T11:03:49+00:00",
+  "intended_use": "NeuroNest wellness check-in: self-reflection estimate with explanation. Not a diagnosis.",
+  "task": "multiclass",
+  "algorithm": "hist_gb",
+  "selection_reason": "hist_gb has the best f1_macro",
+  "calibration_method": "none (see calibration.decision)",
+  "features": [
+    {
+      "name": "age",
+      "kind": "int",
+      "required": true,
+      "label": "Age",
+      "allowed_range": [
+        16,
+        90
+      ],
+      "training_range": [
+        27.0,
+        59.0
+      ],
+      "impute_value_if_missing": 41.0
+    },
+    {
+      "name": "sleep_duration",
+      "kind": "float",
+      "required": true,
+      "label": "Sleep duration (h)",
+      "allowed_range": [
+        2,
+        14
+      ],
+      "training_range": [
+        5.8,
+        8.5
+      ],
+      "impute_value_if_missing": 7.15
+    },
+    {
+      "name": "quality_of_sleep",
+      "kind": "int",
+      "required": true,
+      "label": "Sleep quality",
+      "allowed_range": [
+        1,
+        10
+      ],
+      "training_range": [
+        4.0,
+        9.0
+      ],
+      "impute_value_if_missing": 7.0
+    },
+    {
+      "name": "stress_level",
+      "kind": "int",
+      "required": true,
+      "label": "Stress level",
+      "allowed_range": [
+        1,
+        10
+      ],
+      "training_range": [
+        3.0,
+        8.0
+      ],
+      "impute_value_if_missing": 6.0
+    },
+    {
+      "name": "physical_activity_minutes",
+      "kind": "int",
+      "required": true,
+      "label": "Physical activity (min/day)",
+      "allowed_range": [
+        0,
+        600
+      ],
+      "training_range": [
+        30.0,
+        90.0
+      ],
+      "impute_value_if_missing": 60.0
+    },
+    {
+      "name": "bmi_category",
+      "kind": "ordinal",
+      "required": false,
+      "label": "BMI category",
+      "choices_low_to_high": [
+        "normal",
+        "overweight",
+        "obese"
+      ],
+      "training_range": [
+        0.0,
+        2.0
+      ],
+      "impute_value_if_missing": 0.0
+    },
+    {
+      "name": "heart_rate",
+      "kind": "int",
+      "required": false,
+      "label": "Resting heart rate",
+      "allowed_range": [
+        30,
+        200
+      ],
+      "training_range": [
+        65.0,
+        86.0
+      ],
+      "impute_value_if_missing": 70.0
+    },
+    {
+      "name": "daily_steps",
+      "kind": "int",
+      "required": false,
+      "label": "Daily steps",
+      "allowed_range": [
+        0,
+        50000
+      ],
+      "training_range": [
+        3000.0,
+        10000.0
+      ],
+      "impute_value_if_missing": 7000.0
+    }
+  ],
+  "label_mapping": {
+    "None": 0,
+    "Insomnia": 1,
+    "Sleep Apnea": 2
+  },
+  "output": "pattern code (see display_labels) + class probabilities (see calibration_method)",
+  "display_labels": {
+    "None": {
+      "code": "none",
+      "display_text": "Your answers don't resemble a specific sleep-problem pattern.",
+      "see_doctor": false
+    },
+    "Insomnia": {
+      "code": "insomnia_like",
+      "display_text": "Your answers resemble a difficulty-sleeping (insomnia-like) pattern. If poor sleep persists for several weeks, consider talking to a doctor.",
+      "see_doctor": true
+    },
+    "Sleep Apnea": {
+      "code": "apnea_like",
+      "display_text": "Your answers resemble a pattern sometimes linked to breathing-related sleep problems (apnea-like). Loud snoring, gasping at night or daytime sleepiness are worth checking with a doctor.",
+      "see_doctor": true
+    }
+  },
+  "risk_bands": null,
+  "confidence": {
+    "ceiling": "medium",
+    "ceiling_reason": "moderate: macro-F1 0.663 (sd 0.068) vs baseline 0.238",
+    "rule": "start at the ceiling; -1 level per imputed (missing optional) input the model consumes (max -2; sleep: -1 if some but not all boosters are given, none on the core-only path); -1 if any provided input is outside the training range"
+  },
+  "dataset": {
+    "file": "Sleep_health_and_lifestyle_dataset.csv",
+    "sha256": "1efe7b6f781ff88078d08d81fe136cff98b1b0c32560f35f8650ca5984b77841",
+    "cleaning": {
+      "rows_before": 374,
+      "rows_after": 132,
+      "steps": [
+        {
+          "rule": "exact duplicate rows (after dropping Person ID)",
+          "rows_dropped": 242
+        },
+        {
+          "rule": "Sleep Disorder: unrecognised label",
+          "rows_dropped": 0
+        },
+        {
+          "rule": "BMI Category: unrecognised value",
+          "rows_dropped": 0
+        }
+      ]
+    },
+    "class_counts": {
+      "None": 73,
+      "Insomnia": 29,
+      "Sleep Apnea": 30
+    },
+    "source_columns_used": {
+      "features": [
+        "Age",
+        "Sleep Duration",
+        "Quality of Sleep",
+        "Stress Level",
+        "Physical Activity Level",
+        "BMI Category",
+        "Heart Rate",
+        "Daily Steps"
+      ],
+      "row_filter": [],
+      "label": [
+        "Sleep Disorder"
+      ]
+    },
+    "never_used_columns": [
+      "CGPA",
+      "City",
+      "Degree",
+      "Gender",
+      "Have you ever had suicidal thoughts ?",
+      "Name",
+      "Occupation",
+      "Person ID",
+      "Profession",
+      "id"
+    ]
+  },
+  "cross_validation": {
+    "scheme": "StratifiedGroupKFold (groups = identical tuples of ['age', 'sleep_duration', 'quality_of_sleep', 'stress_level', 'physical_activity_minutes'])",
+    "folds": 5,
+    "repeats": 5,
+    "seed": 42,
+    "primary_metric": "f1_macro",
+    "candidates": {
+      "baseline_majority": {
+        "accuracy": {
+          "mean": 0.5568,
+          "std": 0.072
+        },
+        "log_loss": {
+          "mean": 1.0035,
+          "std": 0.0655
+        },
+        "f1_macro": {
+          "mean": 0.2375,
+          "std": 0.0201
+        },
+        "brier": {
+          "mean": 0.5977,
+          "std": 0.0477
+        }
+      },
+      "logreg": {
+        "accuracy": {
+          "mean": 0.7126,
+          "std": 0.0453
+        },
+        "log_loss": {
+          "mean": 0.7973,
+          "std": 0.1053
+        },
+        "f1_macro": {
+          "mean": 0.6475,
+          "std": 0.0638
+        },
+        "brier": {
+          "mean": 0.4371,
+          "std": 0.0491
+        }
+      },
+      "random_forest": {
+        "accuracy": {
+          "mean": 0.6941,
+          "std": 0.0571
+        },
+        "log_loss": {
+          "mean": 0.8115,
+          "std": 0.0727
+        },
+        "f1_macro": {
+          "mean": 0.6051,
+          "std": 0.0675
+        },
+        "brier": {
+          "mean": 0.4592,
+          "std": 0.0478
+        }
+      },
+      "hist_gb": {
+        "accuracy": {
+          "mean": 0.7216,
+          "std": 0.0592
+        },
+        "log_loss": {
+          "mean": 0.8648,
+          "std": 0.1663
+        },
+        "f1_macro": {
+          "mean": 0.6635,
+          "std": 0.0677
+        },
+        "brier": {
+          "mean": 0.4452,
+          "std": 0.0709
+        }
+      }
+    },
+    "calibrated_chosen_model": {
+      "accuracy": {
+        "mean": 0.6791,
+        "std": 0.0813
+      },
+      "log_loss": {
+        "mean": 0.8408,
+        "std": 0.0895
+      },
+      "f1_macro": {
+        "mean": 0.5793,
+        "std": 0.1024
+      },
+      "brier": {
+        "mean": 0.4764,
+        "std": 0.0488
+      }
+    }
+  },
+  "calibration": {
+    "decision": "rejected: sigmoid calibration worsened nested-CV Brier 0.4331 -> 0.4698; shipping uncalibrated probabilities",
+    "brier_uncalibrated": 0.4331,
+    "brier_calibrated": 0.4698,
+    "ece_uncalibrated": 0.1278,
+    "ece_calibrated": 0.1524,
+    "reliability_calibrated": [
+      {
+        "n": 14,
+        "mean_predicted": 0.3795,
+        "observed_rate": 0.4286
+      },
+      {
+        "n": 14,
+        "mean_predicted": 0.4541,
+        "observed_rate": 0.5
+      },
+      {
+        "n": 13,
+        "mean_predicted": 0.4926,
+        "observed_rate": 0.6154
+      },
+      {
+        "n": 13,
+        "mean_predicted": 0.5166,
+        "observed_rate": 0.6923
+      },
+      {
+        "n": 13,
+        "mean_predicted": 0.561,
+        "observed_rate": 0.6154
+      },
+      {
+        "n": 13,
+        "mean_predicted": 0.6165,
+        "observed_rate": 0.8462
+      },
+      {
+        "n": 13,
+        "mean_predicted": 0.6666,
+        "observed_rate": 1.0
+      },
+      {
+        "n": 13,
+        "mean_predicted": 0.6995,
+        "observed_rate": 0.7692
+      },
+      {
+        "n": 13,
+        "mean_predicted": 0.73,
+        "observed_rate": 0.9231
+      },
+      {
+        "n": 13,
+        "mean_predicted": 0.8049,
+        "observed_rate": 0.5385
+      }
+    ]
+  },
+  "label_conflict_rate": 0.1818,
+  "accuracy_ceiling": 0.8182,
+  "unique_feature_tuples": 105,
+  "library_versions": {
+    "python": "3.13.5",
+    "scikit-learn": "1.6.1",
+    "numpy": "2.2.6",
+    "pandas": "2.2.3",
+    "scipy": "1.15.3",
+    "shap": "0.48.0",
+    "joblib": "1.5.1"
+  },
+  "known_limitations": [
+    "Not a diagnosis: outputs are screening-style estimates for self-reflection, never a clinical label.",
+    "Trained on public Kaggle survey data; labels are self-reported / survey-derived, not clinician assessed.",
+    "Associations only; drivers describe what moves the model's estimate, not causes.",
+    "Sleep dataset is SYNTHETIC (374 rows, 132 after removing exact duplicates); treat outputs as illustrative.",
+    "Identical feature rows carry conflicting labels; see label_conflict_rate / accuracy_ceiling.",
+    "Training population is adults aged 27-59 with 5.8-8.5 h sleep; inputs outside that are extrapolation.",
+    "Class names come from the dataset; present them as sleep *patterns*, not as a diagnosis of insomnia or apnea."
+  ],
+  "variant_comparison": {
+    "core_macro_f1": {
+      "mean": 0.6493,
+      "std": 0.0704
+    },
+    "extended_macro_f1": {
+      "mean": 0.6635,
+      "std": 0.0677
+    },
+    "note": "Extended adds bmi_category, heart_rate, daily_steps. Predictor uses the extended model when any booster is supplied (missing boosters imputed) and the core model otherwise."
+  }
+}

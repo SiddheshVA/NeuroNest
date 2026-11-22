@@ -1,0 +1,18 @@
+# Pinned versions for the NeuroNest ML service (Python 3.13).
+numpy==2.2.6
+pandas==2.2.3
+scipy==1.15.3  # scipy>=1.16 emits optimizer warnings with scikit-learn 1.6.1
+scikit-learn==1.6.1
+shap==0.48.0
+joblib==1.5.1
+
+# API
+fastapi==0.115.12
+starlette==0.46.2
+pydantic==2.11.4
+uvicorn==0.34.2
+anyio==4.9.0  # newer anyio warns with starlette 0.46
+
+# Dev / test
+pytest==8.4.1
+httpx==0.28.1  # FastAPI TestClient

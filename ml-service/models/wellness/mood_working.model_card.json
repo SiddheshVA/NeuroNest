@@ -1,0 +1,454 @@
+{
+  "name": "mood_working",
+  "bundle_version": 1,
+  "trained_at_utc": "2026-11-02T11:02:41+00:00",
+  "intended_use": "NeuroNest wellness check-in: self-reflection estimate with explanation. Not a diagnosis.",
+  "task": "binary",
+  "algorithm": "logreg",
+  "selection_reason": "logreg has the best roc_auc",
+  "calibration_method": "CalibratedClassifierCV(method='sigmoid', ensemble=False)",
+  "features": [
+    {
+      "name": "pressure",
+      "kind": "int",
+      "required": true,
+      "label": "Academic / work pressure",
+      "allowed_range": [
+        1,
+        5
+      ],
+      "training_range": [
+        1.0,
+        5.0
+      ],
+      "impute_value_if_missing": 3.0
+    },
+    {
+      "name": "satisfaction",
+      "kind": "int",
+      "required": true,
+      "label": "Study / job satisfaction",
+      "allowed_range": [
+        1,
+        5
+      ],
+      "training_range": [
+        1.0,
+        5.0
+      ],
+      "impute_value_if_missing": 3.0
+    },
+    {
+      "name": "sleep_duration",
+      "kind": "ordinal",
+      "required": true,
+      "label": "Sleep duration",
+      "choices_low_to_high": [
+        "<5",
+        "5-6",
+        "7-8",
+        ">8"
+      ],
+      "training_range": [
+        0.0,
+        3.0
+      ],
+      "impute_value_if_missing": 1.0
+    },
+    {
+      "name": "financial_stress",
+      "kind": "int",
+      "required": true,
+      "label": "Financial stress",
+      "allowed_range": [
+        1,
+        5
+      ],
+      "training_range": [
+        1.0,
+        5.0
+      ],
+      "impute_value_if_missing": 3.0
+    },
+    {
+      "name": "dietary_habits",
+      "kind": "ordinal",
+      "required": false,
+      "label": "Diet quality",
+      "choices_low_to_high": [
+        "unhealthy",
+        "moderate",
+        "healthy"
+      ],
+      "training_range": [
+        0.0,
+        2.0
+      ],
+      "impute_value_if_missing": 1.0
+    },
+    {
+      "name": "work_study_hours",
+      "kind": "float",
+      "required": false,
+      "label": "Daily work/study hours",
+      "allowed_range": [
+        0,
+        16
+      ],
+      "training_range": [
+        0.0,
+        12.0
+      ],
+      "impute_value_if_missing": 6.0
+    },
+    {
+      "name": "family_history",
+      "kind": "binary",
+      "required": false,
+      "label": "Family history of mental illness",
+      "choices": [
+        false,
+        true
+      ],
+      "training_range": [
+        0.0,
+        1.0
+      ],
+      "impute_value_if_missing": 0.0
+    }
+  ],
+  "label_mapping": {
+    "not_depressed": 0,
+    "depressed": 1
+  },
+  "output": "risk band (Low / Moderate / High) + calibrated probability",
+  "display_labels": null,
+  "risk_bands": {
+    "low_below": 0.0353,
+    "high_at_or_above": 0.2476,
+    "rule": "Low = odds at most 1/3 of the training base odds; High = odds at least 3x the base odds (base rate 0.099)",
+    "oof_occupancy": {
+      "Low": {
+        "share_of_rows": 0.3525,
+        "observed_positive_rate": 0.011
+      },
+      "Moderate": {
+        "share_of_rows": 0.5497,
+        "observed_positive_rate": 0.1027
+      },
+      "High": {
+        "share_of_rows": 0.0979,
+        "observed_positive_rate": 0.393
+      }
+    }
+  },
+  "confidence": {
+    "ceiling": "medium",
+    "ceiling_reason": "capped at 'medium' by MODEL_MAX_CONFIDENCE (ROC-AUC 0.817 (sd 0.023))",
+    "rule": "start at the ceiling; -1 level per imputed (missing optional) input the model consumes (max -2; sleep: -1 if some but not all boosters are given, none on the core-only path); -1 if any provided input is outside the training range"
+  },
+  "dataset": {
+    "file": "final_depression_dataset.csv",
+    "sha256": "ab84b936e98440171a703ebe5289cb6fa43f1a1bd340afa66b1679d2311114b8",
+    "cleaning": {
+      "rows_before": 2556,
+      "rows_after": 2054,
+      "steps": [
+        {
+          "rule": "segment != 'Working Professional'",
+          "rows_dropped": 502
+        },
+        {
+          "rule": "Sleep Duration: placeholder ('Others', '?', blank, NaN)",
+          "rows_dropped": 0
+        },
+        {
+          "rule": "Dietary Habits: placeholder ('Others', '?', blank, NaN)",
+          "rows_dropped": 0
+        },
+        {
+          "rule": "Sleep Duration: unrecognised value",
+          "rows_dropped": 0
+        },
+        {
+          "rule": "Dietary Habits: unrecognised value",
+          "rows_dropped": 0
+        },
+        {
+          "rule": "Financial Stress: placeholder / non-numeric / blank",
+          "rows_dropped": 0
+        },
+        {
+          "rule": "Financial Stress: outside 1-5",
+          "rows_dropped": 0
+        },
+        {
+          "rule": "Work Pressure (pressure): missing or outside 1-5 (e.g. 0)",
+          "rows_dropped": 0
+        },
+        {
+          "rule": "Job Satisfaction (satisfaction): missing or outside 1-5 (e.g. 0)",
+          "rows_dropped": 0
+        },
+        {
+          "rule": "Work/Study Hours: missing or outside 0-16",
+          "rows_dropped": 0
+        },
+        {
+          "rule": "Age: missing or outside 16-80",
+          "rows_dropped": 0
+        },
+        {
+          "rule": "Family History: not Yes/No",
+          "rows_dropped": 0
+        }
+      ]
+    },
+    "class_counts": {
+      "not_depressed": 1851,
+      "depressed": 203
+    },
+    "source_columns_used": {
+      "features": [
+        "Sleep Duration",
+        "Dietary Habits",
+        "Work/Study Hours",
+        "Financial Stress",
+        "Family History of Mental Illness",
+        "Work Pressure",
+        "Job Satisfaction"
+      ],
+      "row_filter": [
+        "Working Professional or Student",
+        "Age"
+      ],
+      "label": [
+        "Depression"
+      ]
+    },
+    "never_used_columns": [
+      "CGPA",
+      "City",
+      "Degree",
+      "Gender",
+      "Have you ever had suicidal thoughts ?",
+      "Name",
+      "Occupation",
+      "Person ID",
+      "Profession",
+      "id"
+    ]
+  },
+  "cross_validation": {
+    "scheme": "RepeatedStratifiedKFold",
+    "folds": 5,
+    "repeats": 5,
+    "seed": 42,
+    "primary_metric": "roc_auc",
+    "candidates": {
+      "baseline_majority": {
+        "accuracy": {
+          "mean": 0.9012,
+          "std": 0.0011
+        },
+        "log_loss": {
+          "mean": 0.3225,
+          "std": 0.0025
+        },
+        "roc_auc": {
+          "mean": 0.5,
+          "std": 0.0
+        },
+        "brier": {
+          "mean": 0.0891,
+          "std": 0.0009
+        }
+      },
+      "logreg": {
+        "accuracy": {
+          "mean": 0.9038,
+          "std": 0.0064
+        },
+        "log_loss": {
+          "mean": 0.2602,
+          "std": 0.0101
+        },
+        "roc_auc": {
+          "mean": 0.8169,
+          "std": 0.0228
+        },
+        "brier": {
+          "mean": 0.0763,
+          "std": 0.0029
+        }
+      },
+      "random_forest": {
+        "accuracy": {
+          "mean": 0.9011,
+          "std": 0.0016
+        },
+        "log_loss": {
+          "mean": 0.2669,
+          "std": 0.0074
+        },
+        "roc_auc": {
+          "mean": 0.8039,
+          "std": 0.0208
+        },
+        "brier": {
+          "mean": 0.0781,
+          "std": 0.0021
+        }
+      },
+      "hist_gb": {
+        "accuracy": {
+          "mean": 0.8983,
+          "std": 0.0061
+        },
+        "log_loss": {
+          "mean": 0.2731,
+          "std": 0.011
+        },
+        "roc_auc": {
+          "mean": 0.7936,
+          "std": 0.0215
+        },
+        "brier": {
+          "mean": 0.0796,
+          "std": 0.0035
+        }
+      }
+    },
+    "calibrated_chosen_model": {
+      "accuracy": {
+        "mean": 0.9028,
+        "std": 0.0054
+      },
+      "log_loss": {
+        "mean": 0.2601,
+        "std": 0.0096
+      },
+      "roc_auc": {
+        "mean": 0.8169,
+        "std": 0.0228
+      },
+      "brier": {
+        "mean": 0.0762,
+        "std": 0.0028
+      }
+    }
+  },
+  "calibration": {
+    "decision": "kept: nested-CV Brier 0.0762 -> 0.0761, ECE 0.0138 -> 0.0134",
+    "brier_uncalibrated": 0.0762,
+    "brier_calibrated": 0.0761,
+    "ece_uncalibrated": 0.0138,
+    "ece_calibrated": 0.0134,
+    "reliability_calibrated": [
+      {
+        "n": 206,
+        "mean_predicted": 0.0068,
+        "observed_rate": 0.0
+      },
+      {
+        "n": 206,
+        "mean_predicted": 0.0153,
+        "observed_rate": 0.0097
+      },
+      {
+        "n": 206,
+        "mean_predicted": 0.0239,
+        "observed_rate": 0.0097
+      },
+      {
+        "n": 206,
+        "mean_predicted": 0.0351,
+        "observed_rate": 0.0291
+      },
+      {
+        "n": 205,
+        "mean_predicted": 0.0479,
+        "observed_rate": 0.0341
+      },
+      {
+        "n": 205,
+        "mean_predicted": 0.0659,
+        "observed_rate": 0.0976
+      },
+      {
+        "n": 205,
+        "mean_predicted": 0.0908,
+        "observed_rate": 0.0927
+      },
+      {
+        "n": 205,
+        "mean_predicted": 0.1278,
+        "observed_rate": 0.1561
+      },
+      {
+        "n": 205,
+        "mean_predicted": 0.1916,
+        "observed_rate": 0.1707
+      },
+      {
+        "n": 205,
+        "mean_predicted": 0.3849,
+        "observed_rate": 0.3902
+      }
+    ]
+  },
+  "excluded_features": {
+    "features": {
+      "age": "In this dataset age alone gives ROC-AUC ~0.87 (positive rate ~67% at 18-19, ~0% at 50+), a likely synthetic artefact that would label almost every older worker Low regardless of their answers."
+    },
+    "reference_cv_with_them": {
+      "model": "logreg",
+      "features": [
+        "pressure",
+        "satisfaction",
+        "sleep_duration",
+        "financial_stress",
+        "dietary_habits",
+        "work_study_hours",
+        "family_history",
+        "age"
+      ],
+      "metrics": {
+        "accuracy": {
+          "mean": 0.9333,
+          "std": 0.0122
+        },
+        "log_loss": {
+          "mean": 0.1292,
+          "std": 0.0161
+        },
+        "roc_auc": {
+          "mean": 0.972,
+          "std": 0.0079
+        },
+        "brier": {
+          "mean": 0.0429,
+          "std": 0.0066
+        }
+      }
+    }
+  },
+  "library_versions": {
+    "python": "3.13.5",
+    "scikit-learn": "1.6.1",
+    "numpy": "2.2.6",
+    "pandas": "2.2.3",
+    "scipy": "1.15.3",
+    "shap": "0.48.0",
+    "joblib": "1.5.1"
+  },
+  "known_limitations": [
+    "Not a diagnosis: outputs are screening-style estimates for self-reflection, never a clinical label.",
+    "Trained on public Kaggle survey data; labels are self-reported / survey-derived, not clinician assessed.",
+    "Associations only; drivers describe what moves the model's estimate, not causes.",
+    "Small dataset: 2,054 working professionals with only ~200 positives (~10%).",
+    "Age is deliberately NOT a feature (see excluded_features); an age sent by the app is ignored.",
+    "Confidence is capped at 'medium' because of the small sample and likely synthetic origin.",
+    "Likely partly synthetic (Kaggle playground-style data); CV AUC should not be read as clinical accuracy."
+  ]
+}

@@ -1,0 +1,11 @@
+# Local-only artefacts for the ML service
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Raw datasets are never committed
+data/raw/
+
+# Local secrets
+.env
